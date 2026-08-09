@@ -17,7 +17,15 @@
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="icon" href="./icon-192.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <script>
+    
+    <style>
+html,body,#root{height:100%}body{margin:0;background:#f1efe8;color:#1b2033;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}input,select,textarea{font-size:16px}
+
+</style>
+  </head>
+  <body>
+    <div id="root"></div>
+      <script>
 var Em=Object.defineProperty,zm=Object.defineProperties;var Pm=Object.getOwnPropertyDescriptors;var Xf=Object.getOwnPropertySymbols;var Tm=Object.prototype.hasOwnProperty,Fm=Object.prototype.propertyIsEnumerable;var Jf=(Ot,dt,ut)=>dt in Ot?Em(Ot,dt,{enumerable:!0,configurable:!0,writable:!0,value:ut}):Ot[dt]=ut,E=(Ot,dt)=>{for(var ut in dt||(dt={}))Tm.call(dt,ut)&&Jf(Ot,ut,dt[ut]);if(Xf)for(var ut of Xf(dt))Fm.call(dt,ut)&&Jf(Ot,ut,dt[ut]);return Ot},F=(Ot,dt)=>zm(Ot,Pm(dt));(function(){"use strict";function Ot(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}var dt={exports:{}},ut={},Xa={exports:{}},oe={};/**
  * @license React
  * react.production.min.js
@@ -131,12 +139,5 @@ input:focus,textarea:focus{border-bottom-color:${d.field}}
 `;yf(document.getElementById("root")).render(o.jsx(ad.StrictMode,{children:o.jsx(lm,{})})),"serviceWorker"in navigator&&window.addEventListener("load",()=>{const e="./";navigator.serviceWorker.register(`${e}sw.js`,{scope:e}).catch(()=>{})})})();
 
 </script>
-    <style>
-html,body,#root{height:100%}body{margin:0;background:#f1efe8;color:#1b2033;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}input,select,textarea{font-size:16px}
-
-</style>
-  </head>
-  <body>
-    <div id="root"></div>
   </body>
 </html>
