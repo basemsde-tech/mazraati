@@ -1,7 +1,7 @@
 /* Offline cache for Mazraati.
    Strategy: serve the app shell from cache first so it opens with no signal,
    but always go to the network for weather and cloud sync. */
-const CACHE = "mazraati-v1.0.0";
+const CACHE = "mazraati-v1.5.0";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
@@ -18,7 +18,6 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  // never cache live data
   if (url.hostname.includes("open-meteo.com") || url.origin !== self.location.origin) return;
 
   if (e.request.mode === "navigate") {
