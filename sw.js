@@ -1,10 +1,10 @@
 /* Offline cache for Mazraati.
    Strategy: serve the app shell from cache first so it opens with no signal,
-   but always go to the network for weather and cloud sync. */
-const CACHE = "mazraati-v1.6.0";
+   but always go to the network for weather and cloud sync.
+   Bump CACHE when you deploy — users tap "Check for updates" in Settings. */
+const CACHE = "mazraati-v1.6.2";
 
 self.addEventListener("install", (e) => {
-  self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest"]).catch(() => {})));
 });
 
@@ -13,6 +13,10 @@ self.addEventListener("activate", (e) => {
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (e) => {
