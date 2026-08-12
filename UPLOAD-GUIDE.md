@@ -1,17 +1,26 @@
-# Mazraati v2.1.1 — Update GitHub Pages
+# Mazraati v2.2.0 — Update GitHub Pages
 
 Live app: https://basemsde-tech.github.io/mazraati/  
 Repo: https://github.com/basemsde-tech/mazraati
+
+## Cloud sync (easy)
+
+1. Open **Settings → Backup & sync**
+2. Tap **Create free sync**
+3. Tap **Copy link** and paste the same link on other phones/PCs
+4. Turn sync **On** there
+
+Treat the link like a password. Optional advanced: JSONBin URL + master key.
 
 ## Required deploy files
 
 | File | Required |
 |------|----------|
 | `index.html` | **Yes** — built app |
-| `sw.js` | **Yes** — cache `mazraati-v2.1.1` |
+| `sw.js` | **Yes** — cache `mazraati-v2.2.0` |
 | `manifest.webmanifest` | Recommended |
 | `.nojekyll` | Recommended (GitHub Pages) |
-| `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` | Keep if already on GitHub |
+| Icons | Keep if already on GitHub |
 
 ## Rebuild after editing `App.jsx`
 
@@ -20,39 +29,20 @@ cd "$env:USERPROFILE\Downloads\mazraati-deploy"
 node build.mjs
 ```
 
-Output: `index.html` (also bump `VERSION.code` in `App.jsx` and `CACHE` in `sw.js` together).
+Bump `VERSION.code` in `App.jsx` and `CACHE` in `sw.js` together.
 
-## Push with git (recommended)
+## Push with git
 
 ```powershell
 cd "$env:USERPROFILE\Downloads\mazraati-deploy"
 git add -A
-git status
-git commit -m "Release v2.1.1: themes, production label, UI updates"
+git commit -m "Release v2.2.0: easy cloud sync"
 git push origin main
 ```
 
-If this folder is not yet linked:
+## What’s in v2.2.0
 
-```powershell
-git remote add origin https://github.com/basemsde-tech/mazraati.git
-git push -u origin main
-```
-
-## Manual upload (fallback)
-
-1. Open the repo → **Add file** → **Upload files**
-2. Drag at least `index.html` and `sw.js`
-3. Commit, wait ~1–2 minutes, then hard-refresh / private window:
-   `https://basemsde-tech.github.io/mazraati/`
-
-## What’s in v2.1.1
-
-- Soft grey light theme + dark mode (header / Settings / Ctrl+K)
-- Nav label: **Production** instead of “Today’s milk”
-- Official app logo, forest teal redesign, AM/PM milk logging, Action Hub favorites
-
-## What’s in v2.1.0
-
-- Eye-comfort grey surfaces (less pure white)
-- Light / dark appearance preference saved per device
+- One-click free cloud sync (JSONBlob link)
+- Cloud settings now persist on GitHub Pages / device storage
+- JSONBin-compatible headers + `/latest` read URL
+- Copy sync link for other devices

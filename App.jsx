@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.1.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.2.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Bump when onboarding must re-prompt existing farms for company details. */
 const SETUP_VERSION = "1.6.4";
 
@@ -276,8 +276,8 @@ const T = {
     setupContactTitle: "الهوية والتواصل", setupContactLead: "الشعار والهاتف والعنوان — اختياري ويمكن تعديله لاحقًا.",
     companyName: "اسم المزرعة / الشركة", companyNameHint: "يظهر في أعلى التطبيق وعلى كل فاتورة.",
     employeeName: "اسم الموظف", farmEmail: "البريد الإلكتروني",
-    emailSoon: "قريبًا — للمزامنة السحابية بين الأجهزة",
-    emailSoonHint: "سنطلب البريد عند تفعيل التخزين والمزامنة السحابية.",
+    emailSoon: "المزامنة جاهزة من الإعدادات",
+    emailSoonHint: "من الإعدادات ← النسخ والمزامنة ← إنشاء مزامنة مجانية، ثم انسخ الرابط للأجهزة الأخرى.",
     completeFarmSetup: "أكمل بيانات المزرعة", completeFarmSetupLead: "حدّث هوية شركتك بعد الترقية — يظهر على الفواتير والتقارير.",
     finishSetup: "حفظ ومتابعة", attachLogo: "إرفاق الشعار",
     changePass: "تغيير الرمز", removePass: "إزالة الرمز", passRemoved: "تم إلغاء رمز الدخول.",
@@ -417,7 +417,7 @@ const T = {
     setTipPrices: "أسعار البيع الافتراضية وأجرة المياومة لحساب الرواتب والتقارير.",
     setTipWeather: "الموقع يفعّل طقس المزرعة ونصائح الحرّ والمطر.",
     setTipPeople: "المستخدمون يسجّلون بأسمائهم. الرمز اختياري لحماية ملفك. العمال للحضور والأجور.",
-    setTipCloud: "اربط خادمًا لمشاركة البيانات بين الأجهزة. بدونها تبقى البيانات على هذا الجهاز فقط.",
+    setTipCloud: "أسهل طريقة: اضغط «إنشاء مزامنة مجانية» ثم انسخ الرابط إلى بقية الأجهزة. بدونها تبقى البيانات على هذا الجهاز فقط.",
     setTipBackup: "النسخة JSON كاملة وقابلة للاسترجاع. Excel وCSV وPDF للقراءة فقط.",
     setTipStorage: "الصور المرفقة تستهلك المساحة. احذف الإيصالات القديمة إن امتلأت الذاكرة.",
     setTipUpdate: "بعد رفع نسخة جديدة، اضغط للتحقق ثم ثبّت التحديث.",
@@ -455,9 +455,16 @@ const T = {
     setup: "ابدأ من هنا", setupAnimals: "أضف حيواناتك", setupPrices: "أدخل الأسعار",
     setupWorkers: "أضف العمال", setupCustomers: "أضف الزبائن",
     cloud: "المزامنة السحابية", cloudSub: "اربط التطبيق بخادم ليصل إليه الجميع.",
-    cloudUrl: "رابط الخادم", cloudToken: "مفتاح الوصول", cloudTest: "اختبار الاتصال",
+    cloudUrl: "رابط المزامنة", cloudToken: "مفتاح الوصول (اختياري)", cloudTest: "اختبار الاتصال",
     cloudOn: "مفعّلة", cloudOff: "متوقفة", cloudOk: "تم الاتصال بنجاح.",
-    cloudFail: "تعذّر الاتصال.", cloudHint: "أي خادم يعيد البيانات عند GET ويحفظها عند PUT.",
+    cloudFail: "تعذّر الاتصال.", cloudHint: "أسهل طريقة: أنشئ رابطًا مجانيًا بضغطة، ثم الصقه على الأجهزة الأخرى.",
+    cloudEasy: "إنشاء مزامنة مجانية", cloudEasyBusy: "جاري إنشاء الرابط…",
+    cloudEasyOk: "تم إنشاء الرابط وتفعيل المزامنة.",
+    cloudEasyFail: "تعذّر إنشاء الرابط. جرّب لاحقًا أو استخدم إعدادًا متقدمًا.",
+    cloudCopy: "نسخ الرابط", cloudCopied: "تم نسخ الرابط — الصقه على الجهاز الآخر.",
+    cloudJoin: "على جهاز آخر: الصق نفس الرابط هنا وفعّل المزامنة.",
+    cloudSecret: "الرابط سري مثل كلمة المرور — لا تنشره علنًا.",
+    cloudAdvanced: "إعداد متقدم (JSONBin أو خادم خاص)",
     backup: "النسخ الاحتياطي", backupSub: "احفظ نسخة من بيانات المزرعة.",
     restore: "استرجاع نسخة", restoreWarn: "سيحل الملف محل كل البيانات الحالية.",
     chooseFormat: "اختر نوع الملف", fullBackup: "نسخة كاملة (JSON)", fullBackupSub: "الوحيدة القابلة للاسترجاع",
@@ -571,8 +578,8 @@ const T = {
     setupContactTitle: "Identity & contact", setupContactLead: "Logo, phone and address — optional; you can edit later.",
     companyName: "Farm / company name", companyNameHint: "Shown at the top of the app and on every invoice.",
     employeeName: "Employee name", farmEmail: "Email",
-    emailSoon: "Coming soon — for cloud sync across devices",
-    emailSoonHint: "We will ask for email when cloud storage and sync are ready.",
+    emailSoon: "Cloud sync is ready in Settings",
+    emailSoonHint: "Settings → Backup & sync → Create free sync, then paste the link on other devices.",
     completeFarmSetup: "Complete farm details", completeFarmSetupLead: "Update your company identity after this upgrade — shown on invoices and reports.",
     finishSetup: "Save & continue", attachLogo: "Attach logo",
     changePass: "Change passcode", removePass: "Remove passcode", passRemoved: "Passcode removed.",
@@ -712,7 +719,7 @@ const T = {
     setTipPrices: "Default selling prices and the daily wage used for payroll and reports.",
     setTipWeather: "Location unlocks farm weather and heat/rain tips.",
     setTipPeople: "Users stamp entries with their name. PIN is optional. Workers power attendance & wages.",
-    setTipCloud: "Connect a server to share data across devices. Otherwise data stays on this device.",
+    setTipCloud: "Easiest: tap Create free sync, then paste that link on other devices. Otherwise data stays on this device.",
     setTipBackup: "JSON is a full restorable backup. Excel, CSV and PDF are for reading only.",
     setTipStorage: "Attached photos use space. Remove old receipts if storage fills up.",
     setTipUpdate: "After uploading a new build, check here then install the update.",
@@ -749,10 +756,17 @@ const T = {
     signOwner: "Farm owner", signVet: "Veterinarian",
     setup: "Start here", setupAnimals: "Add your animals", setupPrices: "Enter your prices",
     setupWorkers: "Add your workers", setupCustomers: "Add your customers",
-    cloud: "Cloud sync", cloudSub: "Connect to a server so everyone reaches the same data.",
-    cloudUrl: "Server URL", cloudToken: "Access key", cloudTest: "Test connection",
+    cloud: "Cloud sync", cloudSub: "Share one farm database across every device.",
+    cloudUrl: "Sync link", cloudToken: "Access key (optional)", cloudTest: "Test connection",
     cloudOn: "On", cloudOff: "Off", cloudOk: "Connected successfully.",
-    cloudFail: "Could not connect.", cloudHint: "Any server that returns data on GET and saves on PUT.",
+    cloudFail: "Could not connect.", cloudHint: "Easiest: create a free sync link once, then paste it on other devices.",
+    cloudEasy: "Create free sync", cloudEasyBusy: "Creating link…",
+    cloudEasyOk: "Sync link created and turned on.",
+    cloudEasyFail: "Could not create a link. Try again later or use advanced setup.",
+    cloudCopy: "Copy link", cloudCopied: "Link copied — paste it on the other device.",
+    cloudJoin: "On another device: paste the same link here and turn sync on.",
+    cloudSecret: "Treat the link like a password — do not post it publicly.",
+    cloudAdvanced: "Advanced (JSONBin or your own server)",
     backup: "Backup", backupSub: "Save a copy of the farm data.",
     restore: "Restore a backup", restoreWarn: "The file will replace all current data.",
     chooseFormat: "Choose the file type", fullBackup: "Full backup (JSON)", fullBackupSub: "the only restorable file",
@@ -904,26 +918,58 @@ function ageText(a, lang) {
 /* ---------------------------- storage + cloud ---------------------------- */
 const withTimeout = (p, ms = 5000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 const cloud = { url: "", token: "", on: false };
+const isJsonBin = (u) => /api\.jsonbin\.io\/v3\/b\//i.test(u || "");
+const isJsonBlob = (u) => /jsonblob\.com/i.test(u || "");
+const cloudReadUrl = () => {
+  const u = (cloud.url || "").replace(/\/$/, "");
+  if (isJsonBin(u) && !/\/latest$/i.test(u)) return `${u}/latest`;
+  return cloud.url;
+};
+const cloudWriteUrl = () => {
+  const u = (cloud.url || "").replace(/\/$/, "");
+  if (isJsonBin(u)) return u.replace(/\/latest$/i, "");
+  return cloud.url;
+};
 const cloudHeaders = () => {
-  const h = { "Content-Type": "application/json" };
-  if (cloud.token) { h.Authorization = `Bearer ${cloud.token}`; h["X-Access-Key"] = cloud.token; }
+  const h = { "Content-Type": "application/json", Accept: "application/json" };
+  if (cloud.token) {
+    h.Authorization = `Bearer ${cloud.token}`;
+    h["X-Access-Key"] = cloud.token;
+    h["X-Master-Key"] = cloud.token;
+  }
   return h;
 };
 async function cloudGet() {
-  const r = await withTimeout(fetch(cloud.url, { method: "GET", headers: cloudHeaders() }), 8000);
+  const r = await withTimeout(fetch(cloudReadUrl(), { method: "GET", headers: cloudHeaders() }), 12000);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
-  const farm = j && (j.version ? j : j.record || j.data || j.value || null);
+  const farm = j && ((j.version != null || Array.isArray(j.entries)) ? j : (j.record || j.data || j.value || null));
   if (!farm) throw new Error("empty");
   return typeof farm === "string" ? farm : JSON.stringify(farm);
 }
 async function cloudSet(value) {
-  const r = await withTimeout(fetch(cloud.url, { method: "PUT", headers: cloudHeaders(), body: value }), 8000);
+  const r = await withTimeout(fetch(cloudWriteUrl(), { method: "PUT", headers: cloudHeaders(), body: value }), 12000);
   if (!r.ok) {
-    const r2 = await withTimeout(fetch(cloud.url, { method: "POST", headers: cloudHeaders(), body: value }), 8000);
+    const r2 = await withTimeout(fetch(cloudWriteUrl(), { method: "POST", headers: cloudHeaders(), body: value }), 12000);
     if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
   }
   return true;
+}
+/* One-click free sync: creates a private-ish JSONBlob link (secrecy = the URL). */
+async function createJsonBlobCloud(farmJson) {
+  const r = await withTimeout(fetch("https://jsonblob.com/api/jsonBlob", {
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: farmJson,
+  }), 15000);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const loc = r.headers.get("Location") || r.headers.get("location");
+  if (loc) {
+    try { return new URL(loc, "https://jsonblob.com").href; } catch (e) { return loc; }
+  }
+  const j = await r.json().catch(() => null);
+  const id = j && (j.id || j.blob || j._id);
+  if (id) return `https://jsonblob.com/api/jsonBlob/${id}`;
+  throw new Error("no location");
 }
 /* Three tiers, chosen automatically:
    host   – the Claude artifact storage API (shared across everyone using the link)
@@ -4793,6 +4839,8 @@ function FarmApp() {
   const [draftS, setDraftS] = useState(null);
   const [cloudCfg, setCloudCfg] = useState({ url: "", token: "", on: false });
   const [cloudMsg, setCloudMsg] = useState("");
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudAdv, setCloudAdv] = useState(false);
   const [moneyView, setMoneyView] = useState("both");
   const [theme, setTheme] = useState("light");
   const [navFarmOpen, setNavFarmOpen] = useState(true);
@@ -4884,9 +4932,13 @@ function FarmApp() {
     (async () => {
       try {
         let cRaw = null;
-        if (typeof window !== "undefined" && window.storage) {
-          try { cRaw = await withTimeout(window.storage.get(CLOUD_KEY, false), 4000); }
-          catch (e2) { cRaw = await withTimeout(window.storage.get(LEGACY.cloud, false), 4000); }
+        try { cRaw = await store.get(CLOUD_KEY, false); }
+        catch (e1) {
+          try { cRaw = await store.get(LEGACY.cloud, false); } catch (e2) { /* none */ }
+          if (!cRaw && typeof window !== "undefined" && window.storage) {
+            try { cRaw = await withTimeout(window.storage.get(CLOUD_KEY, false), 4000); }
+            catch (e3) { try { cRaw = await withTimeout(window.storage.get(LEGACY.cloud, false), 4000); } catch (e4) { /* none */ } }
+          }
         }
         if (cRaw && cRaw.value) { const cfg = JSON.parse(cRaw.value); cloud.url = cfg.url || ""; cloud.token = cfg.token || "";
           cloud.on = !!cfg.on && !!cfg.url; setCloudCfg({ url: cloud.url, token: cloud.token, on: cloud.on }); }
@@ -5348,9 +5400,9 @@ function FarmApp() {
     r.readAsText(f);
   };
   const saveCloud = async (cfg) => {
-    const next = { ...cfg, on: !!cfg.on && !!cfg.url };
+    const next = { ...cfg, url: (cfg.url || "").trim(), token: (cfg.token || "").trim(), on: !!cfg.on && !!(cfg.url || "").trim() };
     setCloudCfg(next); cloud.url = next.url; cloud.token = next.token; cloud.on = next.on;
-    try { if (typeof window !== "undefined" && window.storage) await withTimeout(window.storage.set(CLOUD_KEY, JSON.stringify(next), false), 4000); } catch (e) { /* device */ }
+    try { await store.set(CLOUD_KEY, JSON.stringify(next), false); } catch (e) { /* device */ }
     if (next.on) pull();
   };
   const testCloud = async () => {
@@ -5362,6 +5414,34 @@ function FarmApp() {
     catch (e1) { try { await cloudSet(JSON.stringify(data)); setCloudMsg("✓ " + t("cloudOk")); }
       catch (e2) { setCloudMsg("⚠️ " + t("cloudFail") + " " + (e2.message || e1.message)); } }
     Object.assign(cloud, saved);
+  };
+  const createEasyCloud = async () => {
+    if (cloudBusy) return;
+    setCloudBusy(true); setCloudMsg(t("cloudEasyBusy"));
+    try {
+      const payload = JSON.stringify(data || emptyFarm());
+      const url = await createJsonBlobCloud(payload);
+      await saveCloud({ url, token: "", on: true });
+      setCloudMsg("✓ " + t("cloudEasyOk"));
+      ping(t("cloudEasyOk"));
+    } catch (e) {
+      setCloudMsg("⚠️ " + t("cloudEasyFail") + (e && e.message ? ` (${e.message})` : ""));
+    } finally { setCloudBusy(false); }
+  };
+  const copyCloudLink = async () => {
+    if (!cloudCfg.url) return;
+    try {
+      await navigator.clipboard.writeText(cloudCfg.url);
+      setCloudMsg("✓ " + t("cloudCopied"));
+      ping(t("cloudCopied"));
+    } catch (e) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = cloudCfg.url; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+        setCloudMsg("✓ " + t("cloudCopied"));
+      } catch (e2) { setCloudMsg(cloudCfg.url); }
+    }
   };
 
   if (!data) return <div className={`splash theme-${theme}`}><style key={theme}>{makeCss()}</style>
@@ -5770,23 +5850,44 @@ function FarmApp() {
       <SetSection open={setOpen.data} onToggle={() => toggleSet("data")} icon="💾" title={t("setCatData")} tip={t("setTipBackup")}
         summary={cloudCfg.on ? t("setSynced") : t("setOnDevice")}>
         <SetLabel tip={t("setTipCloud")}>{t("cloud")}</SetLabel>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 10, lineHeight: 1.45 }}>{t("cloudHint")}</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
           <Chip active={!cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: false })} color={C.inkSoft}>{t("cloudOff")}</Chip>
           <Chip active={cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: true })} color={C.green}>{t("cloudOn")}</Chip>
         </div>
-        <div className="set-row2" style={{ marginBottom: 8 }}>
-          <div>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
-            <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
-              placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+        {!cloudCfg.url && (
+          <button type="button" disabled={cloudBusy} onClick={createEasyCloud}
+            style={{ ...primaryBtn, marginBottom: 10, opacity: cloudBusy ? .65 : 1 }}>☁ {cloudBusy ? t("cloudEasyBusy") : t("cloudEasy")}</button>
+        )}
+        {cloudCfg.url && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 14px", fontSize: 14 }} onClick={copyCloudLink}>📋 {t("cloudCopy")}</button>
+            <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "10px 14px", fontSize: 14 }} onClick={createEasyCloud} disabled={cloudBusy}>☁ {t("cloudEasy")}</button>
           </div>
-          <div>
+        )}
+        <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 8, lineHeight: 1.4 }}>{t("cloudJoin")}</div>
+        <div style={{ fontSize: 12, color: C.amber, marginBottom: 10, fontWeight: 600 }}>{t("cloudSecret")}</div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
+          <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
+            placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }}
+            onClick={() => saveCloud({ ...cloudCfg, on: !!cloudCfg.url })}>{t("save")}</button>
+          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
+          <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
+            fontFamily: "var(--body)", fontSize: 12.5, padding: "8px 4px" }} onClick={() => setCloudAdv((v) => !v)}>
+            {cloudAdv ? "▾" : "▸"} {t("cloudAdvanced")}
+          </button>
+        </div>
+        {cloudAdv && (
+          <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudToken")}</div>
             <input value={cloudCfg.token} onChange={(e) => setCloudCfg({ ...cloudCfg, token: e.target.value.trim() })}
               style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
           </div>
-        </div>
-        <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto", marginBottom: 6 }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
+        )}
         {cloudMsg && <div style={{ fontWeight: 700, fontSize: 13, color: cloudMsg.startsWith("✓") ? C.green : C.red, marginBottom: 10 }}>{cloudMsg}</div>}
 
         <SetLabel tip={t("setTipBackup")}>{t("backup")}</SetLabel>
