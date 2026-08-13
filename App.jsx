@@ -12,9 +12,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.5": {
+    ar: [
+      "الدفع أوضح: قيمة الفاتورة · المدفوع · المتبقي — بدون خيار «دفعة جزئية»",
+      "المدفوع يظهر في صندوق النقد تلقائيًا",
+    ],
+    en: [
+      "Clearer pay split: bill · paid · remainder — no “part paid” option",
+      "Paid amounts show in the cash box automatically",
+    ],
+  },
   "2.5.4": {
     ar: [
       "إصلاح تعطّل تحميل التطبيق بعد تحديث الإنتاج",
@@ -299,7 +309,9 @@ const T = {
     expenses: "المصاريف", moneyOut: "المصاريف", moneySpent: "المصروف هذا الشهر", moneySpentPeriod: "المصروف",
     billsDue: "فواتير مستحقة", topCategory: "أكبر بند", farmNet: "صافي المزرعة",
     seeCashBox: "الصرف المدفوع → صندوق النقد", expenseRegister: "سجل المصاريف", openBills: "غير المسددة",
-    stillToPay: "لم تُدفع بعد", paidToday: "مدفوعة", expPaid: "مدفوعة", expPartial: "دفعة جزئية", expUnpaid: "غير مدفوعة",
+    stillToPay: "لم تُدفع بعد", paidToday: "مدفوعة", expPaid: "مدفوعة", expPartial: "متبقي", expUnpaid: "غير مدفوعة",
+    billTotal: "قيمة الفاتورة", remainder: "المتبقي", payAll: "دفع الكل", payNone: "بدون دفع",
+    paySplitHint: "أدخل المدفوع — المتبقي يُحسب تلقائيًا ويظهر في صندوق النقد.",
     higherThanUsual: "أعلى من المعتاد", thisWeek: "هذا الأسبوع", thisMonth: "هذا الشهر", lastMonth: "الشهر الماضي",
     customRange: "فترة مخصصة", searchExpenses: "ابحث عن فاتورة أو مورد…", vendor: "المورد / الجهة",
     addSupplier: "إضافة مورد", supplierName: "اسم المورد", supplierNote: "ملاحظة",
@@ -457,7 +469,7 @@ const T = {
     noRegulars: "لا يوجد زبائن دائمون.", deliver: "تسليم",
     newSale: "بيع جديد", pickCustomer: "لمن تم البيع؟", product: "المنتج", qty: "الكمية",
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
-    partial: "دفعة جزئية", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
+    partial: "متبقي", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
     paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", transfer: "تحويل",
     invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", invoiceNo: "رقم الفاتورة",
@@ -641,7 +653,9 @@ const T = {
     expenses: "Expenses", moneyOut: "Expenses", moneySpent: "Spent this month", moneySpentPeriod: "Money spent",
     billsDue: "Bills due", topCategory: "Top category", farmNet: "Farm net",
     seeCashBox: "Paid cash outs → Cash box", expenseRegister: "Expense register", openBills: "Open bills",
-    stillToPay: "Still to pay", paidToday: "Paid", expPaid: "Paid", expPartial: "Part paid", expUnpaid: "Unpaid",
+    stillToPay: "Still to pay", paidToday: "Paid", expPaid: "Paid", expPartial: "Remainder", expUnpaid: "Unpaid",
+    billTotal: "Bill total", remainder: "Remainder", payAll: "Pay all", payNone: "Pay nothing",
+    paySplitHint: "Enter paid — remainder is calculated and the paid part hits the cash box.",
     higherThanUsual: "Higher than usual", thisWeek: "This week", thisMonth: "This month", lastMonth: "Last month",
     customRange: "Custom dates", searchExpenses: "Search receipt or vendor…", vendor: "Vendor",
     addSupplier: "Add supplier", supplierName: "Supplier name", supplierNote: "Note",
@@ -799,7 +813,7 @@ const T = {
     noRegulars: "No regular customers yet.", deliver: "Deliver",
     newSale: "New sale", pickCustomer: "Who bought it?", product: "Product", qty: "Quantity",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
-    partial: "Part paid", amountPaid: "Amount paid", outstanding: "Outstanding",
+    partial: "Remainder", amountPaid: "Amount paid", outstanding: "Outstanding",
     collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record a payment",
     paymentAmount: "Payment amount", method: "Method", cash: "Cash", transfer: "Transfer",
     invoice: "Invoice", receipt: "Receipt", statement: "Statement", invoiceNo: "Invoice no.",
@@ -2844,6 +2858,36 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
 function milkUnitOf(u) { return u === "kg" ? "kg" : "L"; }
 function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
 
+/* Bill / paid / remainder — no separate “part paid” mode. */
+function payState(amount, paid) {
+  const bill = Math.max(0, +(amount || 0));
+  const got = +Math.max(0, Math.min(bill, +(paid || 0))).toFixed(2);
+  const due = +Math.max(0, bill - got).toFixed(2);
+  const status = due <= 0.009 ? "paid" : got <= 0.009 ? "unpaid" : "partial";
+  return { bill: +bill.toFixed(2), paid: got, due, status };
+}
+function PaySplit({ amount, paid, onChange, rate, lang, t }) {
+  const p = payState(amount, paid);
+  return <div style={{ display: "grid", gap: 10, background: C.paper, border: `1px solid ${C.line}`,
+    borderRadius: 8, padding: 12, marginBottom: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+      <Kpi label={t("billTotal")} value={fmtC(p.bill, rate, lang)} />
+      <Kpi label={t("amountPaid")} value={fmtC(p.paid, rate, lang)} tone={C.green} />
+      <Kpi label={t("remainder")} value={fmtC(p.due, rate, lang)} tone={moneyColor("due", p.due)} />
+    </div>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{t("paySplitHint")}</div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <Chip active={p.status === "paid"} onClick={() => onChange(p.bill)} color={C.green}>{t("payAll")}</Chip>
+      <Chip active={p.status === "unpaid"} onClick={() => onChange(0)} color={C.red}>{t("payNone")}</Chip>
+    </div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8, textAlign: "center" }}>{t("amountPaid")}</div>
+      <MoneyStepper usd={p.paid} onChange={(v) => onChange(Math.max(0, Math.min(p.bill, v)))}
+        rate={rate} lang={lang} t={t} step={5} />
+    </div>
+  </div>;
+}
+
 function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose, unit = "L" }) {
   const [am, setAm] = useState(existing.am || 0);
   const [pm, setPm] = useState(existing.pm || 0);
@@ -3183,13 +3227,23 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   const [receipt, setReceipt] = useState(initial?.receipt || "");
   const [newName, setNewName] = useState("");
   const [newIcon, setNewIcon] = useState("📦");
-  const [stillDue, setStillDue] = useState(!!initial && (initial.payStatus === "unpaid" || initial.payStatus === "partial"));
-  const [payStatus, setPayStatus] = useState(initial?.payStatus || "paid");
-  const [paidAmount, setPaidAmount] = useState(initial?.paidAmount ?? 0);
+  const initPay = initial
+    ? (initial.payStatus === "paid" || !initial.payStatus
+      ? (initial.amount || 0)
+      : (initial.paidAmount || 0))
+    : 0;
+  const [paidAmount, setPaidAmount] = useState(initPay);
+  const [paidTouched, setPaidTouched] = useState(!!initial);
   const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
 
   const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
   const pickSupplier = (s) => { setSupplierId(s ? s.id : null); setVendor(s ? s.name : ""); };
+  const setBill = (v) => {
+    setAmount(v);
+    if (!paidTouched) setPaidAmount(v);
+    else setPaidAmount((p) => Math.min(p, v));
+  };
+  const setPaid = (v) => { setPaidTouched(true); setPaidAmount(v); };
 
   const builtins = expensesInGroup(group || "otherGrp").map((e) => ({
     key: e[0], icon: e[1], label: lang === "ar" ? e[2] : e[3], color: e[4],
@@ -3198,18 +3252,18 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   const customs = (custom || []).filter((c) => !group || (c.group || "otherGrp") === group)
     .map((c) => ({ key: c.key, icon: c.icon || "📦", label: lang === "ar" ? c.ar : c.en || c.ar, color: c.color || "#6C7488" }));
   const items = [...builtins, ...customs];
+  const pay = payState(amount, paidAmount);
 
   const buildPayload = () => {
-    const st = stillDue ? (payStatus === "partial" ? "partial" : "unpaid") : "paid";
     const chosen = activeSuppliers.find((s) => s.id === supplierId);
     const vendorName = (chosen ? chosen.name : vendor).trim();
     return {
-      category: cat, amount, note: note.trim(), vendor: vendorName,
+      category: cat, amount: pay.bill, note: note.trim(), vendor: vendorName,
       supplierId: chosen ? chosen.id : null,
       at: dayStamp(date), currency: cur, rateUsed: S.rate, receipt,
-      payStatus: st,
-      paidAmount: st === "paid" ? amount : st === "partial" ? paidAmount : 0,
-      dueDate: st === "paid" ? "" : dueDate,
+      payStatus: pay.status,
+      paidAmount: pay.paid,
+      dueDate: pay.status === "paid" ? "" : dueDate,
       group: expGroupOf(cat) || group || "otherGrp",
       ...(initial?.id ? { id: initial.id } : {}),
     };
@@ -3283,8 +3337,13 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       </div>
       <Step n="2" label={t("amount")} />
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 15, marginBottom: 12 }}>
-        <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} currency={cur} setCurrency={setCur} />
+        <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t} step={5} currency={cur} setCurrency={setCur} />
       </div>
+      <PaySplit amount={amount} paid={paidAmount} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
+      {pay.status !== "paid" && <>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+      </>}
       <Step n="3" label={`${dmy(date)}`} />
       <input type="date" value={date} max={dayKey(Date.now())}
         onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
@@ -3298,6 +3357,7 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
 
     {step === 3 && <>
       <Step n="3" label={`${t("optional")}`} />
+      <PaySplit amount={amount} paid={paidAmount} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("pickSupplier")}</div>
       {activeSuppliers.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
         <Chip active={!supplierId} onClick={() => pickSupplier(null)}>{t("noSupplierLink")}</Chip>
@@ -3312,28 +3372,9 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("expenseNote")}</div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")} style={{ ...inp, marginBottom: 12 }} />
       <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
-      <button type="button" onClick={() => { setStillDue((v) => !v); if (!stillDue) setPayStatus("unpaid"); }}
-        style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: stillDue ? "#F6EFDD" : "#fff",
-          border: `1.5px solid ${stillDue ? C.amber : C.line}`, borderRadius: 6, padding: "12px 14px",
-          cursor: "pointer", marginBottom: 12, fontFamily: "var(--body)", textAlign: "start" }}>
-        <span style={{ width: 28, height: 28, borderRadius: 4, background: stillDue ? C.amber : C.paper,
-          display: "grid", placeItems: "center", fontWeight: 800, color: stillDue ? "#fff" : C.inkSoft }}>{stillDue ? "✓" : ""}</span>
-        <span><span style={{ display: "block", fontWeight: 700 }}>{t("stillToPay")}</span>
-          <span style={{ display: "block", fontSize: 12.5, color: C.inkSoft }}>{t("dueOn")}</span></span>
-      </button>
-      {stillDue && <>
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <Chip active={payStatus !== "partial"} onClick={() => setPayStatus("unpaid")} color={C.red}>{t("expUnpaid")}</Chip>
-          <Chip active={payStatus === "partial"} onClick={() => setPayStatus("partial")} color={C.amber}>{t("expPartial")}</Chip>
-        </div>
+      {pay.status !== "paid" && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
         <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
-        {payStatus === "partial" && <>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("payWhat")}</div>
-          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 12 }}>
-            <MoneyStepper usd={paidAmount} onChange={setPaidAmount} rate={S.rate} lang={lang} t={t} step={5} />
-          </div>
-        </>}
       </>}
       <button type="button" style={{ ...primaryBtn, opacity: cat && amount > 0 ? 1 : .45 }}
         onClick={() => cat && amount > 0 && onSave(buildPayload())}>✓ {t("saveExpense")}</button>
@@ -3755,8 +3796,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [product, setProduct] = useState(c?.product || "milk");
   const [qty, setQty] = useState(0);
   const [price, setPrice] = useState(0);
-  const [status, setStatus] = useState("unpaid");
-  const [partial, setPartial] = useState(0);
+  const [paidNow, setPaidNow] = useState(0);
+  const [paidTouched, setPaidTouched] = useState(false);
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
@@ -3766,7 +3807,13 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const unit = lang === "ar" ? pr[4] : pr[5];
   const amount = +(qty * price).toFixed(2);
-  const payNow = status === "paid" ? amount : status === "partial" ? Math.min(partial, amount) : 0;
+  useEffect(() => {
+    if (!paidTouched) return;
+    setPaidNow((p) => Math.min(p, amount));
+  }, [amount, paidTouched]);
+  const pay = payState(amount, paidNow);
+  const payNow = pay.paid;
+  const setPaid = (v) => { setPaidTouched(true); setPaidNow(v); };
   const milkAvail = milkStock(entries || [], date).available;
   const oversell = product === "milk" && qty > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
@@ -3809,17 +3856,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
     <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    <Step n="7" label={t("payStatus")} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-      {[["paid", "✅", t("paidS"), C.green], ["partial", "🟡", t("partial"), C.amber], ["unpaid", "🔴", t("unpaid"), C.red]].map(([k, ic, lb, col]) => (
-        <button key={k} onClick={() => setStatus(k)} style={{ background: status === k ? col : "#fff",
-          color: status === k ? "#fff" : C.ink, border: `1.5px solid ${status === k ? col : C.line}`,
-          borderRadius: 5, padding: "11px 4px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-          <div style={{ fontSize: 18 }}>{ic}</div>{lb}</button>))}
-    </div>
-    {status === "partial" && <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: C.inkSoft, marginBottom: 8, textAlign: "center" }}>{t("amountPaid")}</div>
-      <MoneyStepper usd={partial} onChange={setPartial} rate={S.rate} lang={lang} t={t} step={10} /></div>}
+    <Step n="7" label={t("amountPaid")} />
+    <PaySplit amount={amount} paid={paidNow} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {t("L")})</div>}
     <button style={{ ...primaryBtn, opacity: cid && amount > 0 ? 1 : .45 }}
@@ -5143,7 +5181,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger }) {
   const mkFoot = (left, right) => <DocFoot thanks={thanksTxt} note={footNote} footer={foot} showSigns={tpl.showSigns !== false}
     signLeft={left} signRight={right} />;
   const payBadge = (st) => {
-    const map = { paid: [L2("مدفوع", "Paid"), "#E0EFED", C.green], partial: [L2("دفعة جزئية", "Part paid"), "#F6EFDD", C.amber],
+    const map = { paid: [L2("مدفوع", "Paid"), "#E0EFED", C.green], partial: [L2("متبقي", "Remainder"), "#F6EFDD", C.amber],
       unpaid: [L2("غير مدفوع", "Unpaid"), "#F5E2E4", C.red] };
     const [lb, bg, col] = map[st] || map.unpaid;
     return <span style={{ display: "inline-block", background: bg, color: col, fontWeight: 700, fontSize: 11,
