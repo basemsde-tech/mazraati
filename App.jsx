@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.8", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.9", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.9": {
+    ar: [
+      "تثبيت حفظ دفعات الموردين بدون تكرار عند التعديل",
+    ],
+    en: [
+      "Supplier payment saves no longer risk duplicating on edit",
+    ],
+  },
   "2.5.8": {
     ar: [
       "مشتريات الموردين: المدفوع يخرج من الصندوق · المتبقي يظهر «علينا»",
@@ -5820,16 +5828,16 @@ function FarmApp() {
     return { es, list, sid, changed: list !== suppliers, expense, payAmt };
   };
 
-  /* Rewrite the entry list in place (edit expense + resync linked supplier pays). */
+  /* Rewrite the entry list in place (edit expense + resync linked supplier pays).
+     Mutator runs once so new ids (e.g. supplierPay) are not generated twice. */
   const rewriteEntries = async (mutator, okMsg) => {
     setBusy(true);
-    setData((prev) => {
-      const base = prev || emptyFarm();
-      return { ...base, entries: mutator(base.entries || []) };
-    });
     try {
-      const base = await readSharedFarm(dataRef.current || emptyFarm());
-      const merged = { ...base, entries: mutator(base.entries || []) };
+      const live = dataRef.current || emptyFarm();
+      const base = await readSharedFarm(live);
+      const nextEntries = mutator(base.entries || []);
+      const merged = { ...base, entries: nextEntries };
+      setData(merged);
       await store.set(SHARED_KEY, JSON.stringify(merged), true);
       setData(merged); setFailed(null);
       if (okMsg) ping(okMsg);
