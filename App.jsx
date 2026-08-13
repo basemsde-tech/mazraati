@@ -12,9 +12,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.1": {
+    ar: [
+      "إصلاح دفعات الموردين: التوزيع التلقائي يحدّث الفواتير · التعديل لا يمسح الرصيد الزائد",
+      "مستحقات لوحة الموردين من الحسابات النشطة فقط",
+    ],
+    en: [
+      "Supplier payments: auto-alloc updates bills · editing a bill no longer wipes overpay credit",
+      "Supplier dashboard totals use active accounts only",
+    ],
+  },
   "2.6.0": {
     ar: [
       "منصة الموردين: شراء → علينا حتى الدفع · ادفع الآن أو جزئيًا أو لاحقًا",
@@ -1825,7 +1835,13 @@ function buildSupplierLedger(entries, suppliers) {
     const paidAmount = fromCents(Math.min(billC, paidC));
     const due = fromCents(Math.max(0, billC - toCents(paidAmount)));
     const dueDate = b.dueDate || dayKey(b.at);
-    const lateDays = due > 0 ? Math.max(0, Math.floor((Date.now() - new Date(dueDate)) / 864e5)) : 0;
+    /* Compare calendar days in UTC Y-M-D parts so TZ does not shift “due on”. */
+    const lateDays = due > 0 ? (() => {
+      const [yy, mm, dd] = String(dueDate).split("-").map(Number);
+      const [ty, tm, td] = dayKey(Date.now()).split("-").map(Number);
+      if (!yy || !ty) return 0;
+      return Math.max(0, Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(yy, mm - 1, dd)) / 864e5));
+    })() : 0;
     return { ...b, paidAmount, due, dueDate, no: `BILL-${String(i + 1).padStart(4, "0")}`,
       status: moneyStatus(billC, toCents(paidAmount)), lateDays, overdue: due > 0 && lateDays > 0 };
   });
@@ -3744,10 +3760,13 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
   })();
   const [cat, setCat] = useState(initial?.category || "feed");
   const [amount, setAmount] = useState(initial?.amount || 0);
-  const initPaid = initial
-    ? (initial.payStatus === "paid" || !initial.payStatus ? (initial.amount || 0) : (initial.paidAmount || 0))
-    : 0;
-  const [paidAmount, setPaidAmount] = useState(initial ? initPaid : 0);
+  /* Legacy bills with no payStatus were treated as fully paid. */
+  const initPaid = !initial ? 0
+    : !initial.payStatus ? (initial.amount || 0)
+    : initial.payStatus === "paid" ? (initial.amount || 0)
+    : (initial.paidAmount || 0);
+  const [paidAmount, setPaidAmount] = useState(initPaid);
+  const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
@@ -3764,8 +3783,10 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     else if (m === "now") setPaidAmount(amount);
     else setPaidAmount((p) => (p > 0 && p < amount ? p : fromCents(Math.round(toCents(amount) / 2))));
   };
+  const locked = busy || saving;
   const save = () => {
-    if (busy || !(amount > 0) || !cat) return;
+    if (locked || !(amount > 0) || !cat) return;
+    setSaving(true);
     onSave({
       id: initial?.id, category: cat, amount: pay.bill, note: note.trim(),
       vendor: supplier.name, supplierId: supplier.id, supplier: supplier.name,
@@ -3818,9 +3839,9 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes2")} — {t("optional")}</div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")}
       style={{ ...inp, marginBottom: 16 }} />
-    <button type="button" disabled={busy || !(amount > 0) || !cat}
-      style={{ ...primaryBtn, opacity: busy || !(amount > 0) || !cat ? .45 : 1 }}
-      onClick={save}>{busy ? t("saving") : `✓ ${t("save")}`}</button>
+    <button type="button" disabled={locked || !(amount > 0) || !cat}
+      style={{ ...primaryBtn, opacity: locked || !(amount > 0) || !cat ? .45 : 1 }}
+      onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
 
@@ -3870,13 +3891,16 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
   const [amount, setAmount] = useState(pickDue(startBill));
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
   const selected = billId ? open.find((x) => x.id === billId) : null;
   const overCap = selected
     ? fromCents(Math.max(0, toCents(amount) - toCents(selected.due)))
     : fromCents(Math.max(0, toCents(amount) - toCents(b.due)));
+  const locked = busy || saving;
   const save = () => {
     const amt = fromCents(toCents(amount));
-    if (busy || !(amt > 0)) return;
+    if (locked || !(amt > 0)) return;
+    setSaving(true);
     onSave({
       supplierId: supplier.id, amount: amt, method, note: note.trim(),
       expenseId: billId || null, vendor: supplier.name, at: dayStamp(dayKey(Date.now())),
@@ -3910,9 +3934,9 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
       <Chip active={method === "transfer"} onClick={() => setMethod("transfer")}>{t("transfer")}</Chip>
     </div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")} style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" disabled={busy || !(amount > 0)}
-      style={{ ...primaryBtn, opacity: busy || !(amount > 0) ? .45 : 1 }}
-      onClick={save}>{busy ? t("saving") : `✓ ${t("save")}`}</button>
+    <button type="button" disabled={locked || !(amount > 0)}
+      style={{ ...primaryBtn, opacity: locked || !(amount > 0) ? .45 : 1 }}
+      onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
 
@@ -3975,7 +3999,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
               borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
               <span style={{ fontSize: 13 }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
-                {p2.expenseId ? ` · ${t("invoice")}` : ` · ${t("allocAuto")}`}
+                {p2.expenseId ? ` · ${t("invoice")}` : ""}
                 {p2.note ? ` · ${p2.note}` : ""}</span>
               <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{fmtC(p2.amount, S.rate, lang)}</span>
             </div>))}
@@ -7813,16 +7837,19 @@ function FarmApp() {
 
   const supplierDash = useMemo(() => {
     const month = dayKey(Date.now()).slice(0, 7);
+    const activeIds = new Set(activeSuppliers.map((s) => s.id));
     let owed = 0, overdue = 0, paidMonth = 0;
-    Object.values(supplierLedger.bySupplier || {}).forEach((row) => {
+    Object.entries(supplierLedger.bySupplier || {}).forEach(([id, row]) => {
+      if (!activeIds.has(id)) return;
       owed = fromCents(toCents(owed) + toCents(row.due));
       overdue = fromCents(toCents(overdue) + toCents(row.overdueDue || 0));
     });
     (supplierLedger.pays || []).forEach((p) => {
+      if (!activeIds.has(p.supplierId)) return;
       if (dayKey(p.at).slice(0, 7) === month) paidMonth = fromCents(toCents(paidMonth) + toCents(p.amount));
     });
     return { owed, overdue, paidMonth };
-  }, [supplierLedger]);
+  }, [supplierLedger, activeSuppliers]);
 
   const DeskSuppliers = (
     <div style={{ display: "grid", gap: 14 }}>
@@ -8171,26 +8198,48 @@ function FarmApp() {
         {sheet?.k === "supplierBill" && (() => {
           const s = suppliers.find((x) => x.id === sheet.sid);
           if (!s) return null;
-          const initial = sheet.id
+          const raw = sheet.id
             ? entries.find((x) => x.id === sheet.id && x.type === "expense" && x.supplierId === s.id)
             : null;
+          const lb = raw ? (supplierLedger.byBill || {})[raw.id] : null;
+          const initial = raw && lb
+            ? { ...raw, paidAmount: lb.paidAmount, payStatus: lb.status, dueDate: lb.dueDate || raw.dueDate }
+            : raw;
           return <SupplierBillSheet key={sheet.id || "new-bill"} supplier={s} lang={lang} t={t} S={S}
             custom={S.categories} initial={initial || undefined} busy={busy}
             onClose={() => returnToSupplier(s.id)}
             onSave={(v) => {
               if (busy) return;
               if (initial) {
-                const { es, list, sid, changed, expense } = resolveSupplierPatch({ ...v, id: initial.id });
-                const payRow = es.find((x) => x.type === "supplierPay");
+                const { list, sid, changed, expense } = resolveSupplierPatch({ ...v, id: initial.id });
                 rewriteEntries((rows) => {
-                  let next = (rows || [])
-                    .filter((x) => !(x.type === "supplierPay" && x.expenseId === initial.id))
-                    .map((x) => (x.id === initial.id ? { ...x, ...expense, id: initial.id, type: "expense" } : x));
+                  let next = (rows || []).map((x) => (x.id === initial.id
+                    ? { ...x, ...expense, id: initial.id, type: "expense" } : x));
                   if (!next.some((x) => x.id === initial.id)) next = [{ type: "expense", ...expense }, ...next];
-                  if (payRow) {
+                  /* Keep existing linked pays (incl. overpay credit). Only add cash for an increase. */
+                  const linkedC = next
+                    .filter((x) => x.type === "supplierPay" && x.expenseId === initial.id)
+                    .reduce((a, p) => a + toCents(p.amount), 0);
+                  const wantC = toCents(supplierCashOut(expense));
+                  if (wantC > linkedC) {
                     const now = iso(Date.now());
-                    next = [{ ...payRow, id: uid(), loggedAt: now, byId: me?.id || null, byName: me ? me.name : "—" }, ...next];
+                    next = [{
+                      type: "supplierPay", id: uid(), supplierId: expense.supplierId,
+                      amount: fromCents(wantC - linkedC), method: expense.method || "cash",
+                      vendor: expense.vendor, note: expense.note || "", at: expense.at,
+                      expenseId: initial.id, loggedAt: now,
+                      byId: me?.id || null, byName: me ? me.name : "—",
+                    }, ...next];
                   }
+                  const billC = toCents(expense.amount);
+                  const paidC = Math.min(billC, next
+                    .filter((x) => x.type === "supplierPay" && x.expenseId === initial.id)
+                    .reduce((a, p) => a + toCents(p.amount), 0));
+                  const payStatus = moneyStatus(billC, paidC);
+                  next = next.map((x) => (x.id === initial.id
+                    ? { ...x, paidAmount: fromCents(paidC), payStatus,
+                      dueDate: payStatus === "paid" ? "" : (expense.dueDate || x.dueDate || "") }
+                    : x));
                   return next;
                 }, t("saved"));
                 if (changed) commit([], { suppliers: list });
@@ -8200,7 +8249,6 @@ function FarmApp() {
               const { es, list, sid, changed } = resolveSupplierPatch(v);
               commit(es, changed ? { suppliers: list } : null);
               returnToSupplier(sid || s.id);
-              ping(t("saved"));
             }} />;
         })()}
 
@@ -8212,29 +8260,51 @@ function FarmApp() {
             onClose={() => returnToSupplier(s.id)}
             onSave={(v) => {
               if (busy) return;
+              const openBills = supplierLedger.list
+                .filter((x) => x.supplierId === s.id && x.due > 0.009)
+                .slice().sort((a, c) => new Date(a.at) - new Date(c.at));
               rewriteEntries((rows) => {
                 const now = iso(Date.now());
-                const payAmt = fromCents(toCents(v.amount));
-                const pay = {
-                  type: "supplierPay", id: uid(), ...v, amount: payAmt, loggedAt: now,
+                let remainC = toCents(v.amount);
+                if (!(remainC > 0)) return rows || [];
+                let next = [...(rows || [])];
+                const stamp = {
+                  supplierId: v.supplierId, method: v.method || "cash", note: v.note || "",
+                  vendor: v.vendor, at: v.at, loggedAt: now,
                   byId: me?.id || null, byName: me ? me.name : "—",
                 };
-                let next = [pay, ...(rows || [])];
+                const syncBill = (billId) => {
+                  const bill = next.find((x) => x.id === billId && x.type === "expense");
+                  if (!bill) return;
+                  const billC = toCents(bill.amount);
+                  const paidC = Math.min(billC, next
+                    .filter((x) => x.type === "supplierPay" && x.expenseId === billId)
+                    .reduce((a, p) => a + toCents(p.amount), 0));
+                  const payStatus = moneyStatus(billC, paidC);
+                  next = next.map((x) => (x.id === billId
+                    ? { ...x, paidAmount: fromCents(paidC), payStatus,
+                      dueDate: payStatus === "paid" ? "" : (x.dueDate || "") }
+                    : x));
+                };
+                const post = (billId, payC) => {
+                  if (!(payC > 0)) return;
+                  next = [{ type: "supplierPay", id: uid(), ...stamp, amount: fromCents(payC),
+                    expenseId: billId || null }, ...next];
+                  if (billId) syncBill(billId);
+                };
                 if (v.expenseId) {
-                  const bill = (rows || []).find((x) => x.id === v.expenseId && x.type === "expense");
-                  if (bill) {
-                    const prevPaidC = (rows || [])
-                      .filter((x) => x.type === "supplierPay" && x.expenseId === v.expenseId)
-                      .reduce((a, p) => a + toCents(p.amount), 0);
-                    const billC = toCents(bill.amount);
-                    const paidC = Math.min(billC, prevPaidC + toCents(payAmt));
-                    const paid = fromCents(paidC);
-                    const due = fromCents(Math.max(0, billC - paidC));
-                    const payStatus = moneyStatus(billC, paidC);
-                    next = next.map((x) => (x.id === v.expenseId
-                      ? { ...x, paidAmount: paid, payStatus, dueDate: payStatus === "paid" ? "" : (x.dueDate || "") }
-                      : x));
+                  /* Full amount on the chosen bill — overpay becomes credit in the ledger. */
+                  post(v.expenseId, remainC);
+                  remainC = 0;
+                } else {
+                  for (const bill of openBills) {
+                    if (remainC <= 0) break;
+                    const dueC = toCents(bill.due);
+                    const take = Math.min(remainC, dueC);
+                    post(bill.id, take);
+                    remainC -= take;
                   }
+                  if (remainC > 0) post(null, remainC);
                 }
                 return next;
               }, t("saved"));
@@ -8271,16 +8341,35 @@ function FarmApp() {
             onAddCategory={(c) => commit([{ type: "setting", field: "categories", value: 1 }],
               { settings: { ...S, categories: [...(S.categories || []), c] } })}
             onSave={(v) => {
-              const { es, list, sid, changed, expense } = resolveSupplierPatch({ ...v, id: e.id });
-              const payRow = es.find((x) => x.type === "supplierPay");
+              const { list, sid, changed, expense } = resolveSupplierPatch({ ...v, id: e.id });
               rewriteEntries((rows) => {
-                let next = (rows || [])
-                  .filter((x) => !(x.type === "supplierPay" && x.expenseId === e.id))
-                  .map((x) => (x.id === e.id ? { ...x, ...expense, id: e.id, type: "expense" } : x));
+                let next = (rows || []).map((x) => (x.id === e.id
+                  ? { ...x, ...expense, id: e.id, type: "expense" } : x));
                 if (!next.some((x) => x.id === e.id)) next = [{ type: "expense", ...expense }, ...next];
-                if (payRow) {
-                  const now = iso(Date.now());
-                  next = [{ ...payRow, id: uid(), loggedAt: now, byId: me?.id || null, byName: me ? me.name : "—" }, ...next];
+                if (expense.supplierId) {
+                  const linkedC = next
+                    .filter((x) => x.type === "supplierPay" && x.expenseId === e.id)
+                    .reduce((a, p) => a + toCents(p.amount), 0);
+                  const wantC = toCents(supplierCashOut(expense));
+                  if (wantC > linkedC) {
+                    const now = iso(Date.now());
+                    next = [{
+                      type: "supplierPay", id: uid(), supplierId: expense.supplierId,
+                      amount: fromCents(wantC - linkedC), method: expense.method || "cash",
+                      vendor: expense.vendor, note: expense.note || "", at: expense.at,
+                      expenseId: e.id, loggedAt: now,
+                      byId: me?.id || null, byName: me ? me.name : "—",
+                    }, ...next];
+                  }
+                  const billC = toCents(expense.amount);
+                  const paidC = Math.min(billC, next
+                    .filter((x) => x.type === "supplierPay" && x.expenseId === e.id)
+                    .reduce((a, p) => a + toCents(p.amount), 0));
+                  const payStatus = moneyStatus(billC, paidC);
+                  next = next.map((x) => (x.id === e.id
+                    ? { ...x, paidAmount: fromCents(paidC), payStatus,
+                      dueDate: payStatus === "paid" ? "" : (expense.dueDate || x.dueDate || "") }
+                    : x));
                 }
                 return next;
               }, t("saved"));
