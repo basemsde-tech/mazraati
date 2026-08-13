@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.6": {
+    ar: [
+      "أيقونة التطبيق بشعار مزرعتي",
+    ],
+    en: [
+      "App icon updated with the Mazraati logo",
+    ],
+  },
   "2.5.5": {
     ar: [
       "الدفع أوضح: قيمة الفاتورة · المدفوع · المتبقي — بدون خيار «دفعة جزئية»",
