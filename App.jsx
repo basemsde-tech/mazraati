@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import {
+  isFirebaseReady, startCompanyCloud, subscribeCompanyCloud, getCompanyCloud,
+  companySignUp, companySignIn, companySignOut, createCompany, joinCompany,
+  companyPullFarm, companyPushFarm, companySyncActive,
+} from "./firebaseCloud.js";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -7,7 +12,22 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.2.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.4.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+/* Shown once after each app update (Settings can reopen). Keep short — last session only. */
+const WHATS_NEW = {
+  "2.4.5": {
+    ar: [
+      "معاينة المستند داخل التطبيق قبل الطباعة (فواتير · إيصالات · كشوف · تقارير)",
+      "صندوق النقد ومزامنة الشركة وإعادة تعيين الرمز",
+      "ترتيب حركات الحساب من الأحدث للأقدم",
+    ],
+    en: [
+      "In-app document preview before printing (invoices · receipts · statements · reports)",
+      "Cash box, company sync, and passcode reset",
+      "Sort account transactions newest ↔ oldest",
+    ],
+  },
+};
 /* Bump when onboarding must re-prompt existing farms for company details. */
 const SETUP_VERSION = "1.6.4";
 
@@ -222,7 +242,14 @@ const PROD_OTHER = PRODUCTS[PRODUCTS.length - 1];
 const T = {
   ar: {
     dir: "rtl", brand: "مزرعتي", sub: "نظام إدارة المزارع",
-    home: "الرئيسية", overview: "نظرة عامة", animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", reports: "التقارير", settings: "الإعدادات",
+    home: "الرئيسية", overview: "نظرة عامة", cashBox: "صندوق النقد", cashBoxSub: "سجل قبض وصرف مع رصيد جارٍ",
+    cashIn: "مدين $", cashOut: "دائن $", cashBalance: "الرصيد $", cashValue: "القيمة",
+    cashRef: "المرجع", cashStatement: "البيان", cashEntryDate: "تاريخ القيد",
+    cashReceivedFrom: "قبض من", cashPaidFor: "صرف", cashOpening: "رصيد افتتاحي",
+    cashFilterAll: "الكل", cashFilterIn: "قبض فقط", cashFilterOut: "صرف فقط",
+    cashEmpty: "لا حركات نقدية في هذه الفترة.", cashTotals: "المجموع",
+    cashExport: "تصدير Excel", cashAccount: "الصندوق / المزرعة",
+    animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", reports: "التقارير", settings: "الإعدادات",
     farmWork: "عمل المزرعة", officeWork: "عمل المكتب",
     obligations: "الالتزامات", addObligation: "إضافة فاتورة دورية", obligationTypes: "نوع الالتزام",
     contract: "عقد", recurringBill: "فاتورة دورية", rent: "إيجار",
@@ -231,6 +258,7 @@ const T = {
     markBillPaid: "تسجيل كمدفوع", dueBills: "فواتير مستحقة", duePayments: "مستحقات الزبائن",
     expenses: "المصاريف", moneyOut: "المصاريف", moneySpent: "المصروف هذا الشهر", moneySpentPeriod: "المصروف",
     billsDue: "فواتير مستحقة", topCategory: "أكبر بند", farmNet: "صافي المزرعة",
+    seeCashBox: "الصرف المدفوع → صندوق النقد", expenseRegister: "سجل المصاريف", openBills: "غير المسددة",
     stillToPay: "لم تُدفع بعد", paidToday: "مدفوعة", expPaid: "مدفوعة", expPartial: "دفعة جزئية", expUnpaid: "غير مدفوعة",
     higherThanUsual: "أعلى من المعتاد", thisWeek: "هذا الأسبوع", thisMonth: "هذا الشهر", lastMonth: "الشهر الماضي",
     customRange: "فترة مخصصة", searchExpenses: "ابحث عن فاتورة أو مورد…", vendor: "المورد / الجهة",
@@ -248,6 +276,8 @@ const T = {
     appUpdate: "تحديث التطبيق", checkUpdate: "التحقق من التحديث", updateNow: "تحديث الآن",
     updateReady: "يتوفر إصدار جديد", upToDate: "أنت على أحدث إصدار.", updateChecking: "جاري التحقق…",
     updateFail: "تعذّر التحقق — تحقق من الاتصال.", updating: "جاري التحديث…",
+    whatsNew: "ماذا الجديد", whatsNewLead: "أبرز ما أُضيف في آخر تحديث:",
+    viewWhatsNew: "معاينة آخر تحديث", gotIt: "حسنًا",
     openFullAccount: "فتح الحساب · ملء الشاشة", viewTransactions: "عرض الحركات",
     archiveAccount: "أرشفة الحساب", deleteAccount: "حذف الحساب", restoreAccount: "استعادة الحساب",
     archivedAccounts: "حسابات مؤرشفة", archiveWarn: "يُخفى الحساب من قائمة الزبائن لكن تبقى كل الحركات محفوظة للرجوع إليها.",
@@ -276,11 +306,16 @@ const T = {
     setupContactTitle: "الهوية والتواصل", setupContactLead: "الشعار والهاتف والعنوان — اختياري ويمكن تعديله لاحقًا.",
     companyName: "اسم المزرعة / الشركة", companyNameHint: "يظهر في أعلى التطبيق وعلى كل فاتورة.",
     employeeName: "اسم الموظف", farmEmail: "البريد الإلكتروني",
-    emailSoon: "المزامنة جاهزة من الإعدادات",
-    emailSoonHint: "من الإعدادات ← النسخ والمزامنة ← إنشاء مزامنة مجانية، ثم انسخ الرابط للأجهزة الأخرى.",
+    emailSoon: "مزامنة الشركة بالبريد من الإعدادات",
+    emailSoonHint: "الإعدادات ← النسخ والمزامنة ← سجّل بالبريد وأنشئ شركة أو انضم برمز الدعوة.",
     completeFarmSetup: "أكمل بيانات المزرعة", completeFarmSetupLead: "حدّث هوية شركتك بعد الترقية — يظهر على الفواتير والتقارير.",
     finishSetup: "حفظ ومتابعة", attachLogo: "إرفاق الشعار",
     changePass: "تغيير الرمز", removePass: "إزالة الرمز", passRemoved: "تم إلغاء رمز الدخول.",
+    forgotPass: "نسيت الرمز؟", resetPass: "إعادة تعيين الرمز",
+    resetPassLead: "أكد اسم المزرعة لإعادة التعيين، ثم عيّن رمزًا جديدًا.",
+    resetPassLeadName: "أكد اسمك لإعادة التعيين، ثم عيّن رمزًا جديدًا.",
+    resetFarmName: "اكتب اسم المزرعة", resetProfileName: "اكتب اسمك كما في الملف",
+    resetNameWrong: "الاسم غير مطابق.", resetPassOk: "تم تعيين رمز جديد.",
     save: "حفظ", saved: "تم الحفظ", cancel: "إلغاء", close: "إغلاق", next: "التالي", prev: "السابق",
     optional: "اختياري", all: "الكل", today: "اليوم", week: "هذا الأسبوع", month: "هذا الشهر", custom: "تاريخ محدد",
     days: "يوم", none: "لا شيء", unknown: "غير محدد", total: "المجموع", count: "العدد",
@@ -417,7 +452,7 @@ const T = {
     setTipPrices: "أسعار البيع الافتراضية وأجرة المياومة لحساب الرواتب والتقارير.",
     setTipWeather: "الموقع يفعّل طقس المزرعة ونصائح الحرّ والمطر.",
     setTipPeople: "المستخدمون يسجّلون بأسمائهم. الرمز اختياري لحماية ملفك. العمال للحضور والأجور.",
-    setTipCloud: "أسهل طريقة: اضغط «إنشاء مزامنة مجانية» ثم انسخ الرابط إلى بقية الأجهزة. بدونها تبقى البيانات على هذا الجهاز فقط.",
+    setTipCloud: "سجّل ببريد إلكتروني لكل موظف، ثم أنشئ شركة أو انضم برمز الدعوة — تتزامن بيانات المزرعة بأمان بين الجميع.",
     setTipBackup: "النسخة JSON كاملة وقابلة للاسترجاع. Excel وCSV وPDF للقراءة فقط.",
     setTipStorage: "الصور المرفقة تستهلك المساحة. احذف الإيصالات القديمة إن امتلأت الذاكرة.",
     setTipUpdate: "بعد رفع نسخة جديدة، اضغط للتحقق ثم ثبّت التحديث.",
@@ -448,23 +483,33 @@ const T = {
     loading: "جارٍ فتح بيانات المزرعة…", saveFail: "لم يتم الحفظ. تحقق من الاتصال.",
     storageFull: "الذاكرة ممتلئة. احذف بعض الصور.", retry: "إعادة المحاولة", refresh: "تحديث",
     noStore: "التخزين غير متاح: البيانات لن تُحفظ بعد إغلاق التطبيق.",
-    deviceOnly: "البيانات محفوظة على هذا الجهاز فقط. فعّل المزامنة السحابية لمشاركتها مع بقية المستخدمين.",
+    deviceOnly: "البيانات محفوظة على هذا الجهاز فقط. من الإعدادات سجّل بالبريد وأنشئ شركة لمزامنة الفريق.",
     help: "شرح", terms: "شرح المصطلحات", steps: "الخطوات", tip: "ملاحظة",
     preparedBy: "أعدّ التقرير", generated: "تاريخ الإصدار", period: "الفترة",
     signOwner: "صاحب المزرعة", signVet: "الطبيب البيطري",
     setup: "ابدأ من هنا", setupAnimals: "أضف حيواناتك", setupPrices: "أدخل الأسعار",
     setupWorkers: "أضف العمال", setupCustomers: "أضف الزبائن",
-    cloud: "المزامنة السحابية", cloudSub: "اربط التطبيق بخادم ليصل إليه الجميع.",
-    cloudUrl: "رابط المزامنة", cloudToken: "مفتاح الوصول (اختياري)", cloudTest: "اختبار الاتصال",
+    cloud: "مزامنة الشركة", cloudSub: "حساب بريد لكل مستخدم — وقاعدة مزرعة واحدة للشركة.",
+    cloudUrl: "رابط قديم (اختياري)", cloudToken: "مفتاح الوصول (اختياري)", cloudTest: "اختبار الرابط القديم",
     cloudOn: "مفعّلة", cloudOff: "متوقفة", cloudOk: "تم الاتصال بنجاح.",
-    cloudFail: "تعذّر الاتصال.", cloudHint: "أسهل طريقة: أنشئ رابطًا مجانيًا بضغطة، ثم الصقه على الأجهزة الأخرى.",
-    cloudEasy: "إنشاء مزامنة مجانية", cloudEasyBusy: "جاري إنشاء الرابط…",
-    cloudEasyOk: "تم إنشاء الرابط وتفعيل المزامنة.",
-    cloudEasyFail: "تعذّر إنشاء الرابط. جرّب لاحقًا أو استخدم إعدادًا متقدمًا.",
-    cloudCopy: "نسخ الرابط", cloudCopied: "تم نسخ الرابط — الصقه على الجهاز الآخر.",
-    cloudJoin: "على جهاز آخر: الصق نفس الرابط هنا وفعّل المزامنة.",
-    cloudSecret: "الرابط سري مثل كلمة المرور — لا تنشره علنًا.",
-    cloudAdvanced: "إعداد متقدم (JSONBin أو خادم خاص)",
+    cloudFail: "تعذّر الاتصال.", cloudHint: "الطريقة الآمنة: تسجيل الدخول بالبريد ثم إنشاء شركة أو الانضمام برمز دعوة.",
+    cloudEasy: "إنشاء رابط قديم (غير موصى)", cloudEasyBusy: "جاري إنشاء الرابط…",
+    cloudEasyOk: "تم إنشاء الرابط.",
+    cloudEasyFail: "تعذّر إنشاء الرابط.",
+    cloudCopy: "نسخ الرابط القديم", cloudCopied: "تم النسخ.",
+    cloudJoin: "للمطورين فقط — رابط بدون حسابات.",
+    cloudSecret: "الرابط القديم ليس آمنًا للشركات — استخدم مزامنة البريد.",
+    cloudAdvanced: "طريقة قديمة (رابط بدون تسجيل)",
+    coEmail: "البريد الإلكتروني", coPassword: "كلمة المرور", coName: "الاسم",
+    coSignIn: "تسجيل الدخول", coSignUp: "إنشاء حساب", coSignOut: "تسجيل الخروج",
+    coCreate: "إنشاء شركة", coJoin: "الانضمام للشركة", coCompany: "اسم الشركة",
+    coInvite: "رمز الدعوة", coInviteHint: "شارك هذا الرمز مع موظفي الشركة فقط.",
+    coNoFirebase: "المزامنة غير مفعّلة بعد. المطوّر يضبط Firebase — راجع CLOUD-SYNC.md.",
+    coNeedAuth: "سجّل الدخول بالبريد أولاً.",
+    coReady: "مزامنة الشركة نشطة",
+    coBusy: "جاري العمل…",
+    coErr: "تعذّر إكمال العملية.",
+    coSignedInAs: "مسجّل كـ",
     backup: "النسخ الاحتياطي", backupSub: "احفظ نسخة من بيانات المزرعة.",
     restore: "استرجاع نسخة", restoreWarn: "سيحل الملف محل كل البيانات الحالية.",
     chooseFormat: "اختر نوع الملف", fullBackup: "نسخة كاملة (JSON)", fullBackupSub: "الوحيدة القابلة للاسترجاع",
@@ -520,11 +565,18 @@ const T = {
     rateUpdated: "آخر تحديث للسعر", rateStale: "لم يُحدَّث سعر الصرف منذ", updateRate: "تحديث السعر",
     rateHistory: "سجل أسعار الصرف", rateNow: "سعر اليوم",
     docGen: "إصدار مستند", docType: "نوع المستند", docLang: "لغة المستند", bilingual: "عربي + English",
-    printNow: "طباعة المستند", generate: "إصدار",
+    printNow: "طباعة المستند", generate: "إصدار", previewDoc: "معاينة المستند", backToOptions: "تعديل الخيارات",
   },
   en: {
     dir: "ltr", brand: "MAZRAATI", sub: "Farm Management System",
-    home: "Home", overview: "Overview", animals: "Animals", entry: "Production", sales: "Sales", reports: "Reports", settings: "Settings",
+    home: "Home", overview: "Overview", cashBox: "Cash box", cashBoxSub: "In and out log with running balance",
+    cashIn: "Debit $", cashOut: "Credit $", cashBalance: "Balance $", cashValue: "Amount",
+    cashRef: "Reference", cashStatement: "Statement", cashEntryDate: "Entry date",
+    cashReceivedFrom: "Received from", cashPaidFor: "Paid", cashOpening: "Opening balance",
+    cashFilterAll: "All", cashFilterIn: "In only", cashFilterOut: "Out only",
+    cashEmpty: "No cash movements in this period.", cashTotals: "Totals",
+    cashExport: "Export Excel", cashAccount: "Cash box / Farm",
+    animals: "Animals", entry: "Production", sales: "Sales", reports: "Reports", settings: "Settings",
     farmWork: "Farm work", officeWork: "Office work",
     obligations: "Obligations", addObligation: "Add recurring bill", obligationTypes: "Type",
     contract: "Contract", recurringBill: "Recurring bill", rent: "Rent",
@@ -533,6 +585,7 @@ const T = {
     markBillPaid: "Mark paid", dueBills: "Bills due", duePayments: "Customer dues",
     expenses: "Expenses", moneyOut: "Expenses", moneySpent: "Spent this month", moneySpentPeriod: "Money spent",
     billsDue: "Bills due", topCategory: "Top category", farmNet: "Farm net",
+    seeCashBox: "Paid cash outs → Cash box", expenseRegister: "Expense register", openBills: "Open bills",
     stillToPay: "Still to pay", paidToday: "Paid", expPaid: "Paid", expPartial: "Part paid", expUnpaid: "Unpaid",
     higherThanUsual: "Higher than usual", thisWeek: "This week", thisMonth: "This month", lastMonth: "Last month",
     customRange: "Custom dates", searchExpenses: "Search receipt or vendor…", vendor: "Vendor",
@@ -550,6 +603,8 @@ const T = {
     appUpdate: "App update", checkUpdate: "Check for updates", updateNow: "Update now",
     updateReady: "New version available", upToDate: "You're on the latest version.", updateChecking: "Checking…",
     updateFail: "Could not check — try again online.", updating: "Updating…",
+    whatsNew: "What's new", whatsNewLead: "Highlights from the latest update:",
+    viewWhatsNew: "Preview last update", gotIt: "Got it",
     openFullAccount: "Open account · full screen", viewTransactions: "View transactions",
     archiveAccount: "Archive account", deleteAccount: "Delete account", restoreAccount: "Restore account",
     archivedAccounts: "Archived accounts", archiveWarn: "Hides the customer from the list but keeps all transactions for reference.",
@@ -578,11 +633,16 @@ const T = {
     setupContactTitle: "Identity & contact", setupContactLead: "Logo, phone and address — optional; you can edit later.",
     companyName: "Farm / company name", companyNameHint: "Shown at the top of the app and on every invoice.",
     employeeName: "Employee name", farmEmail: "Email",
-    emailSoon: "Cloud sync is ready in Settings",
-    emailSoonHint: "Settings → Backup & sync → Create free sync, then paste the link on other devices.",
+    emailSoon: "Company email sync is in Settings",
+    emailSoonHint: "Settings → Backup & sync → sign in with email, then create or join a company.",
     completeFarmSetup: "Complete farm details", completeFarmSetupLead: "Update your company identity after this upgrade — shown on invoices and reports.",
     finishSetup: "Save & continue", attachLogo: "Attach logo",
     changePass: "Change passcode", removePass: "Remove passcode", passRemoved: "Passcode removed.",
+    forgotPass: "Forgot passcode?", resetPass: "Reset passcode",
+    resetPassLead: "Confirm the farm name to reset, then set a new passcode.",
+    resetPassLeadName: "Confirm your profile name to reset, then set a new passcode.",
+    resetFarmName: "Type the farm name", resetProfileName: "Type your profile name",
+    resetNameWrong: "Name does not match.", resetPassOk: "New passcode set.",
     save: "Save", saved: "Saved", cancel: "Cancel", close: "Close", next: "Next", prev: "Back",
     optional: "optional", all: "All", today: "Today", week: "This Week", month: "This Month", custom: "Custom",
     days: "days", none: "None", unknown: "Not set", total: "Total", count: "Count",
@@ -719,7 +779,7 @@ const T = {
     setTipPrices: "Default selling prices and the daily wage used for payroll and reports.",
     setTipWeather: "Location unlocks farm weather and heat/rain tips.",
     setTipPeople: "Users stamp entries with their name. PIN is optional. Workers power attendance & wages.",
-    setTipCloud: "Easiest: tap Create free sync, then paste that link on other devices. Otherwise data stays on this device.",
+    setTipCloud: "Each staff member signs in with email. Create a company or join with an invite code — the farm database syncs securely for everyone.",
     setTipBackup: "JSON is a full restorable backup. Excel, CSV and PDF are for reading only.",
     setTipStorage: "Attached photos use space. Remove old receipts if storage fills up.",
     setTipUpdate: "After uploading a new build, check here then install the update.",
@@ -750,23 +810,33 @@ const T = {
     loading: "Opening the farm…", saveFail: "Not saved. Check your connection.",
     storageFull: "Storage is full. Remove some photos.", retry: "Try again", refresh: "Refresh",
     noStore: "Storage unavailable: data will not survive closing the app.",
-    deviceOnly: "Data is saved on this device only. Turn on cloud sync to share it with everyone.",
+    deviceOnly: "Data is saved on this device only. In Settings, sign in with email and create a company to sync the team.",
     help: "Help", terms: "What the words mean", steps: "Steps", tip: "Note",
     preparedBy: "Prepared by", generated: "Generated", period: "Period",
     signOwner: "Farm owner", signVet: "Veterinarian",
     setup: "Start here", setupAnimals: "Add your animals", setupPrices: "Enter your prices",
     setupWorkers: "Add your workers", setupCustomers: "Add your customers",
-    cloud: "Cloud sync", cloudSub: "Share one farm database across every device.",
-    cloudUrl: "Sync link", cloudToken: "Access key (optional)", cloudTest: "Test connection",
+    cloud: "Company sync", cloudSub: "Email accounts for staff — one shared farm database for the company.",
+    cloudUrl: "Legacy link (optional)", cloudToken: "Access key (optional)", cloudTest: "Test legacy link",
     cloudOn: "On", cloudOff: "Off", cloudOk: "Connected successfully.",
-    cloudFail: "Could not connect.", cloudHint: "Easiest: create a free sync link once, then paste it on other devices.",
-    cloudEasy: "Create free sync", cloudEasyBusy: "Creating link…",
-    cloudEasyOk: "Sync link created and turned on.",
-    cloudEasyFail: "Could not create a link. Try again later or use advanced setup.",
-    cloudCopy: "Copy link", cloudCopied: "Link copied — paste it on the other device.",
-    cloudJoin: "On another device: paste the same link here and turn sync on.",
-    cloudSecret: "Treat the link like a password — do not post it publicly.",
-    cloudAdvanced: "Advanced (JSONBin or your own server)",
+    cloudFail: "Could not connect.", cloudHint: "Secure path: sign in with email, then create a company or join with an invite code.",
+    cloudEasy: "Create legacy link (not recommended)", cloudEasyBusy: "Creating link…",
+    cloudEasyOk: "Legacy link created.",
+    cloudEasyFail: "Could not create a link.",
+    cloudCopy: "Copy legacy link", cloudCopied: "Copied.",
+    cloudJoin: "Developer fallback only — link with no accounts.",
+    cloudSecret: "Legacy links are not secure for companies — use email sync.",
+    cloudAdvanced: "Legacy (link without login)",
+    coEmail: "Email", coPassword: "Password", coName: "Name",
+    coSignIn: "Sign in", coSignUp: "Create account", coSignOut: "Sign out",
+    coCreate: "Create company", coJoin: "Join company", coCompany: "Company name",
+    coInvite: "Invite code", coInviteHint: "Share this code only with company staff.",
+    coNoFirebase: "Company sync is not configured yet. Developer: set up Firebase — see CLOUD-SYNC.md.",
+    coNeedAuth: "Sign in with email first.",
+    coReady: "Company sync is active",
+    coBusy: "Working…",
+    coErr: "Could not complete that action.",
+    coSignedInAs: "Signed in as",
     backup: "Backup", backupSub: "Save a copy of the farm data.",
     restore: "Restore a backup", restoreWarn: "The file will replace all current data.",
     chooseFormat: "Choose the file type", fullBackup: "Full backup (JSON)", fullBackupSub: "the only restorable file",
@@ -822,7 +892,7 @@ const T = {
     rateUpdated: "Rate last updated", rateStale: "The exchange rate has not been updated for",
     updateRate: "Update the rate", rateHistory: "Exchange rate history", rateNow: "Today's rate",
     docGen: "Generate a document", docType: "Document type", docLang: "Document language", bilingual: "Arabic + English",
-    printNow: "Print document", generate: "Generate",
+    printNow: "Print document", generate: "Generate", previewDoc: "Document preview", backToOptions: "Edit options",
   },
 };
 
@@ -955,22 +1025,6 @@ async function cloudSet(value) {
   }
   return true;
 }
-/* One-click free sync: creates a private-ish JSONBlob link (secrecy = the URL). */
-async function createJsonBlobCloud(farmJson) {
-  const r = await withTimeout(fetch("https://jsonblob.com/api/jsonBlob", {
-    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: farmJson,
-  }), 15000);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const loc = r.headers.get("Location") || r.headers.get("location");
-  if (loc) {
-    try { return new URL(loc, "https://jsonblob.com").href; } catch (e) { return loc; }
-  }
-  const j = await r.json().catch(() => null);
-  const id = j && (j.id || j.blob || j._id);
-  if (id) return `https://jsonblob.com/api/jsonBlob/${id}`;
-  throw new Error("no location");
-}
 /* Three tiers, chosen automatically:
    host   – the Claude artifact storage API (shared across everyone using the link)
    device – the browser's own storage, used when the app is hosted on its own domain
@@ -992,6 +1046,9 @@ const store = {
   },
   get available() { return this.kind !== "memory"; },
   async get(key, shared) {
+    if (shared && companySyncActive()) {
+      try { const v = await companyPullFarm(); this.mem[key] = v; return { key, value: v, shared }; } catch (e) { /* fall back */ }
+    }
     if (shared && cloud.on && cloud.url) {
       try { const v = await cloudGet(); this.mem[key] = v; return { key, value: v, shared }; } catch (e) { /* fall back */ }
     }
@@ -1007,7 +1064,8 @@ const store = {
   async set(key, value, shared) {
     this.mem[key] = value;
     let cErr = null;
-    if (shared && cloud.on && cloud.url) { try { await cloudSet(value); } catch (e) { cErr = e; } }
+    if (shared && companySyncActive()) { try { await companyPushFarm(value); } catch (e) { cErr = e; } }
+    else if (shared && cloud.on && cloud.url) { try { await cloudSet(value); } catch (e) { cErr = e; } }
     if (this.kind === "host") return await withTimeout(window.storage.set(key, value, shared));
     if (this.kind === "device") { try { window.localStorage.setItem(key, value); } catch (e) { if (!cErr) cErr = e; } }
     if (cErr) throw cErr;
@@ -1395,6 +1453,96 @@ function initials(name) {
   const p = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (!p.length) return "?";
   return p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[1][0];
+}
+
+/* Cash box: real money in (payments) and out (paid expenses / medicine cost). */
+function cashMoveAmount(e) {
+  if (e.type === "payment") return +(e.amount || 0);
+  if (e.type === "expense") return +expenseCounted(e);
+  if (e.type === "med") return +(e.cost || 0);
+  return 0;
+}
+function buildCashBox(entries, { customers = [], lang, t, custom, from, to } = {}) {
+  const cust = (id) => (customers.find((c) => c.id === id) || {}).name || "—";
+  const moves = (entries || []).filter((e) => {
+    const amt = cashMoveAmount(e);
+    if (!(amt > 0.0001)) return false;
+    if (e.type !== "payment" && e.type !== "expense" && e.type !== "med") return false;
+    const k = dayKey(e.at);
+    if (from && k < from) return false;
+    if (to && k > to) return false;
+    return true;
+  }).slice().sort((a, b) => new Date(a.at) - new Date(b.at) || String(a.id).localeCompare(String(b.id)));
+
+  let opening = 0;
+  if (from) {
+    (entries || []).forEach((e) => {
+      const amt = cashMoveAmount(e);
+      if (!(amt > 0.0001)) return;
+      if (dayKey(e.at) >= from) return;
+      if (e.type === "payment") opening += amt;
+      else if (e.type === "expense" || e.type === "med") opening -= amt;
+    });
+  }
+  opening = +opening.toFixed(2);
+
+  let bal = opening;
+  let inN = 0, outN = 0;
+  const rows = moves.map((e, i) => {
+    const amt = +cashMoveAmount(e).toFixed(2);
+    const isIn = e.type === "payment";
+    if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
+    else { bal = +(bal - amt).toFixed(2); outN += amt; }
+    const pref = isIn ? "RC" : (e.type === "med" ? "MD" : "PA");
+    const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
+    let parts;
+    if (isIn) {
+      parts = [
+        { text: t("cashReceivedFrom"), tone: "in" },
+        { text: " " },
+        { text: cust(e.customerId), tone: "name" },
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    } else if (e.type === "med") {
+      const m = MED[e.medType];
+      const medName = m ? (lang === "ar" ? m.ar : m.en) : t("medicine");
+      parts = [
+        { text: t("cashPaidFor"), tone: "out" },
+        { text: " · " },
+        { text: medName, tone: "name" },
+        e.name ? { text: ` (${e.name})`, tone: "muted" } : null,
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    } else {
+      const label = catLabel(e.category, lang, custom);
+      const who = e.vendor || e.party || "";
+      parts = [
+        { text: t("cashPaidFor"), tone: "out" },
+        { text: " · " },
+        { text: label, tone: "name" },
+        who ? { text: ` · ${who}`, tone: "muted" } : null,
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    }
+    return {
+      id: e.id, at: e.at, day: dayKey(e.at), ref, parts, dir: isIn ? "in" : "out",
+      debit: isIn ? amt : 0, credit: isIn ? 0 : amt, balance: bal, source: e,
+    };
+  });
+  return {
+    opening, rows, totalIn: +inN.toFixed(2), totalOut: +outN.toFixed(2),
+    closing: rows.length ? rows[rows.length - 1].balance : opening,
+  };
+}
+function CashParts({ parts }) {
+  return <span>
+    {(parts || []).map((p, i) => {
+      const color = p.tone === "in" ? C.green : p.tone === "out" ? C.red
+        : p.tone === "name" ? C.fieldDeep : p.tone === "muted" ? C.inkSoft : C.ink;
+      const weight = p.tone === "in" || p.tone === "out" || p.tone === "name" ? 700 : 500;
+      return <span key={i} style={{ color, fontWeight: weight }}>{p.text}</span>;
+    })}
+  </span>;
 }
 
 function buildLedger(entries, customers) {
@@ -3384,11 +3532,27 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   </Sheet>;
 }
 
-function DocGenSheet({ lang, t, kinds, onPrint, onClose, S }) {
+function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledger, docId, cid }) {
   const [kind, setKind] = useState(kinds[0]);
   const [dl, setDl] = useState(lang);
+  const [stage, setStage] = useState("opts");
   const label = { invoice: `🧾 ${t("invoice")}`, receipt: `💵 ${t("receipt")}`, statement: `📑 ${t("statement")}` };
   const tpl = docTplOf(S);
+  const doc = { kind, id: kind === "statement" ? cid : docId, docLang: dl };
+
+  if (stage === "preview") {
+    return <Sheet title={`🖨️ ${t("previewDoc")}`} sub={label[kind]} onClose={onClose}
+      onBack={() => setStage("opts")} backLabel={t("backToOptions")}>
+      <div className="doc-preview no-print-chrome">
+        <PrintDoc doc={doc} lang={lang} t={t} S={S} me={me} customers={customers} ledger={ledger} />
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+        <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={() => setStage("opts")}>‹ {t("backToOptions")}</button>
+        <button type="button" style={{ ...primaryBtn, flex: 1.2 }} onClick={() => onPrint(doc)}>🖨️ {t("printNow")}</button>
+      </div>
+    </Sheet>;
+  }
+
   return <Sheet title={`🖨️ ${t("docGen")}`} onClose={onClose}>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("preview")}</div>
@@ -3423,7 +3587,17 @@ function DocGenSheet({ lang, t, kinds, onPrint, onClose, S }) {
           <span style={{ flex: 1, fontWeight: 700, fontSize: 15.5 }}>{lb}</span>
           <span style={{ fontSize: 17, color: dl === k ? C.field : C.line }}>{dl === k ? "●" : "○"}</span></button>))}
     </div>
-    <button style={primaryBtn} onClick={() => onPrint(kind, dl)}>🖨️ {t("printNow")}</button>
+    <button type="button" style={primaryBtn} onClick={() => setStage("preview")}>👁 {t("previewDoc")} ›</button>
+  </Sheet>;
+}
+
+function DocPreviewSheet({ lang, t, onClose, onPrint, title, children }) {
+  return <Sheet title={`🖨️ ${title || t("previewDoc")}`} onClose={onClose}>
+    <div className="doc-preview no-print-chrome">{children}</div>
+    <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+      <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={onClose}>{t("cancel")}</button>
+      <button type="button" style={{ ...primaryBtn, flex: 1.2 }} onClick={onPrint}>🖨️ {t("printNow")}</button>
+    </div>
   </Sheet>;
 }
 
@@ -3513,14 +3687,16 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const b = ledger.byCustomer[customer.id] || { sold: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
-  const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
-    .slice().sort((a, c) => new Date(c.at) - new Date(a.at));
   const f = filters;
+  const sortNewest = (f.sort || "newest") !== "oldest";
+  const byDate = (a, c) => sortNewest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
+  const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
+    .slice().sort(byDate);
   const inR = (iso) => { const k = dayKey(iso); return (!f.from || k >= f.from) && (!f.to || k <= f.to); };
   const rows = all.filter((x) => inR(x.at))
     .filter((x) => f.status === "all" || x.status === f.status)
     .filter((x) => !f.q || `${x.no} ${x.note || ""} ${n1(x.qty)}`.toLowerCase().includes(f.q.toLowerCase()))
-    .sort((a, c) => new Date(c.at) - new Date(a.at));
+    .sort(byDate);
   const rSold = rows.reduce((a2, x) => a2 + x.amount, 0);
   const rPaid = rows.reduce((a2, x) => a2 + x.paidAmount, 0);
   const rDue = rows.reduce((a2, x) => a2 + x.due, 0);
@@ -3570,6 +3746,11 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             <Chip key={k} active={f.status === k} onClick={() => setFilters({ ...f, status: k })}
               color={k === "all" ? C.field : statusTone(k)}>{lb}</Chip>))}
         </div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("sortBy")}</span>
+          <Chip active={sortNewest} onClick={() => setFilters({ ...f, sort: "newest" })}>{t("sortNewest")}</Chip>
+          <Chip active={!sortNewest} onClick={() => setFilters({ ...f, sort: "oldest" })}>{t("sortOldest")}</Chip>
+        </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
           <input type="date" value={f.from} onChange={(e) => setFilters({ ...f, from: e.target.value })}
@@ -3578,7 +3759,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           <input type="date" value={f.to} onChange={(e) => setFilters({ ...f, to: e.target.value })}
             style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
         </div>
-        {ranged && <button onClick={() => setFilters({ q: "", status: "all", from: "", to: "" })}
+        {ranged && <button onClick={() => setFilters({ q: "", status: "all", from: "", to: "", sort: f.sort || "newest" })}
           style={{ ...secondaryBtn, marginTop: 10, padding: "9px 10px", fontSize: 13.5 }}>✕ {t("clearFilters")}</button>}
       </div>
 
@@ -3594,7 +3775,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
           : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 720 }}>
             <thead><tr>
-              <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("product")}</Th>
+              <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
+                active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("product")}</Th>
               <Th align="end">{t("colQty")}</Th><Th align="end">{t("colUnit")}</Th><Th align="end">{t("colTotal")}</Th>
               <Th align="end">{t("colPaid")}</Th><Th align="end">{t("colDue")}</Th>
               <Th>{t("colStatus")}</Th><Th>{t("colNotes")}</Th><Th align="center">{t("actions")}</Th>
@@ -3689,6 +3871,24 @@ function SetPassSheet({ lang, t, onSave, onClose }) {
       if (pin !== pin2) { setErr(t("passMismatch")); setPin(""); setPin2(""); setStage("first"); return; }
       setBusy(true); await onSave(pin); setBusy(false);
     }}>{stage === "first" ? `${t("next")} ›` : `✓ ${t("save")}`}</button>
+  </Sheet>;
+}
+
+function WhatsNewSheet({ lang, t, onClose }) {
+  const pack = WHATS_NEW[VERSION.code] || {};
+  const notes = pack[lang] || pack.en || pack.ar || [];
+  return <Sheet title={`✨ ${t("whatsNew")} · v${VERSION.code}`} onClose={onClose}>
+    <div style={{ fontSize: 13.5, color: C.inkSoft, fontWeight: 500, marginBottom: 14, lineHeight: 1.45 }}>{t("whatsNewLead")}</div>
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+      {notes.length === 0
+        ? <div style={{ color: C.inkSoft, fontWeight: 500 }}>{t("upToDate")}</div>
+        : <ul style={{ margin: 0, paddingInlineStart: 18, display: "grid", gap: 8 }}>
+          {notes.map((line, i) => (
+            <li key={i} style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.45, color: C.ink }}>{line}</li>
+          ))}
+        </ul>}
+    </div>
+    <button type="button" style={primaryBtn} onClick={onClose}>✓ {t("gotIt")}</button>
   </Sheet>;
 }
 
@@ -4061,7 +4261,7 @@ function FarmSetupGate({ lang, setLang, t, settings, onSave }) {
   </GateShell>;
 }
 
-function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCreate, farmName, logo, settings }) {
+function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCreate, onResetPass, farmName, logo, settings }) {
   const pre = profiles.find((p) => p.id === preId);
   const hasFarm = !!(farmName || "").trim();
   const firstFarm = profiles.length === 0 || !hasFarm;
@@ -4077,14 +4277,46 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
   const [phone, setPhone] = useState((settings && settings.farmPhone) || "");
   const [address, setAddress] = useState((settings && settings.farmAddress) || "");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [farmConfirm, setFarmConfirm] = useState("");
+  const [resetStep, setResetStep] = useState(1);
   const logoRef = useRef(null);
   const brand = (company || farmName || "").trim() || T[lang].brand;
   const showLogo = newLogo || logo;
+  const resetKey = (farmName || "").trim() || (target && target.name) || "";
+  const resetUsesFarm = !!(farmName || "").trim();
 
   const verify = async () => {
     if (pin.length < 4) return setErr(t("passShort"));
     setBusy(true); const h = await hashPin(pin, target.salt || ""); setBusy(false);
     if (h === target.pin) onPick(target); else { setErr(t("wrongPass")); setPin(""); }
+  };
+
+  const startReset = () => {
+    setMode("reset"); setResetStep(1); setFarmConfirm(""); setPin(""); setPin2("");
+    setStage("first"); setErr("");
+  };
+
+  const confirmResetIdentity = () => {
+    const got = farmConfirm.trim().toLowerCase();
+    const expect = resetKey.trim().toLowerCase();
+    if (!got || got !== expect) return setErr(t("resetNameWrong"));
+    setErr(""); setResetStep(2); setPin(""); setPin2(""); setStage("first");
+  };
+
+  const finishResetPass = async () => {
+    if (stage === "first") {
+      if (pin.length < 4) return setErr(t("passShort"));
+      setErr(""); setPin2(pin); setPin(""); setStage("confirm");
+      return;
+    }
+    if (pin !== pin2) { setErr(t("passMismatch")); setPin(""); setPin2(""); setStage("first"); return; }
+    setBusy(true);
+    try {
+      const salt = uid(); const h = await hashPin(pin, salt);
+      await onResetPass(target, h, salt);
+    } catch (e) {
+      setErr(t("wrongPass"));
+    } finally { setBusy(false); }
   };
 
   const finishCreate = async (pinHash, salt) => {
@@ -4133,6 +4365,37 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
       </div>
     </div>);
 
+  if (mode === "reset" && target) return shell(
+    <div className="gate-step">
+      <div className="gate-user-chip">
+        <span className="gate-avatar" style={{ background: target.color }}>{target.emoji}</span>
+        <div><div className="gate-user-name">{target.name}</div>
+          <div className="gate-user-role">{roleLabel(target.role, lang)}</div></div>
+      </div>
+      <h2 className="gate-h2" style={{ fontSize: 20 }}>🔑 {t("resetPass")}</h2>
+      {resetStep === 1 ? <>
+        <p className="gate-lead">{resetUsesFarm ? t("resetPassLead") : t("resetPassLeadName")}</p>
+        <label className="gate-field">
+          <span className="gate-field-label">{resetUsesFarm ? t("resetFarmName") : t("resetProfileName")}</span>
+          <input value={farmConfirm} onChange={(e) => { setFarmConfirm(e.target.value); setErr(""); }}
+            autoFocus autoComplete="off" style={{ ...inp, fontWeight: 700 }}
+            onKeyDown={(e) => { if (e.key === "Enter") confirmResetIdentity(); }} />
+        </label>
+        {err && <p className="gate-err">⚠️ {err}</p>}
+        <button type="button" style={{ ...primaryBtn, marginTop: 14 }} onClick={confirmResetIdentity}>{t("next")} ›</button>
+      </> : <>
+        <p className="gate-lead">{stage === "first" ? t("createPass") : t("confirmPass")}</p>
+        <p className="gate-lead" style={{ marginBottom: 10 }}>{t("passHint")}</p>
+        <Keypad value={pin} onChange={(v) => { setPin(v); setErr(""); }} onSubmit={finishResetPass} />
+        {err && <p className="gate-err">⚠️ {err}</p>}
+        <button type="button" style={{ ...primaryBtn, marginTop: 14, opacity: busy ? .6 : 1 }} onClick={finishResetPass}
+          disabled={busy}>{busy ? "…" : (stage === "first" ? `${t("next")} ›` : `✓ ${t("save")}`)}</button>
+      </>}
+      <button type="button" style={{ ...secondaryBtn, marginTop: 10 }} onClick={() => {
+        setMode("pin"); setResetStep(1); setFarmConfirm(""); setPin(""); setPin2(""); setStage("first"); setErr("");
+      }}>{t("cancel")}</button>
+    </div>);
+
   if (mode === "pin" && target) return shell(
     <div className="gate-step">
       <div className="gate-user-chip">
@@ -4147,6 +4410,9 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
         {busy ? "…" : t("enter")}</button>
       <button type="button" style={{ ...secondaryBtn, marginTop: 10 }} onClick={() => {
         clearPre(); setMode(profiles.length ? "pick" : "welcome"); setPin(""); setErr(""); }}>{t("notYou")}</button>
+      <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
+        fontFamily: "var(--body)", fontSize: 13.5, marginTop: 12, padding: 4 }} onClick={startReset}>
+        {t("forgotPass")}</button>
     </div>);
 
   if (mode === "pick") return shell(
@@ -4254,7 +4520,6 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
 /* ---------------------------- report bodies ---------------------------- */
 function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, workers, customers, summaryLines, series, outstanding, scopedSales, ledger, onReceipt }) {
   const [logType, setLogType] = useState("all");
-  const [onlyReceipts, setOnlyReceipts] = useState(false);
   const milkers = animals.filter((a) => producesMilk(a));
   const flocks = animals.filter(producesEggs);
 
@@ -4328,50 +4593,8 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
     </Card>;
   }
 
-  if (kind === "production") return <Card><Title>📦 {t("production")}</Title>
-    {milkers.length > 0 && <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
-        <Kpi label={t("totalLiters")} value={`${nf(sums.milk)} ${t("L")}`} tone={C.field} />
-        <Kpi label={t("avgPerHead")} value={`${n1(sums.milk / days / Math.max(1, milkers.length))} ${t("L")}`} tone={C.field} /></div></>}
-    {flocks.length > 0 && <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
-        <Kpi label={t("totalEggs")} value={nf(sums.eggs)} tone="#B8791F" />
-        <Kpi label={t("eggRate")} value={(() => { const b = flocks.reduce((s, a) => s + headCount(a), 0);
-          return b ? `${Math.round((sums.eggs / days / b) * 100)}%` : "—"; })()} tone="#B8791F" /></div></>}
-    {sums.milkBulk && <div style={{ background: "#F6EFDD", border: `1px solid ${C.tag}`, borderRadius: 4,
-      padding: 11, marginBottom: 12, fontSize: 12.5, fontWeight: 600, color: "#7A5312" }}>ℹ️ {t("bulkNote")}</div>}
-    {sums.feedCost > 0 && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4,
-      padding: 13, marginBottom: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>🌾 {t("feedBreak")}</div>
-      {FEEDS.filter(([k]) => (sums.feedByType || {})[k] > 0).map(([k, ic]) => (
-        <Row key={k} k={`${ic} ${t(k)}`} v={fmt(sums.feedByType[k], S.rate, lang)} />))}
-      <Row k={t("totalFeed")} v={fmt(sums.feedCost, S.rate, lang)} tone={C.red} />
-      {sums.milk > 0 && <Row k={t("feedPerLiter")} v={`$${(sums.feedCost / sums.milk).toFixed(2)}`} />}
-      {sums.eggs > 0 && <Row k={t("feedPerEgg")} v={`$${(sums.feedCost / sums.eggs).toFixed(3)}`} />}
-      {(() => { const heads = animals.reduce((x, a) => x + headCount(a), 0);
-        return heads > 0 ? <Row k={t("feedPerHead")} v={`$${(sums.feedCost / heads / days).toFixed(3)}`} /> : null; })()}
-    </div>}
-    <div style={{ display: "grid", gap: 8 }}>
-      {animals.map((a) => {
-        const got = (producesEggs(a) ? sums.byEggs[a.id] : sums.byMilk[a.id]) || 0;
-        const target = (a.expected || 0) * days;
-        const low = target > 0 && got < target * 0.7;
-        return <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-          background: low ? "#F8ECED" : C.bg, borderRadius: 5, padding: "10px 13px", fontWeight: 700, fontSize: 14.5 }}>
-          <span>{spOf(a).icon} {animalLabel(a)}</span>
-          <span>{nf(got)}{target > 0 ? <span style={{ color: C.inkSoft, fontWeight: 600 }}> / {nf(target)}</span> : null}
-            {low ? <span style={{ color: C.red }}> ⚠️</span> : null}</span>
-        </div>;
-      })}
-      {animals.length === 0 && <div style={{ color: C.inkSoft, fontWeight: 500 }}>{t("noData")}</div>}
-    </div>
-  </Card>;
-
   if (kind === "expenses") {
     const rows = Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-    const paid = scoped.filter((e) => e.type === "expense" || (e.type === "med" && e.cost > 0));
-    const list = onlyReceipts ? paid.filter((e) => e.receipt) : paid;
-    const withDocs = paid.filter((e) => e.receipt).length;
     return <Card><Title>💸 {t("expenses")}</Title>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
         <Kpi label={t("costsL")} value={fmtC(sums.costs, S.rate, lang)} tone={C.red} />
@@ -4390,82 +4613,9 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
               <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{fmtC(v, S.rate, lang)}</span>
             </div>))}
         </div>
-        {paid.length > 0 && <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0 8px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>{t("log")}</span>
-            <span style={{ fontSize: 12, color: C.inkSoft }}>📎 {withDocs}/{paid.length}</span>
-            <span style={{ marginInlineStart: "auto", display: "flex", gap: 6 }}>
-              <Chip active={!onlyReceipts} onClick={() => setOnlyReceipts(false)}>{t("allExpenses")}</Chip>
-              <Chip active={onlyReceipts} onClick={() => setOnlyReceipts(true)}>📎 {t("receiptsOnly")}</Chip>
-            </span>
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {list.slice(0, 30).map((e, i) => <LogRow key={e.id || `x${i}`} e={e} lang={lang} t={t} animals={animals}
-              workers={workers} customers={customers} rate={S.rate} custom={S.categories} onReceipt={onReceipt} />)}
-          </div></>}
       </>}
     </Card>;
   }
-  if (kind === "health") {
-    const meds = scoped.filter((e) => e.type === "med");
-    const due = animals.filter((a) => a.due);
-    return <Card><Title>🩺 {t("health")}</Title>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("activeTx")}</div>
-      <div style={{ display: "grid", gap: 7, marginBottom: 14 }}>
-        {meds.length === 0 && <div style={{ fontSize: 14, color: C.inkSoft, fontWeight: 500 }}>{t("noEntries")}</div>}
-        {meds.map((m, mi) => { const a = animals.find((x) => x.id === m.animalId);
-          return <div key={m.id} style={{ background: C.bg, borderRadius: 5, padding: "9px 13px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-              <span>{MED[m.medType]?.i} {a ? animalLabel(a) : "—"} · {lang === "ar" ? MED[m.medType]?.ar : MED[m.medType]?.en}</span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{fmtC(m.cost, S.rate, lang)}</span></div>
-            <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 500 }}>👤 {stamp(m, lang)}</div></div>; })}
-      </div>
-      {animals.some((a) => a.medicine) && <>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>💊 {t("medicineNote")}</div>
-        <div style={{ display: "grid", gap: 7, marginBottom: 14 }}>
-          {animals.filter((a) => a.medicine).map((a) => <div key={a.id} style={{ display: "flex", justifyContent: "space-between",
-            background: "#F8ECED", borderRadius: 5, padding: "9px 13px", fontWeight: 700 }}>
-            <span>{spOf(a).icon} {animalLabel(a)}</span><span style={{ color: C.red }}>{a.medicine}</span></div>)}</div></>}
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: C.amber, marginBottom: 7 }}>🍼 {t("calving")}</div>
-      <div style={{ display: "grid", gap: 7, marginBottom: 14 }}>
-        {due.length === 0 && <div style={{ fontSize: 14, color: C.inkSoft, fontWeight: 500 }}>—</div>}
-        {due.map((a) => <div key={a.id} style={{ display: "flex", justifyContent: "space-between", background: "#F7F1E1",
-          borderRadius: 5, padding: "9px 13px", fontWeight: 700 }}>
-          <span>{spOf(a).icon} {animalLabel(a)}</span>
-          <span>{Math.max(0, Math.ceil((new Date(a.due) - Date.now()) / 864e5))} {t("days")}</span></div>)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 10 }}>
-        <Kpi label={t("losses")} value={nf(sums.losses)} tone={sums.losses > 0 ? C.red : C.ink} />
-        <Kpi label={t("births")} value={nf(sums.births)} tone={C.green} /></div>
-      {sums.births > 0 && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>🐣 {t("birthDetails")}</div>
-        <Row key="m" k={`♂ ${t("males")}`} v={nf(sums.birthMales)} />
-        <Row key="f" k={`♀ ${t("females")}`} v={nf(sums.birthFemales)} />
-        {sums.stillborn > 0 && <Row key="d" k={t("stillborn")} v={nf(sums.stillborn)} tone={C.red} />}
-        <Row key="tw" k={t("twins")} v={`${Math.round(sums.twinning * 100)}%`} />
-      </div>}
-    </Card>;
-  }
-
-  if (kind === "labor") {
-    const att = {};
-    scoped.filter((e) => e.type === "attend").forEach((e) => { const k = `${dayKey(e.at)}|${e.workerId}`; if (!(k in att)) att[k] = e; });
-    const per = {}; Object.values(att).forEach((e) => { if (e.present) per[e.workerId] = (per[e.workerId] || 0) + 1; });
-    return <Card><Title>👷 {t("labor")}</Title>
-      {(workers || []).length === 0 && <div style={{ fontSize: 14, color: C.inkSoft, fontWeight: 500, marginBottom: 10 }}>{t("noWorkers")}</div>}
-      <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-        {(workers || []).map((w) => <div key={w.id} style={{ display: "flex", justifyContent: "space-between",
-          background: C.bg, borderRadius: 5, padding: "9px 13px", fontWeight: 700 }}>
-          <span>{w.name} · {w.type === "daily" ? `${per[w.id] || 0} ${t("days")}` : t("monthly")}</span>
-          <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>
-            {fmtC(w.type === "daily" ? (per[w.id] || 0) * S.wage : (w.salary * days) / 30, S.rate, lang)}</span></div>)}
-      </div>
-      <div style={{ background: C.field, borderRadius: 6, padding: 15, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ color: "#fff", fontFamily: "var(--display)", fontWeight: 700, fontSize: 16 }}>{t("payroll")}</span>
-        <Money usd={sums.laborCost} rate={S.rate} lang={lang} size={24} tone="#E8C275" /></div>
-    </Card>;
-  }
-
   const groups = [["all", "🧾", t("allTypes")], ["prod", "🥛", t("production")], ["med", "💉", t("meds")],
     ["attend", "👷", t("workers")], ["sale", "🧾", t("sales")], ["payment", "💵", t("recordPayment")], ["herd", "🐄", t("animals")]];
   const belongs = (e) => logType === "all" || e.type === logType
@@ -4829,9 +4979,14 @@ function FarmApp() {
   const [busy, setBusy] = useState(false);
   const [range, setRange] = useState("today");
   const [from, setFrom] = useState(""); const [to, setTo] = useState("");
-  const [expRange, setExpRange] = useState("month");
+  const [expRange, setExpRange] = useState("today");
   const [expFrom, setExpFrom] = useState(""); const [expTo, setExpTo] = useState("");
   const [expQ, setExpQ] = useState("");
+  const [expFocus, setExpFocus] = useState("open");
+  const [cashRange, setCashRange] = useState("today");
+  const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
+  const [cashDir, setCashDir] = useState("all");
+  const [cashSel, setCashSel] = useState(null);
   const [report, setReport] = useState("summary");
   const [spFilter, setSpFilter] = useState("all");
   const [printing, setPrinting] = useState(false);
@@ -4839,8 +4994,16 @@ function FarmApp() {
   const [draftS, setDraftS] = useState(null);
   const [cloudCfg, setCloudCfg] = useState({ url: "", token: "", on: false });
   const [cloudMsg, setCloudMsg] = useState("");
-  const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudAdv, setCloudAdv] = useState(false);
+  const [co, setCo] = useState(() => getCompanyCloud());
+  const [coEmail, setCoEmail] = useState("");
+  const [coPass, setCoPass] = useState("");
+  const [coName, setCoName] = useState("");
+  const [coCompany, setCoCompany] = useState("");
+  const [coInvite, setCoInvite] = useState("");
+  const [coMsg, setCoMsg] = useState("");
+  const [coBusy, setCoBusy] = useState(false);
+  const [coMode, setCoMode] = useState("signin");
   const [moneyView, setMoneyView] = useState("both");
   const [theme, setTheme] = useState("light");
   const [navFarmOpen, setNavFarmOpen] = useState(true);
@@ -4851,6 +5014,8 @@ function FarmApp() {
   const [sideHidden, setSideHidden] = useState(false);
   const [hideDeviceBanner, setHideDeviceBanner] = useState(false);
   const [favKeys, setFavKeys] = useState(["n2", "n12", "n6", "n3"]);
+  const [seenVersion, setSeenVersion] = useState(null);
+  const [prefsReady, setPrefsReady] = useState(false);
   const [ctx, setCtx] = useState(null);
   const openCtx = useCallback((e, items) => {
     e.preventDefault();
@@ -4894,7 +5059,7 @@ function FarmApp() {
   const [custSort, setCustSort] = useState("nameAsc");
   const [openAcc, setOpenAcc] = useState([]);          // customers kept open as tabs
   const [accTab, setAccTab] = useState("overview");
-  const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "" });
+  const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "", sort: "newest" });
   const dataRef = useRef(null);
   const toastTimer = useRef(null);
   dataRef.current = data;
@@ -4926,6 +5091,18 @@ function FarmApp() {
   const doCheckUpdate = () => checkAppUpdate(setUpdateReady, setUpdateStatus);
   const doApplyUpdate = () => applyAppUpdate(setUpdateStatus);
 
+  const dismissWhatsNew = () => {
+    setSeenVersion(VERSION.code);
+    saveDevicePrefs({ seenVersion: VERSION.code });
+    setSheet(null);
+  };
+
+  useEffect(() => {
+    if (!prefsReady || !me || !data) return;
+    if (seenVersion === VERSION.code) return;
+    setSheet((s) => (s ? s : { k: "whatsNew" }));
+  }, [prefsReady, me, data, seenVersion]);
+
   useEffect(() => {
     let done = false;
     const fb = setTimeout(() => { if (!done) { const b = emptyFarm(); setData(b); setDraftS(b.settings); } }, 6500);
@@ -4947,8 +5124,17 @@ function FarmApp() {
       try {
         let d = null;
         try { d = await store.get(DEVICE_KEY, false); } catch (e2) { d = await store.get(LEGACY.device, false); }
-        if (d && d.value) { const p = JSON.parse(d.value); savedId = p.id; if (p.lang) setLang(p.lang); if (p.money) setMoneyView(p.money); if (p.theme === "dark" || p.theme === "light") setTheme(p.theme); if (p.sideHidden) setSideHidden(!!p.sideHidden); if (p.hideDeviceBanner) setHideDeviceBanner(true); if (Array.isArray(p.favKeys) && p.favKeys.length) setFavKeys(p.favKeys.slice(0, 8)); } }
-      catch (e) { /* no profile on this device */ }
+        if (d && d.value) {
+          const p = JSON.parse(d.value); savedId = p.id;
+          if (p.lang) setLang(p.lang); if (p.money) setMoneyView(p.money);
+          if (p.theme === "dark" || p.theme === "light") setTheme(p.theme);
+          if (p.sideHidden) setSideHidden(!!p.sideHidden);
+          if (p.hideDeviceBanner) setHideDeviceBanner(true);
+          if (Array.isArray(p.favKeys) && p.favKeys.length) setFavKeys(p.favKeys.slice(0, 8));
+          setSeenVersion(typeof p.seenVersion === "string" ? p.seenVersion : "");
+        } else setSeenVersion("");
+      } catch (e) { setSeenVersion(""); /* no profile on this device */ }
+      setPrefsReady(true);
       let farm; try { farm = await loadShared(); } catch (e) { farm = emptyFarm(); }
       done = true; clearTimeout(fb);
       setData(farm); setDraftS(farm.settings);
@@ -4956,6 +5142,25 @@ function FarmApp() {
     })();
     return () => clearTimeout(fb);
   }, []);
+
+  const applyRemoteFarm = useCallback((raw) => {
+    try {
+      const d = migrate(JSON.parse(raw));
+      setData((prev) => {
+        const editing = draftS && prev && JSON.stringify(draftS) !== JSON.stringify(prev.settings);
+        if (!editing) setDraftS(d.settings);
+        return d;
+      });
+      setFailed(null);
+      try { store.mem[SHARED_KEY] = raw; if (store.kind === "device") window.localStorage.setItem(SHARED_KEY, raw); } catch (e) { /* */ }
+    } catch (e) { /* ignore bad remote */ }
+  }, [draftS]);
+
+  useEffect(() => {
+    const stop = startCompanyCloud(applyRemoteFarm);
+    const unsub = subscribeCompanyCloud(setCo);
+    return () => { stop(); unsub(); };
+  }, [applyRemoteFarm]);
 
   const pull = useCallback(async () => {
     try {
@@ -5017,7 +5222,7 @@ function FarmApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sheet, routeHist, sheetBack, goBackRoute]);
   const saveDevicePrefs = async (patch = {}) => {
-    const body = { id: me ? me.id : null, lang, money: moneyView, theme, sideHidden, hideDeviceBanner, favKeys, ...patch };
+    const body = { id: me ? me.id : null, lang, money: moneyView, theme, sideHidden, hideDeviceBanner, favKeys, seenVersion, ...patch };
     try { await store.set(DEVICE_KEY, JSON.stringify(body), false); } catch (e) { /* device only */ }
   };
   const pickMoneyView = async (v) => {
@@ -5106,7 +5311,15 @@ function FarmApp() {
 
   const chooseProfile = async (p) => {
     setMe(p);
-    try { await store.set(DEVICE_KEY, JSON.stringify({ id: p.id, lang, money: moneyView, sideHidden }), false); } catch (e) { /* device only */ }
+    try { await saveDevicePrefs({ id: p.id }); } catch (e) { /* device only */ }
+  };
+  const resetProfilePass = async (profile, pinHash, salt) => {
+    const np = { ...profile, pin: pinHash, salt };
+    const list = ((data && data.profiles) || []).map((p) => (p.id === profile.id ? np : p));
+    const ok = await commit([{ type: "profileSecurity", name: profile.name, action: "reset" }], { profiles: list }, np);
+    if (!ok) throw new Error("reset");
+    ping(t("resetPassOk"));
+    await chooseProfile(np);
   };
   const createProfile = async (name, role, emoji, pin, salt, farmPatch = null) => {
     const list = (data && data.profiles) || [];
@@ -5167,23 +5380,42 @@ function FarmApp() {
   const sums = useMemo(() => computeSums(scoped, S, workers, days), [scoped, S, workers, days]);
   const prevSums = useMemo(() => computeSums(prevScoped, S, workers, days), [prevScoped, S, workers, days]);
 
-  const expBounds = useMemo(() => {
+  const periodBounds = (kind, fromV, toV) => {
     const now = new Date();
     const y = now.getFullYear(), m = now.getMonth();
-    if (expRange === "thisWeek" || expRange === "week") {
+    if (kind === "today") {
+      const dk = dayKey(Date.now());
+      return { from: dk, to: dk, days: 1 };
+    }
+    if (kind === "yesterday") {
+      const yest = new Date(); yest.setHours(0, 0, 0, 0); yest.setDate(yest.getDate() - 1);
+      const dk = dayKey(yest);
+      return { from: dk, to: dk, days: 1 };
+    }
+    if (kind === "thisWeek" || kind === "week") {
       const c = new Date(); c.setHours(0, 0, 0, 0); c.setDate(c.getDate() - 6);
       return { from: dayKey(c), to: dayKey(Date.now()), days: 7 };
     }
-    if (expRange === "lastMonth") {
+    if (kind === "lastMonth") {
       const fromD = new Date(y, m - 1, 1), toD = new Date(y, m, 0);
       return { from: dayKey(fromD), to: dayKey(toD), days: toD.getDate() };
     }
-    if (expRange === "custom" && expFrom && expTo) {
-      return { from: expFrom, to: expTo, days: Math.max(1, Math.round((new Date(expTo) - new Date(expFrom)) / 864e5) + 1) };
+    if (kind === "custom" && fromV && toV) {
+      return { from: fromV, to: toV, days: Math.max(1, Math.round((new Date(toV) - new Date(fromV)) / 864e5) + 1) };
     }
     const fromD = new Date(y, m, 1);
     return { from: dayKey(fromD), to: dayKey(Date.now()), days: Math.max(1, now.getDate()) };
-  }, [expRange, expFrom, expTo]);
+  };
+  const expBounds = useMemo(() => periodBounds(expRange, expFrom, expTo), [expRange, expFrom, expTo]);
+  const cashBounds = useMemo(() => periodBounds(cashRange, cashFrom, cashTo), [cashRange, cashFrom, cashTo]);
+  const cashBox = useMemo(() => {
+    const box = buildCashBox(entries, {
+      customers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
+    });
+    const rows = cashDir === "all" ? box.rows
+      : box.rows.filter((r) => cashDir === "in" ? r.dir === "in" : r.dir === "out");
+    return { ...box, rows };
+  }, [entries, customers, lang, t, S.categories, cashBounds, cashDir]);
 
   const expScoped = useMemo(() => entries.filter((e) => {
     if (e.type !== "expense" && !(e.type === "med" && (e.cost || 0) > 0)) return false;
@@ -5202,24 +5434,8 @@ function FarmApp() {
     });
   }, [entries, expBounds]);
 
-  const expNetScoped = useMemo(() => entries.filter((e) => {
-    const k = dayKey(e.at);
-    return k >= expBounds.from && k <= expBounds.to;
-  }), [entries, expBounds]);
-
-  const expSums = useMemo(() => computeSums(expNetScoped, S, workers, expBounds.days),
-    [expNetScoped, S, workers, expBounds]);
-
   const expMoneySums = useMemo(() => computeSums(expScoped, S, workers, expBounds.days), [expScoped, S, workers, expBounds]);
   const expPrevMoney = useMemo(() => computeSums(expPrevScoped, S, workers, expBounds.days), [expPrevScoped, S, workers, expBounds]);
-
-  const monthSpent = useMemo(() => {
-    const now = new Date(); const fromD = dayKey(new Date(now.getFullYear(), now.getMonth(), 1));
-    const toD = dayKey(Date.now());
-    return entries.filter((e) => e.type === "expense").filter((e) => {
-      const k = dayKey(e.at); return k >= fromD && k <= toD;
-    }).reduce((a, e) => a + expenseCounted(e), 0);
-  }, [entries]);
 
   const billsDueList = useMemo(() => obligations.filter((o) => o.active && obligationAlert(o, lang, t)), [obligations, lang, t]);
   const billsDueTotal = useMemo(() => obligations.filter((o) => o.active).reduce((a, o) => a + (o.amount || 0), 0), [obligations]);
@@ -5232,9 +5448,6 @@ function FarmApp() {
     return (am ? am.liters : 0) + (pm ? pm.liters : 0);
   };
   const lastFor = (a) => entries.find((x) => x.animalId === a.id && ["milk", "eggs"].includes(x.type));
-  const milkToday = milkTotals(entries.filter((e) => dayKey(e.at) === dayKey(Date.now()))).total;
-  const eggsToday = eggFlocks.reduce((s, a) => s + todayProd(a), 0);
-
   const series = useMemo(() => {
     const map = {};
     const mk = milkTotals(scoped), eg = prodTotals(scoped, "eggs");
@@ -5281,56 +5494,6 @@ function FarmApp() {
   const lastRate = rateLog[0];
   const rateAgeDays = lastRate ? Math.floor((Date.now() - new Date(lastRate.at)) / 864e5) : null;
   const rateStale = S.rate > 0 && (rateAgeDays === null || rateAgeDays >= 3);
-  const dueBillsCount = obligations.filter((o) => o.active && obligationAlert(o, lang, t)).length;
-
-  const alerts = useMemo(() => {
-    const out = [];
-    animals.forEach((a) => {
-      const r = repro(a);
-      if (r) {
-        if (r.needsCheck) out.push({ tone: C.amber, kind: "farm", go: a.id, tab: null,
-          text: L(lang, `${animalLabel(a)}: مضى ${r.daysIn} يومًا على التلقيح — أكّد الحمل أو أنها لم تثبت.`,
-            `${animalLabel(a)}: ${r.daysIn} days since service — confirm whether she held.`) });
-        else if (r.watchHeat) out.push({ tone: C.blue, kind: "farm", go: a.id, tab: null,
-          text: L(lang, `${animalLabel(a)}: راقب عودة الشياع هذه الأيام.`, `${animalLabel(a)}: watch for a return to heat now.`) });
-        if (r.dryDue) out.push({ tone: C.amber, kind: "farm", go: a.id, tab: null,
-          text: L(lang, `${animalLabel(a)}: حان وقت التجفيف — يبقى ${Math.max(0, r.daysToDue)} يومًا على الولادة.`,
-            `${animalLabel(a)}: time to dry her off — ${Math.max(0, r.daysToDue)} days to calving.`) });
-        if (r.overdue) out.push({ tone: C.red, kind: "farm", go: a.id, tab: null,
-          text: L(lang, `${animalLabel(a)}: تجاوزت موعد الولادة بـ ${Math.abs(r.daysToDue)} يومًا.`,
-            `${animalLabel(a)}: ${Math.abs(r.daysToDue)} days past her due date.`) });
-      }
-      if (!a.due) return;
-      const d = Math.ceil((new Date(a.due) - Date.now()) / 864e5);
-      if (d >= 0 && d <= 7) out.push({ tone: C.amber, kind: "farm", go: a.id, tab: null,
-        text: L(lang, `${animalLabel(a)} ستلد بعد ${d} أيام.`, `${animalLabel(a)} is due in ${d} days.`) });
-    });
-    animals.filter((a) => a.status === "sick").forEach((a) => out.push({ tone: C.red, kind: "farm", go: a.id, tab: null,
-      text: L(lang, `${animalLabel(a)} مريضة وتحت العلاج.`, `${animalLabel(a)} is sick and under treatment.`) }));
-    eggFlocks.forEach((a) => { const got = todayProd(a);
-      if (a.birds > 0 && got > 0 && got / a.birds < 0.5) out.push({ tone: C.amber, kind: "farm", go: a.id, tab: null,
-        text: L(lang, `نسبة إنتاج ${a.name} اليوم ${Math.round((got / a.birds) * 100)}٪ فقط.`, `${a.name} laid only ${Math.round((got / a.birds) * 100)}% today.`) }); });
-    return out;
-  }, [animals, lang, entries]);
-
-  const financialAlerts = useMemo(() => {
-    const out = [];
-    customers.forEach((c) => { if (c.archived) return; const b = ledger.byCustomer[c.id];
-      if (b && b.due > 0) {
-        const urgent = b.oldest >= 7;
-        out.push({ tone: b.oldest >= 30 ? C.red : urgent ? C.amber : C.blue, kind: "customer", cid: c.id,
-          text: L(lang, `${c.name}: ${fmt(b.due, S.rate, lang)} ${t("due")}${b.oldest > 0 ? ` · ${b.oldest} ${t("days")}` : ""}`,
-            `${c.name}: ${fmt(b.due, S.rate, lang)} ${t("due")}${b.oldest > 0 ? ` · ${b.oldest} ${t("days")}` : ""}`) });
-      } });
-    obligations.filter((o) => o.active).forEach((o) => {
-      const a = obligationAlert(o, lang, t);
-      if (a) out.push({ ...a, kind: "obligation", oid: o.id });
-    });
-    if (S.rate > 0 && rateStale) out.push({ tone: C.amber, kind: "rate", tab: "settings",
-      text: rateAgeDays === null ? t("updateRate") : `${t("rateStale")} ${rateAgeDays} ${t("days")}` });
-    return out.sort((a, b) => (a.tone === C.red ? 0 : 1) - (b.tone === C.red ? 0 : 1));
-  }, [customers, ledger, obligations, lang, S.rate, rateStale, rateAgeDays]);
-
   const doPrint = (d = null) => { setDoc(d); setPrinting(true); };
   useEffect(() => {
     if (!printing) return;
@@ -5384,7 +5547,7 @@ function FarmApp() {
     try {
       if (kind === "json") { downloadBlob(JSON.stringify(data, null, 2), `${n}-backup.json`, "application/json"); ping(t("saved")); return; }
       if (kind === "csv") { downloadBlob(backupCSV(data, t, lang), `${n}.csv`, "text/csv;charset=utf-8"); ping(t("saved")); return; }
-      if (kind === "pdf") { setReport("summary"); setRoute("reports"); doPrint(); return; }
+      if (kind === "pdf") { setReport("summary"); setRoute("reports"); setSheet({ k: "reportPreview" }); return; }
       const all = computeSums(entries, S, workers, Math.max(1, days));
       ping(`${t("saved")} · .${exportExcel({ ...exportArgs(), sums: all, scoped: entries, scopedSales: ledger.list, period: t("all") })}`);
     } catch (e) { ping(L(lang, "تعذّر إنشاء الملف.", "Could not build the file.")); }
@@ -5415,19 +5578,6 @@ function FarmApp() {
       catch (e2) { setCloudMsg("⚠️ " + t("cloudFail") + " " + (e2.message || e1.message)); } }
     Object.assign(cloud, saved);
   };
-  const createEasyCloud = async () => {
-    if (cloudBusy) return;
-    setCloudBusy(true); setCloudMsg(t("cloudEasyBusy"));
-    try {
-      const payload = JSON.stringify(data || emptyFarm());
-      const url = await createJsonBlobCloud(payload);
-      await saveCloud({ url, token: "", on: true });
-      setCloudMsg("✓ " + t("cloudEasyOk"));
-      ping(t("cloudEasyOk"));
-    } catch (e) {
-      setCloudMsg("⚠️ " + t("cloudEasyFail") + (e && e.message ? ` (${e.message})` : ""));
-    } finally { setCloudBusy(false); }
-  };
   const copyCloudLink = async () => {
     if (!cloudCfg.url) return;
     try {
@@ -5443,6 +5593,41 @@ function FarmApp() {
       } catch (e2) { setCloudMsg(cloudCfg.url); }
     }
   };
+  const coRun = async (fn) => {
+    if (coBusy) return;
+    setCoBusy(true); setCoMsg(t("coBusy"));
+    try {
+      await fn();
+      setCoMsg("✓ " + t("cloudOk"));
+    } catch (e) {
+      const code = e && (e.code || e.message) || "";
+      setCoMsg("⚠️ " + t("coErr") + (code ? ` (${code})` : ""));
+    } finally { setCoBusy(false); }
+  };
+  const onCoSignUp = () => coRun(async () => {
+    await companySignUp(coEmail, coPass, coName);
+    setCoPass("");
+  });
+  const onCoSignIn = () => coRun(async () => {
+    await companySignIn(coEmail, coPass);
+    setCoPass("");
+  });
+  const onCoSignOut = () => coRun(() => companySignOut());
+  const onCoCreate = () => coRun(async () => {
+    const r = await createCompany(coCompany || (data?.settings?.farmName) || "Farm", JSON.stringify(data || emptyFarm()), applyRemoteFarm);
+    setCoInvite(r.inviteCode || "");
+    ping(`${t("coInvite")}: ${r.inviteCode}`);
+  });
+  const onCoJoin = () => coRun(async () => {
+    await joinCompany(coInvite, applyRemoteFarm);
+    await pull();
+  });
+  const copyInvite = async () => {
+    const code = coInvite || (co.company && co.company.inviteCode) || "";
+    if (!code) return;
+    try { await navigator.clipboard.writeText(code); setCoMsg("✓ " + t("cloudCopied")); }
+    catch (e) { setCoMsg(code); }
+  };
 
   if (!data) return <div className={`splash theme-${theme}`}><style key={theme}>{makeCss()}</style>
     <div className="splash-inner">
@@ -5454,20 +5639,13 @@ function FarmApp() {
   if (!me) return <ProfileGate lang={lang} setLang={setLang} t={t} profiles={data.profiles || []} preId={preId}
     farmName={(data.settings && data.settings.farmName) || ""} logo={(data.settings && data.settings.logo) || ""}
     settings={data.settings || {}}
-    clearPre={() => setPreId(null)} onPick={chooseProfile} onCreate={createProfile} />;
+    clearPre={() => setPreId(null)} onPick={chooseProfile} onCreate={createProfile} onResetPass={resetProfilePass} />;
   if (needsFarmSetup(S)) return <FarmSetupGate lang={lang} setLang={setLang} t={t} settings={S} onSave={saveFarmSetup} />;
 
   const setup = { identity: !!(S.farmName || "").trim(), animals: animals.length > 0,
     prices: S.rate > 0 && (S.milkPrice > 0 || S.eggPrice > 0),
     customers: activeCustomers.length > 0 };
   const showSetup = !(setup.identity && setup.animals && setup.prices);
-
-  const alertClick = (a) => {
-    if (a.kind === "customer" && a.cid) { setRoute("sales"); openAccount(a.cid); }
-    else if (a.kind === "obligation" && a.oid) setRoute("expenses");
-    else if (a.kind === "rate") setRoute("settings");
-    else if (a.go) { setRoute("animals"); setSel(a.go); setSheet(null); }
-  };
 
   const payBill = (o) => {
     const cat = o.type === "rent" ? "rent" : o.type === "bill" ? "vendorPay" : "other";
@@ -5486,7 +5664,7 @@ function FarmApp() {
   const DeskExpenses = (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {[["month", t("thisMonth")], ["week", t("thisWeek")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+        {[["today", t("today")], ["yesterday", t("yesterday")], ["month", t("thisMonth")], ["week", t("thisWeek")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
           <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
         <button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
           onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>
@@ -5507,8 +5685,8 @@ function FarmApp() {
           tone={C.field}
           sub={(() => { const top = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
             return top ? fmtC(top[1], S.rate, lang) : undefined; })()} />
-        <StatTile icon="🌾" label={t("farmNet")} value={fmtC(expSums.profit, S.rate, lang)}
-          tone={expSums.profit >= 0 ? C.green : C.red} sub={t("netHint")} />
+        <StatTile icon="💵" label={t("cashBox")} value="→" tone={C.field} sub={t("seeCashBox")}
+          onClick={() => { setCashDir("out"); setRoute("dashboard"); }} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, alignItems: "start" }}>
@@ -5568,11 +5746,21 @@ function FarmApp() {
         </DeskCard>
       </div>
 
-      <DeskCard pad={0} title={`🧾 ${t("moneySpentPeriod")}`}
-        right={<input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
-          style={{ ...inp, width: 220, padding: "7px 10px", fontSize: 13.5 }} />}>
+      <DeskCard pad={0} title={`🧾 ${t("expenseRegister")}`}
+        right={<div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Chip active={expFocus === "open"} onClick={() => setExpFocus("open")}>{t("openBills")}</Chip>
+          <Chip active={expFocus === "all"} onClick={() => setExpFocus("all")}>{t("allExpenses")}</Chip>
+          <input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
+            style={{ ...inp, width: 200, padding: "7px 10px", fontSize: 13.5 }} />
+        </div>}>
         {(() => {
           const rows = [...expScoped].filter((e) => {
+            const isMed = e.type === "med";
+            if (expFocus === "open" && !isMed) {
+              const st = e.payStatus || "paid";
+              if (st === "paid") return false;
+            }
+            if (expFocus === "open" && isMed) return false;
             if (!expQ.trim()) return true;
             const q = expQ.toLowerCase();
             const label = e.type === "med" ? t("medicine") : catLabel(e.category, lang, S.categories);
@@ -5848,47 +6036,98 @@ function FarmApp() {
       </SetSection>
 
       <SetSection open={setOpen.data} onToggle={() => toggleSet("data")} icon="💾" title={t("setCatData")} tip={t("setTipBackup")}
-        summary={cloudCfg.on ? t("setSynced") : t("setOnDevice")}>
+        summary={co.companyId || cloudCfg.on ? t("setSynced") : t("setOnDevice")}>
         <SetLabel tip={t("setTipCloud")}>{t("cloud")}</SetLabel>
         <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 10, lineHeight: 1.45 }}>{t("cloudHint")}</div>
-        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-          <Chip active={!cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: false })} color={C.inkSoft}>{t("cloudOff")}</Chip>
-          <Chip active={cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: true })} color={C.green}>{t("cloudOn")}</Chip>
-        </div>
-        {!cloudCfg.url && (
-          <button type="button" disabled={cloudBusy} onClick={createEasyCloud}
-            style={{ ...primaryBtn, marginBottom: 10, opacity: cloudBusy ? .65 : 1 }}>☁ {cloudBusy ? t("cloudEasyBusy") : t("cloudEasy")}</button>
+
+        {!isFirebaseReady() && (
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 12, marginBottom: 12,
+            fontSize: 13, color: C.inkSoft, lineHeight: 1.45 }}>{t("coNoFirebase")}</div>
         )}
-        {cloudCfg.url && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 14px", fontSize: 14 }} onClick={copyCloudLink}>📋 {t("cloudCopy")}</button>
-            <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "10px 14px", fontSize: 14 }} onClick={createEasyCloud} disabled={cloudBusy}>☁ {t("cloudEasy")}</button>
-          </div>
-        )}
-        <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 8, lineHeight: 1.4 }}>{t("cloudJoin")}</div>
-        <div style={{ fontSize: 12, color: C.amber, marginBottom: 10, fontWeight: 600 }}>{t("cloudSecret")}</div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
-          <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
-            placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }}
-            onClick={() => saveCloud({ ...cloudCfg, on: !!cloudCfg.url })}>{t("save")}</button>
-          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
-          <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
-            fontFamily: "var(--body)", fontSize: 12.5, padding: "8px 4px" }} onClick={() => setCloudAdv((v) => !v)}>
-            {cloudAdv ? "▾" : "▸"} {t("cloudAdvanced")}
-          </button>
-        </div>
-        {cloudAdv && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudToken")}</div>
-            <input value={cloudCfg.token} onChange={(e) => setCloudCfg({ ...cloudCfg, token: e.target.value.trim() })}
+
+        {isFirebaseReady() && !co.user && (
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <Chip active={coMode === "signin"} onClick={() => setCoMode("signin")}>{t("coSignIn")}</Chip>
+              <Chip active={coMode === "signup"} onClick={() => setCoMode("signup")}>{t("coSignUp")}</Chip>
+            </div>
+            {coMode === "signup" && (
+              <input value={coName} onChange={(e) => setCoName(e.target.value)} placeholder={t("coName")}
+                style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
+            )}
+            <input type="email" value={coEmail} onChange={(e) => setCoEmail(e.target.value)} placeholder={t("coEmail")}
+              autoComplete="email" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+            <input type="password" value={coPass} onChange={(e) => setCoPass(e.target.value)} placeholder={t("coPassword")}
+              autoComplete={coMode === "signup" ? "new-password" : "current-password"}
               style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+            <button type="button" disabled={coBusy || !coEmail || !coPass} onClick={coMode === "signup" ? onCoSignUp : onCoSignIn}
+              style={{ ...primaryBtn, opacity: coBusy ? .65 : 1 }}>{coMode === "signup" ? t("coSignUp") : t("coSignIn")}</button>
           </div>
         )}
-        {cloudMsg && <div style={{ fontWeight: 700, fontSize: 13, color: cloudMsg.startsWith("✓") ? C.green : C.red, marginBottom: 10 }}>{cloudMsg}</div>}
+
+        {isFirebaseReady() && co.user && (
+          <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{t("coSignedInAs")} <span style={{ direction: "ltr", fontFamily: "var(--mono)" }}>{co.user.email}</span></div>
+            {co.company ? (
+              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>✓ {t("coReady")}</div>
+                <div style={{ fontSize: 13, color: C.inkSoft }}>{co.company.name}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: C.inkSoft }}>{t("coInvite")}:</span>
+                  <span style={{ fontFamily: "var(--mono)", fontWeight: 700, letterSpacing: ".08em" }}>{co.company.inviteCode}</span>
+                  <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "6px 10px", fontSize: 12.5 }} onClick={copyInvite}>📋 {t("cloudCopy")}</button>
+                </div>
+                <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 6 }}>{t("coInviteHint")}</div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 12.5, color: C.inkSoft }}>{t("cloudSub")}</div>
+                <input value={coCompany} onChange={(e) => setCoCompany(e.target.value)} placeholder={t("coCompany")}
+                  style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
+                <button type="button" disabled={coBusy} onClick={onCoCreate} style={{ ...primaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coCreate")}</button>
+                <div style={{ textAlign: "center", fontSize: 12, color: C.inkSoft }}>— {lang === "ar" ? "أو" : "or"} —</div>
+                <input value={coInvite} onChange={(e) => setCoInvite(e.target.value.toUpperCase())} placeholder={t("coInvite")}
+                  style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr", letterSpacing: ".1em", fontFamily: "var(--mono)" }} />
+                <button type="button" disabled={coBusy || !coInvite} onClick={onCoJoin}
+                  style={{ ...secondaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coJoin")}</button>
+              </div>
+            )}
+            <button type="button" disabled={coBusy} onClick={onCoSignOut}
+              style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}>{t("coSignOut")}</button>
+          </div>
+        )}
+        {coMsg && <div style={{ fontWeight: 700, fontSize: 13, color: coMsg.startsWith("✓") ? C.green : C.red, marginBottom: 10 }}>{coMsg}</div>}
+
+        <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
+          fontFamily: "var(--body)", fontSize: 12.5, padding: "4px 0 10px" }} onClick={() => setCloudAdv((v) => !v)}>
+          {cloudAdv ? "▾" : "▸"} {t("cloudAdvanced")}
+        </button>
+        {cloudAdv && (
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: C.amber, marginBottom: 8, fontWeight: 600 }}>{t("cloudSecret")}</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              <Chip active={!cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: false })} color={C.inkSoft}>{t("cloudOff")}</Chip>
+              <Chip active={cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: true })} color={C.green}>{t("cloudOn")}</Chip>
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
+              <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
+                placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudToken")}</div>
+              <input value={cloudCfg.token} onChange={(e) => setCloudCfg({ ...cloudCfg, token: e.target.value.trim() })}
+                style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }}
+                onClick={() => saveCloud({ ...cloudCfg, on: !!cloudCfg.url })}>{t("save")}</button>
+              <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
+              {cloudCfg.url && <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={copyCloudLink}>{t("cloudCopy")}</button>}
+            </div>
+            {cloudMsg && <div style={{ fontWeight: 700, fontSize: 13, color: cloudMsg.startsWith("✓") ? C.green : C.red, marginTop: 8 }}>{cloudMsg}</div>}
+          </div>
+        )}
 
         <SetLabel tip={t("setTipBackup")}>{t("backup")}</SetLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
@@ -5940,6 +6179,24 @@ function FarmApp() {
           {updateReady && <span style={{ fontSize: 12.5, fontWeight: 600, color: C.green }}>✓ {t("updateReady")}</span>}
           {updateMsg && !updateReady && <span style={{ fontSize: 12.5, color: C.inkSoft }}>{updateMsg}</span>}
         </div>
+        {(() => {
+          const notes = (WHATS_NEW[VERSION.code] && (WHATS_NEW[VERSION.code][lang] || WHATS_NEW[VERSION.code].en)) || [];
+          if (!notes.length) return null;
+          return <div style={{ marginTop: 12, background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>✨ {t("whatsNew")}</span>
+              <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "5px 10px", fontSize: 12 }}
+                onClick={() => setSheet({ k: "whatsNew" })}>{t("viewWhatsNew")}</button>
+            </div>
+            <ul style={{ margin: 0, paddingInlineStart: 16, display: "grid", gap: 5 }}>
+              {notes.slice(0, 3).map((line, i) => (
+                <li key={i} style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 500, lineHeight: 1.4 }}>{line}</li>
+              ))}
+            </ul>
+            {notes.length > 3 && <div style={{ fontSize: 12, color: C.field, fontWeight: 600, marginTop: 6 }}>
+              +{notes.length - 3}…</div>}
+          </div>;
+        })()}
       </SetSection>
 
       <SetSection open={setOpen.danger} onToggle={() => toggleSet("danger")} icon="⚠" title={t("setDanger")}
@@ -6076,14 +6333,14 @@ function FarmApp() {
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "feed" }); } },
     { key: "n9", icon: "📊", label: t("excel"), group: "action", rank: 20, run: doExcel },
     { key: "n8", icon: "📄", label: t("exportPdf"), group: "action", rank: 21,
-      run: () => { navigate("reports"); setTimeout(() => doPrint(), 120); } },
+      run: () => { navigate("reports"); setTimeout(() => setSheet({ k: "reportPreview" }), 120); } },
     { key: "n10", icon: "💾", label: t("backup"), group: "action", rank: 22, run: () => doBackup("json") },
     { key: "n16", icon: "↻", label: t("refresh"), group: "action", rank: 23, run: () => { pull(); loadWeather(); } },
     { key: "n17", icon: "🌐", label: t("language"), group: "action", rank: 24,
       run: () => setLang(lang === "ar" ? "en" : "ar") },
     { key: "n20", icon: theme === "dark" ? "☀" : "☾", label: t("theme"), hint: theme === "dark" ? t("themeLight") : t("themeDark"),
       group: "action", rank: 25, run: () => cycleTheme() },
-    ...[["dashboard", "▤", t("overview")], ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")],
+    ...[["dashboard", "💵", t("cashBox")], ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")],
       ["expenses", "💸", t("moneyOut")], ["sales", "🧾", t("sales")], ["reports", "▦", t("reports")],
       ["settings", "⚙", t("settings")]].map(([r, ic, lb], idx) => (
       { key: `g-${r}`, icon: ic, label: lb, hint: t("goTo"), group: "go", rank: 30 + idx, run: () => navigate(r) })),
@@ -6098,7 +6355,7 @@ function FarmApp() {
   /* Farm = stock + production + farm costs. Office = sales + reports + settings. */
   const farmNav = [["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")]];
   const officeNav = [["sales", "🧾", t("sales")], ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]];
-  const allNav = [["dashboard", "▤", t("overview")], ...farmNav, ...officeNav];
+  const allNav = [["dashboard", "💵", t("cashBox")], ...farmNav, ...officeNav];
   const navLabel = (k) => (allNav.find((n) => n[0] === k) || ["", "", k])[2];
   const navBtn = (k, ic, lb, active, onClick) => (
     <button key={k} type="button" onClick={onClick} className={active ? "dk-nav on" : "dk-nav"}>
@@ -6106,46 +6363,102 @@ function FarmApp() {
   );
   const go = (r) => () => navigate(r);
 
+  const exportCashBox = () => {
+    const headers = [t("cashEntryDate"), t("cashRef"), t("cashStatement"), t("cashIn"), t("cashOut"), t("cashBalance")];
+    const lines = [
+      headers.join(","),
+      ...cashBox.rows.map((r) => [
+        r.day, r.ref,
+        `"${(r.parts || []).map((p) => p.text).join("").replace(/"/g, '""')}"`,
+        r.debit || "", r.credit || "", r.balance,
+      ].join(",")),
+      ["", "", t("cashTotals"), cashBox.rows.reduce((a, r) => a + r.debit, 0).toFixed(2),
+        cashBox.rows.reduce((a, r) => a + r.credit, 0).toFixed(2), cashBox.closing].join(","),
+    ];
+    downloadBlob("\uFEFF" + lines.join("\n"), `cashbox-${cashBounds.from}-${cashBounds.to}.csv`, "text/csv;charset=utf-8");
+    ping(t("saved"));
+  };
+
   const DeskDashboard = (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ display: "grid", gap: 14 }} className="cash-box">
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
+          ["month", t("thisMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+          <Chip key={k} active={cashRange === k || (k === "week" && cashRange === "thisWeek") || (k === "month" && cashRange === "thisMonth")}
+            onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
+        <span style={{ width: 8 }} />
+        {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
+          <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}
+            color={k === "in" ? C.green : k === "out" ? C.red : C.field}>{lb}</Chip>))}
+        <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13, marginInlineStart: "auto" }}
+          onClick={exportCashBox}>📊 {t("cashExport")}</button>
+        <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
+          onClick={() => window.print()}>🖨️ {t("print")}</button>
+      </div>
+      {cashRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
+        <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} style={{ ...inp, width: 160 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
+        <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} style={{ ...inp, width: 160 }} />
+      </div>}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
-        <StatTile icon="🥛🥚" label={t("productionToday")}
-          value={milkAnimals.length || eggFlocks.length ? `${n1(milkToday)} ${t("L")}${eggFlocks.length ? ` · ${nf(eggsToday)}` : ""}` : "—"} tone={C.field} />
-        <StatTile icon="🧾" label={t("outstanding")} value={fmtC(outstanding, S.rate, lang)} tone={moneyColor("due", outstanding)} />
-        <StatTile icon="💳" label={t("duePayments")} value={nf(activeCustomers.filter((c) => (ledger.byCustomer[c.id]?.due || 0) > 0).length)}
-          tone={outstanding > 0 ? C.red : C.green} sub={outstanding > 0 ? fmtC(outstanding, S.rate, lang) : undefined} />
-        <StatTile icon="💸" label={t("moneySpent")} value={fmtC(monthSpent, S.rate, lang)} tone={C.red} />
-        <StatTile icon="📋" label={t("dueBills")} value={nf(dueBillsCount)} tone={dueBillsCount > 0 ? C.amber : C.green} />
+        <StatTile icon="💵" label={t("cashAccount")} value={S.farmName || t("cashBox")} tone={C.field} sub={t("cashBoxSub")} />
+        <StatTile icon="📥" label={t("cashIn")} value={fmtC(cashBox.rows.reduce((a, r) => a + r.debit, 0), S.rate, lang)} tone={C.green} />
+        <StatTile icon="📤" label={t("cashOut")} value={fmtC(cashBox.rows.reduce((a, r) => a + r.credit, 0), S.rate, lang)} tone={C.red} />
+        <StatTile icon="⚖" label={t("cashBalance")} value={fmtC(cashBox.closing, S.rate, lang)}
+          tone={cashBox.closing >= 0 ? C.green : C.red}
+          sub={`${t("cashOpening")}: ${fmtC(cashBox.opening, S.rate, lang)}`} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start" }}>
-        <DeskCard title={`💰 ${t("financialAlerts")}`} pad={financialAlerts.length ? 0 : 16}>
-          {financialAlerts.length === 0
-            ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("allClear")}</div>
-            : financialAlerts.slice(0, 8).map((a, i) => (
-              <button key={i} type="button" onClick={() => alertClick(a)}
-                style={{ display: "flex", gap: 9, width: "100%", textAlign: "start", background: "none", border: "none",
-                  padding: "11px 15px", fontSize: 13.5, fontWeight: 500, fontFamily: "var(--body)", color: C.ink, cursor: "pointer",
-                  borderBottom: i < Math.min(financialAlerts.length, 8) - 1 ? `1px solid ${C.line}` : "none",
-                  borderInlineStart: `4px solid ${a.tone}` }}>
-                <span style={{ flex: 1 }}>{a.text}</span><span style={{ color: C.inkSoft }}>›</span></button>))}
-        </DeskCard>
-        <DeskCard title={`🐾 ${t("farmAlerts")}`} pad={alerts.length ? 0 : 16}>
-          {alerts.length === 0
-            ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{L(lang, "لا تنبيهات اليوم.", "No alerts today.")}</div>
-            : alerts.slice(0, 6).map((a, i) => (
-              <button key={i} type="button" onClick={() => alertClick(a)}
-                style={{ display: "flex", gap: 9, width: "100%", textAlign: "start", background: "none", border: "none",
-                  padding: "11px 15px", fontSize: 13.5, fontWeight: 500, fontFamily: "var(--body)", color: C.ink,
-                  cursor: a.go ? "pointer" : "default",
-                  borderBottom: i < Math.min(alerts.length, 6) - 1 ? `1px solid ${C.line}` : "none",
-                  borderInlineStart: `4px solid ${a.tone}` }}>
-                <span style={{ flex: 1 }}>{a.text}</span>{a.go && <span style={{ color: C.inkSoft }}>›</span>}</button>))}
-        </DeskCard>
-      </div>
-      {series.length > 0 && (
-        <DeskCard title={`📈 ${t("dailyProd")} · ${t("today")}`}>
-          <BarsSVG data={series.slice(-7)} height={160} />
-        </DeskCard>)}
+
+      <DeskCard pad={0} title={`💵 ${t("cashBox")} · ${dayLabel(cashBounds.from, lang)}${cashBounds.from !== cashBounds.to ? ` → ${dayLabel(cashBounds.to, lang)}` : ""}`}
+        right={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{cashBox.rows.length} {t("rows")}</span>}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="cash-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+            <thead><tr>
+              <Th>{t("cashEntryDate")}</Th>
+              <Th>{t("cashRef")}</Th>
+              <Th>{t("cashStatement")}</Th>
+              <Th align="end">{t("cashIn")}</Th>
+              <Th align="end">{t("cashOut")}</Th>
+              <Th align="end">{t("cashBalance")}</Th>
+            </tr></thead>
+            <tbody>
+              {cashBox.opening !== 0 && (
+                <tr style={{ background: C.paper }}>
+                  <Td tone={C.inkSoft}>{cashBounds.from}</Td>
+                  <Td mono tone={C.inkSoft}>—</Td>
+                  <Td><span style={{ fontWeight: 700, color: C.field }}>{t("cashOpening")}</span></Td>
+                  <Td align="end" mono>—</Td>
+                  <Td align="end" mono>—</Td>
+                  <Td align="end" mono strong tone={cashBox.opening >= 0 ? C.green : C.red}>{fmtC(cashBox.opening, S.rate, lang)}</Td>
+                </tr>
+              )}
+              {cashBox.rows.length === 0 ? (
+                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</td></tr>
+              ) : cashBox.rows.map((r) => (
+                <tr key={r.id} onClick={() => setCashSel(r.id)}
+                  style={{ cursor: "pointer", background: cashSel === r.id ? "rgba(201,162,39,.22)" : "transparent" }}>
+                  <Td mono>{r.day}</Td>
+                  <Td mono tone={C.inkSoft}>{r.ref}</Td>
+                  <Td><CashParts parts={r.parts} /></Td>
+                  <Td align="end" mono strong tone={r.debit ? C.green : C.inkSoft}>{r.debit ? fmtC(r.debit, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong tone={r.credit ? C.red : C.inkSoft}>{r.credit ? fmtC(r.credit, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
+                <Td colSpan={3} strong>{t("cashTotals")}</Td>
+                <Td align="end" mono strong tone={C.green}>{fmtC(cashBox.rows.reduce((a, r) => a + r.debit, 0), S.rate, lang)}</Td>
+                <Td align="end" mono strong tone={C.red}>{fmtC(cashBox.rows.reduce((a, r) => a + r.credit, 0), S.rate, lang)}</Td>
+                <Td align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </DeskCard>
     </div>
   );
 
@@ -6577,7 +6890,7 @@ function FarmApp() {
               <span>{ic}</span>{t(k)}</button>))}
         </div>
         <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 10, paddingTop: 10, display: "grid", gap: 7 }}>
-          <button onClick={() => doPrint()} style={{ ...primaryBtn, padding: "10px", fontSize: 14 }}>📄 PDF</button>
+          <button onClick={() => setSheet({ k: "reportPreview" })} style={{ ...primaryBtn, padding: "10px", fontSize: 14 }}>📄 PDF</button>
           <button onClick={doExcel} style={{ ...primaryBtn, padding: "10px", fontSize: 14, background: C.green }}>📊 Excel</button>
         </div>
       </DeskCard>
@@ -6768,12 +7081,12 @@ function FarmApp() {
             commit([{ type: "birth", ...v }], patch); setSheet(null); }} />}
 
         {sheet?.k === "receipt" && (() => {
-          const printReceipt = (src, title, sub) => doPrint({ kind: "receiptImg", src, title, sub, docLang: lang });
+          const previewReceipt = (src, title, sub, back = null) => setSheet({ k: "receiptPreview", src, title, sub, back });
           if (sheet.src) return <ReceiptSheet src={sheet.src} lang={lang} t={t}
             title={sheet.title || t("obligationDocs")} sub={sheet.sub || ""}
             onClose={() => setSheet(null)}
             onBack={sheet.back ? () => setSheet(sheet.back) : undefined} backLabel={t("backBtn")}
-            onPrint={({ src, title, sub }) => printReceipt(src, title, sub)} />;
+            onPrint={({ src, title, sub }) => previewReceipt(src, title, sub, sheet)} />;
           const e = entries.find((x) => x.id === sheet.id);
           if (!e || !e.receipt) return null;
           const title = e.type === "med" ? t("meds") : catLabel(e.category, lang, S.categories);
@@ -6782,7 +7095,7 @@ function FarmApp() {
             onClose={() => setSheet(null)}
             onBack={sheet.back ? () => setSheet(sheet.back) : undefined} backLabel={t("backBtn")}
             onRemove={() => { updateEntry(e.id, { receipt: "" }); setSheet(sheet.back || null); }}
-            onPrint={() => printReceipt(e.receipt, title, sub)} />;
+            onPrint={() => previewReceipt(e.receipt, title, sub, { k: "receipt", id: e.id, back: sheet.back })} />;
         })()}
 
         {sheet?.k === "expense" && <ExpenseSheet key={sheet.fresh || "expense"} lang={lang} t={t} S={S} custom={S.categories} species={speciesPresent}
@@ -6941,12 +7254,33 @@ function FarmApp() {
         })()}
 
                 {sheet?.k === "docgen" && <DocGenSheet lang={lang} t={t} S={S} kinds={sheet.kinds || ["invoice"]}
+          me={me} customers={customers} ledger={ledger} docId={sheet.id} cid={sheet.cid}
           onClose={() => returnToAccount(sheet.cid)}
-          onPrint={(kind, docLang) => {
+          onPrint={(doc) => {
             returnToAccount(sheet.cid);
-            doPrint({ kind, id: kind === "statement" ? sheet.cid : sheet.id, docLang });
+            doPrint(doc);
           }} />}
 
+        {sheet?.k === "reportPreview" && <DocPreviewSheet lang={lang} t={t} title={`📄 ${t("reports")}`}
+          onClose={() => setSheet(null)}
+          onPrint={() => { setSheet(null); doPrint(null); }}>
+          <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped,
+            scopedSales, summaryLines, series, periodLabel, outstanding }} />
+        </DocPreviewSheet>}
+
+        {sheet?.k === "receiptPreview" && sheet.src && <DocPreviewSheet lang={lang} t={t}
+          title={sheet.title || t("attachment")}
+          onClose={() => setSheet(sheet.back || null)}
+          onPrint={() => {
+            const d = { kind: "receiptImg", src: sheet.src, title: sheet.title, sub: sheet.sub, docLang: lang };
+            setSheet(null);
+            doPrint(d);
+          }}>
+          <PrintDoc doc={{ kind: "receiptImg", src: sheet.src, title: sheet.title, sub: sheet.sub, docLang: lang }}
+            lang={lang} t={t} S={S} me={me} customers={customers} ledger={ledger} />
+        </DocPreviewSheet>}
+
+        {sheet?.k === "whatsNew" && <WhatsNewSheet lang={lang} t={t} onClose={dismissWhatsNew} />}
         {sheet?.k === "setPass" && <SetPassSheet lang={lang} t={t} onClose={() => setSheet(null)} onSave={async (pin) => {
           const salt = uid(); const hash = await hashPin(pin, salt);
           const np = { ...me, pin: hash, salt }; setMe(np); setSheet(null);
@@ -7013,7 +7347,7 @@ function FarmApp() {
             <button type="button" className="dk-side-hide" title={t("hideSidebar")} onClick={toggleSidebar}>‹</button>
           </div>
           <nav style={{ padding: "6px 8px 10px", overflowY: "auto" }}>
-            {navBtn("dashboard", "▤", t("overview"), route === "dashboard", go("dashboard"))}
+            {navBtn("dashboard", "💵", t("cashBox"), route === "dashboard", go("dashboard"))}
             <NavGroup title={t("farmWork")} open={navFarmOpen} onToggle={() => setNavFarmOpen((o) => !o)} dir={dir}>
               {farmNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k || (k === "expenses" && route === "obligations"), go(k)))}
             </NavGroup>
@@ -7064,7 +7398,7 @@ function FarmApp() {
               {lang === "ar" ? "EN" : "ع"}</button>
           </header>
 
-          {!cloud.on && store.kind !== "host" && !hideDeviceBanner && (
+          {!co.companyId && !cloud.on && store.kind !== "host" && !hideDeviceBanner && (
             <div className="banner amber" style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ flex: 1 }}>⚠️ {t("deviceOnly")}</span>
               <button type="button" onClick={() => { setHideDeviceBanner(true); saveDevicePrefs({ hideDeviceBanner: true }); }}
@@ -7440,8 +7774,10 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .pal{width:min(620px,92vw);background:${C.card};border:1px solid ${C.line};border-top:3px solid ${C.tag};
   border-radius:5px;box-shadow:0 20px 50px rgba(27,32,51,.28);overflow:hidden;animation:drop .14s ease}
 .print-sheet{display:none}
+.doc-preview{background:#fff;border:1px solid ${C.line};border-radius:8px;overflow:auto;
+  max-height:min(68vh,760px);box-shadow:inset 0 0 0 1px rgba(27,32,51,.04)}
+.doc-preview > div{margin:0 auto}
 @media print{
-  .app > *:not(.print-sheet):not(.keep-print){display:none!important}
   .gate,.toast,.pal-back{display:none!important}
   .print-sheet{display:none!important}
   .print-sheet.show{display:block!important;position:static!important;width:100%}
@@ -7449,7 +7785,10 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   .sheet-wrap.keep-print .sheet{max-height:none;box-shadow:none;border:none;border-radius:0;padding:12px;margin:0;width:100%}
   .sheet-wrap.keep-print .grabber,.sheet-wrap.keep-print button,.no-print{display:none!important}
   body{background:#fff!important;margin:0}
-  .print-sheet.show,.print-sheet.show *,.sheet-wrap.keep-print,.sheet-wrap.keep-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .app.dk .dk-side,.app.dk .dk-top,.app.dk .banner,.app.dk .dk-quick,.no-print{display:none!important}
+  .app.dk .dk-wrap,.app.dk .dk-main,.app.dk .dk-body,.cash-box,.desk-card{display:block!important;width:100%!important;max-width:none!important}
+  .cash-box button,.cash-box .chip{display:none!important}
+  .print-sheet.show,.print-sheet.show *,.sheet-wrap.keep-print,.sheet-wrap.keep-print *,.cash-box, .cash-box *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   table,tr,td,th{page-break-inside:avoid}
   @page{size:A4;margin:10mm}
 }
@@ -7478,9 +7817,11 @@ function DeskCard({ children, style, title, right, pad = 16 }) {
     <div style={{ padding: pad }}>{children}</div>
   </section>;
 }
-function StatTile({ label, value, sub, tone, icon }) {
-  return <div className="stat-tile" style={{ background: C.card, border: `1px solid ${C.line}`, borderTop: `3px solid ${tone || C.field}`,
-    borderRadius: 14, padding: "13px 15px", boxShadow: "0 1px 2px rgba(21,42,36,.04)" }}>
+function StatTile({ label, value, sub, tone, icon, onClick }) {
+  return <div className="stat-tile" onClick={onClick} role={onClick ? "button" : undefined}
+    style={{ background: C.card, border: `1px solid ${C.line}`, borderTop: `3px solid ${tone || C.field}`,
+    borderRadius: 14, padding: "13px 15px", boxShadow: "0 1px 2px rgba(21,42,36,.04)",
+    cursor: onClick ? "pointer" : undefined }}>
     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 600,
       color: C.inkSoft, letterSpacing: ".04em" }}>{icon && <span>{icon}</span>}{label}</div>
     <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 25, color: tone || C.ink,
@@ -7495,8 +7836,8 @@ const Th = ({ children, w, align, onClick, active, dirn }) => (
     {children}{active ? <span style={{ color: C.field }}>{dirn === "asc" ? " ▲" : " ▼"}</span> : null}
   </th>
 );
-const Td = ({ children, align, mono, strong, tone, w }) => (
-  <td style={{ textAlign: align || "start", padding: "10px 12px", fontSize: 13.5, width: w,
+const Td = ({ children, align, mono, strong, tone, w, colSpan }) => (
+  <td colSpan={colSpan} style={{ textAlign: align || "start", padding: "10px 12px", fontSize: 13.5, width: w,
     fontFamily: mono ? "var(--mono)" : "var(--body)", fontWeight: strong ? 700 : 500,
     color: tone || C.ink, borderBottom: `1px solid ${C.line}` }}>{children}</td>
 );

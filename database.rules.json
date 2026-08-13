@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "invites": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || root.child('companies').child(data.child('companyId').val()).child('members').child(auth.uid).child('role').val() == 'owner')"
+      }
+    },
+    "companies": {
+      "$cid": {
+        "meta": {
+          ".read": "auth != null && (data.parent().child('members').child(auth.uid).exists() || root.child('users').child(auth.uid).child('companyId').val() == $cid)",
+          ".write": "auth != null && (!data.exists() || data.parent().child('members').child(auth.uid).exists())"
+        },
+        "members": {
+          ".read": "auth != null && (data.child(auth.uid).exists() || root.child('users').child(auth.uid).child('companyId').val() == $cid)",
+          "$uid": {
+            ".write": "auth != null && (auth.uid == $uid || data.parent().child(auth.uid).child('role').val() == 'owner' || !data.exists())"
+          }
+        },
+        "farmJson": {
+          ".read": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}

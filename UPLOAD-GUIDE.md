@@ -1,48 +1,29 @@
-# Mazraati v2.2.0 — Update GitHub Pages
+# Mazraati v2.3.0 — GitHub Pages + company sync
 
-Live app: https://basemsde-tech.github.io/mazraati/  
+Live: https://basemsde-tech.github.io/mazraati/  
 Repo: https://github.com/basemsde-tech/mazraati
 
-## Cloud sync (easy)
+## For you (developer) — company email sync
 
-1. Open **Settings → Backup & sync**
-2. Tap **Create free sync**
-3. Tap **Copy link** and paste the same link on other phones/PCs
-4. Turn sync **On** there
+See **[CLOUD-SYNC.md](./CLOUD-SYNC.md)** for Firebase setup.
 
-Treat the link like a password. Optional advanced: JSONBin URL + master key.
+1. Create Firebase project + Email/Password auth + Realtime Database  
+2. Paste rules from `database.rules.json`  
+3. Fill `firebase-config.js`  
+4. `node build.mjs` then push to GitHub  
 
-## Required deploy files
+End users: Settings → Company sync → create account → create/join company with invite code.
 
-| File | Required |
-|------|----------|
-| `index.html` | **Yes** — built app |
-| `sw.js` | **Yes** — cache `mazraati-v2.2.0` |
-| `manifest.webmanifest` | Recommended |
-| `.nojekyll` | Recommended (GitHub Pages) |
-| Icons | Keep if already on GitHub |
-
-## Rebuild after editing `App.jsx`
+## Rebuild
 
 ```powershell
 cd "$env:USERPROFILE\Downloads\mazraati-deploy"
 node build.mjs
 ```
 
-Bump `VERSION.code` in `App.jsx` and `CACHE` in `sw.js` together.
+Bump `VERSION.code` and `sw.js` `CACHE` together (`mazraati-v2.3.0`).
 
-## Push with git
+## Deploy files
 
-```powershell
-cd "$env:USERPROFILE\Downloads\mazraati-deploy"
-git add -A
-git commit -m "Release v2.2.0: easy cloud sync"
-git push origin main
-```
-
-## What’s in v2.2.0
-
-- One-click free cloud sync (JSONBlob link)
-- Cloud settings now persist on GitHub Pages / device storage
-- JSONBin-compatible headers + `/latest` read URL
-- Copy sync link for other devices
+`index.html`, `sw.js`, `manifest.webmanifest`, icons, `.nojekyll`  
+Source: `App.jsx`, `firebaseCloud.js`, `firebase-config.js`, `build.mjs`
