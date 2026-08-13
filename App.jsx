@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.2", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.3": {
+    ar: [
+      "سجل الحليب المضاف أسفل شاشة الإنتاج — مع تصفية ومجموع",
+    ],
+    en: [
+      "Milk stock log on the production page — with filters and totals",
+    ],
+  },
   "2.5.2": {
     ar: [
       "إنتاج أوضح — أضف حليب للمخزون بكمية ووحدة (ل / كغ)",
@@ -392,6 +400,8 @@ const T = {
     oversellWarn: "الكمية أكبر من المخزون المتاح", milkBalance: "مخزون الحليب",
     milkLogHint: "أدخل الكمية واختر الوحدة ثم احفظ.",
     addMilkStock: "إضافة حليب للمخزون", milkUnit: "الوحدة", milkUnitL: "ليتر", milkUnitKg: "كغ",
+    milkStockLog: "سجل الحليب", milkLogEmpty: "لا إضافات حليب في هذه الفترة.",
+    milkSessionAll: "كل الحلبات", milkLogPreview: "معاينة المجموع", milkSession: "الحلبة",
     milkStockTitle: "المخزون", milkFresh: "طازج", milkOk: "جيد", milkAging: "يبدأ يقدّم", milkOld: "قديم",
     milkProducedAt: "أُنتج", milkLoggedBy: "سجّله", milkAge: "العمر", milkHours: "س",
     milkUse: "استخدام مزرعة", milkUseSub: "منزل · عجول · هدر — يخصم من المخزون فورًا",
@@ -732,6 +742,8 @@ const T = {
     oversellWarn: "More than milk available in stock", milkBalance: "Milk stock",
     milkLogHint: "Enter the amount, pick the unit, then save.",
     addMilkStock: "Add milk to stock", milkUnit: "Unit", milkUnitL: "Litre", milkUnitKg: "kg",
+    milkStockLog: "Milk stock log", milkLogEmpty: "No milk additions in this period.",
+    milkSessionAll: "All milkings", milkLogPreview: "Total preview", milkSession: "Milking",
     milkStockTitle: "Stock", milkFresh: "Fresh", milkOk: "Good", milkAging: "Aging", milkOld: "Old",
     milkProducedAt: "Produced", milkLoggedBy: "Logged by", milkAge: "Age", milkHours: "h",
     milkUse: "Farm use", milkUseSub: "Home · calves · waste — deducts from stock immediately",
@@ -5450,6 +5462,8 @@ function FarmApp() {
   const [milkSess, setMilkSess] = useState(() => (new Date().getHours() < 14 ? "am" : "pm"));
   const [milkUnitDraft, setMilkUnitDraft] = useState(null);
   const [eggOpen, setEggOpen] = useState(false);
+  const [milkLogFiltOpen, setMilkLogFiltOpen] = useState(false);
+  const [milkLogFilt, setMilkLogFilt] = useState({ sess: "all", from: "", to: "", sort: "newest" });
   const dataRef = useRef(null);
   const toastTimer = useRef(null);
   dataRef.current = data;
@@ -7072,9 +7086,9 @@ function FarmApp() {
 
   const commitDayMilk = () => {
     const unit = milkUnit;
+    const qty = milkSess === "am" ? draftAm : draftPm;
     const es = [
-      { type: "milkBulk", session: "am", liters: draftAm, unit, at: sessionStamp(entryDate, "am") },
-      { type: "milkBulk", session: "pm", liters: draftPm, unit, at: sessionStamp(entryDate, "pm") },
+      { type: "milkBulk", session: milkSess, liters: +qty || 0, unit, at: sessionStamp(entryDate, milkSess) },
     ];
     const patch = { settings: { ...S, milkMode: "total", milkUnit: unit } };
     const log = unit !== milkUnitOf(S.milkUnit)
@@ -7085,8 +7099,37 @@ function FarmApp() {
     setMilkUnitDraft(null);
   };
 
+  const milkLogAll = useMemo(() => {
+    const byId = {};
+    (entries || []).forEach((e) => { if (e.id) byId[e.id] = e; });
+    return effectiveMilkLots(entries)
+      .filter((l) => (l.liters || 0) > 0.0001)
+      .map((l) => {
+        const src = byId[l.id] || {};
+        return { ...l, unit: src.unit || l.unit || S.milkUnit, byName: l.byName || src.byName || "—" };
+      });
+  }, [entries, S.milkUnit]);
+
+  const milkLogView = useMemo(() => {
+    const f = milkLogFilt;
+    const newest = f.sort !== "oldest";
+    const rows = milkLogAll.filter((r) => {
+      if (f.sess !== "all" && (r.session || "am") !== f.sess) return false;
+      const k = dayKey(r.at);
+      if (f.from && k < f.from) return false;
+      if (f.to && k > f.to) return false;
+      return true;
+    }).slice().sort((a, b) => newest
+      ? (new Date(b.at) - new Date(a.at) || String(b.id || "").localeCompare(String(a.id || "")))
+      : (new Date(a.at) - new Date(b.at) || String(a.id || "").localeCompare(String(b.id || ""))));
+    const totalQty = +rows.reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    const amQty = +rows.filter((r) => r.session === "am").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    const pmQty = +rows.filter((r) => r.session === "pm").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    return { rows, totalQty, amQty, pmQty, active: !!(f.from || f.to || f.sess !== "all") };
+  }, [milkLogAll, milkLogFilt]);
+
   const DeskEntry = (
-    <div style={{ display: "grid", gap: 14, maxWidth: 560, margin: "0 auto", width: "100%" }}>
+    <div style={{ display: "grid", gap: 14, maxWidth: 720, margin: "0 auto", width: "100%" }}>
       <DeskCard pad={0} title={`🥛 ${t("addMilkStock")}`}
         right={<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <button type="button" className="dk-pill" title={t("prevDay")} onClick={() => {
@@ -7188,6 +7231,85 @@ function FarmApp() {
       {milkAnimals.length === 0 && eggFlocks.length === 0 && (
         <Empty icon="🐄" title={t("noAnimals")} sub={t("noAnimalsSub")}
           cta={`＋ ${t("addAnimal")}`} onCta={() => setSheet({ k: "addAnimal" })} />)}
+
+      <DeskCard pad={0} title={`📋 ${t("milkStockLog")} · ${milkLogView.rows.length}`}
+        right={<SortControl value={milkLogFilt.sort || "newest"}
+          onChange={(v) => setMilkLogFilt((p) => ({ ...p, sort: v }))}
+          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />}>
+        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
+          <FilterTray open={milkLogFiltOpen} onToggle={() => setMilkLogFiltOpen((o) => !o)} t={t}
+            active={(milkLogFilt.sess !== "all" ? 1 : 0) + (milkLogFilt.from || milkLogFilt.to ? 1 : 0)}
+            end={milkLogView.active ? <button type="button" className="dk-pill"
+              onClick={() => setMilkLogFilt((p) => ({ ...p, sess: "all", from: "", to: "" }))}>
+              ✕ {t("clearFilters")}</button> : null}>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+              {[["all", t("milkSessionAll")], ["am", `🌅 ${t("morningMilk")}`], ["pm", `🌙 ${t("eveningMilk")}`]].map(([k, lb]) => (
+                <Chip key={k} active={milkLogFilt.sess === k}
+                  onClick={() => setMilkLogFilt((p) => ({ ...p, sess: k }))}>{lb}</Chip>))}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
+              <input type="date" value={milkLogFilt.from}
+                onChange={(e) => setMilkLogFilt((p) => ({ ...p, from: e.target.value }))}
+                style={{ ...inp, flex: 1, minWidth: 130, padding: "8px 10px", fontSize: 14 }} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
+              <input type="date" value={milkLogFilt.to}
+                onChange={(e) => setMilkLogFilt((p) => ({ ...p, to: e.target.value }))}
+                style={{ ...inp, flex: 1, minWidth: 130, padding: "8px 10px", fontSize: 14 }} />
+            </div>
+          </FilterTray>
+        </div>
+
+        <div style={{ padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 9,
+          borderBottom: `1px solid ${C.line}`, background: C.paper }}>
+          <Kpi label={t("milkLogPreview")} value={`${n1(milkLogView.totalQty)} ${milkU}`} tone={C.field} />
+          <Kpi label={t("morningMilk")} value={`${n1(milkLogView.amQty)} ${milkU}`} />
+          <Kpi label={t("eveningMilk")} value={`${n1(milkLogView.pmQty)} ${milkU}`} />
+          <Kpi label={t("txCount")} value={nf(milkLogView.rows.length)} tone={C.inkSoft} />
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          {milkLogView.rows.length === 0
+            ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("milkLogEmpty")}</div>
+            : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+              <thead><tr>
+                <Th>{t("colDate")}</Th>
+                <Th>{t("colTime")}</Th>
+                <Th>{t("milkSession")}</Th>
+                <Th align="end">{t("colQty")}</Th>
+                <Th>{t("milkUnit")}</Th>
+                <Th>{t("colUser")}</Th>
+              </tr></thead>
+              <tbody>
+                {milkLogView.rows.map((r) => {
+                  const sess = r.session === "pm" ? "pm" : r.session === "day" ? "day" : "am";
+                  const sessLb = sess === "pm" ? `🌙 ${t("eveningMilk")}` : sess === "day" ? t("dayMilkTotal") : `🌅 ${t("morningMilk")}`;
+                  return <tr key={r.id || r.key} style={{ cursor: "pointer" }}
+                    onClick={() => {
+                      setEntryDate(dayKey(r.at));
+                      if (sess === "am" || sess === "pm") setMilkSess(sess);
+                      setBatch({});
+                    }}>
+                    <Td mono>{dmy(r.at)}</Td>
+                    <Td mono tone={C.inkSoft}>{hhmm(new Date(r.at))}</Td>
+                    <Td>{sessLb}</Td>
+                    <Td align="end" mono strong>{n1(r.liters)}</Td>
+                    <Td tone={C.inkSoft}>{milkUnitLb(r.unit || milkUnit, t)}</Td>
+                    <Td tone={C.inkSoft}>{r.byName || "—"}</Td>
+                  </tr>;
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
+                  <Td colSpan={3} strong>{t("milkLogPreview")}</Td>
+                  <Td align="end" mono strong tone={C.field}>{n1(milkLogView.totalQty)}</Td>
+                  <Td tone={C.inkSoft}>{milkU}</Td>
+                  <Td />
+                </tr>
+              </tfoot>
+            </table>}
+        </div>
+      </DeskCard>
     </div>
   );
 
