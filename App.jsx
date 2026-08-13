@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.4": {
+    ar: [
+      "إصلاح تعطّل تحميل التطبيق بعد تحديث الإنتاج",
+    ],
+    en: [
+      "Fix app crash on load after the production update",
+    ],
+  },
   "2.5.3": {
     ar: [
       "سجل الحليب المضاف أسفل شاشة الإنتاج — مع تصفية ومجموع",
@@ -2833,6 +2841,9 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
   </Sheet>;
 }
 
+function milkUnitOf(u) { return u === "kg" ? "kg" : "L"; }
+function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
+
 function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose, unit = "L" }) {
   const [am, setAm] = useState(existing.am || 0);
   const [pm, setPm] = useState(existing.pm || 0);
@@ -2898,9 +2909,6 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L" }) {
       onClick={() => qty > 0 && qty <= avail + 0.001 && onSave({ qty, reason, at: dayStamp(date) })}>✓ {t("save")}</button>
   </Sheet>;
 }
-
-const milkUnitOf = (u) => (u === "kg" ? "kg" : "L");
-const milkUnitLb = (u, t) => (milkUnitOf(u) === "kg" ? t("kg") : t("L"));
 
 function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
   const u = milkUnitLb(unit, t);
@@ -6084,6 +6092,36 @@ function FarmApp() {
     catch (e) { setCoMsg(code); }
   };
 
+  /* Must stay above splash/profile early returns — hooks order is fixed. */
+  const milkLogAll = useMemo(() => {
+    const byId = {};
+    (entries || []).forEach((e) => { if (e.id) byId[e.id] = e; });
+    return effectiveMilkLots(entries)
+      .filter((l) => (l.liters || 0) > 0.0001)
+      .map((l) => {
+        const src = byId[l.id] || {};
+        return { ...l, unit: src.unit || l.unit || S.milkUnit, byName: l.byName || src.byName || "—" };
+      });
+  }, [entries, S.milkUnit]);
+
+  const milkLogView = useMemo(() => {
+    const f = milkLogFilt;
+    const newest = f.sort !== "oldest";
+    const rows = milkLogAll.filter((r) => {
+      if (f.sess !== "all" && (r.session || "am") !== f.sess) return false;
+      const k = dayKey(r.at);
+      if (f.from && k < f.from) return false;
+      if (f.to && k > f.to) return false;
+      return true;
+    }).slice().sort((a, b) => newest
+      ? (new Date(b.at) - new Date(a.at) || String(b.id || "").localeCompare(String(a.id || "")))
+      : (new Date(a.at) - new Date(b.at) || String(a.id || "").localeCompare(String(b.id || ""))));
+    const totalQty = +rows.reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    const amQty = +rows.filter((r) => r.session === "am").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    const pmQty = +rows.filter((r) => r.session === "pm").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
+    return { rows, totalQty, amQty, pmQty, active: !!(f.from || f.to || f.sess !== "all") };
+  }, [milkLogAll, milkLogFilt]);
+
   if (!data) return <div className={`splash theme-${theme}`}><style key={theme}>{makeCss()}</style>
     <div className="splash-inner">
       <div className="splash-logo">{S.logo ? <img src={S.logo} alt="" /> : <AppMark size={88} light word lang={lang} />}</div>
@@ -7098,35 +7136,6 @@ function FarmApp() {
     setBatch({});
     setMilkUnitDraft(null);
   };
-
-  const milkLogAll = useMemo(() => {
-    const byId = {};
-    (entries || []).forEach((e) => { if (e.id) byId[e.id] = e; });
-    return effectiveMilkLots(entries)
-      .filter((l) => (l.liters || 0) > 0.0001)
-      .map((l) => {
-        const src = byId[l.id] || {};
-        return { ...l, unit: src.unit || l.unit || S.milkUnit, byName: l.byName || src.byName || "—" };
-      });
-  }, [entries, S.milkUnit]);
-
-  const milkLogView = useMemo(() => {
-    const f = milkLogFilt;
-    const newest = f.sort !== "oldest";
-    const rows = milkLogAll.filter((r) => {
-      if (f.sess !== "all" && (r.session || "am") !== f.sess) return false;
-      const k = dayKey(r.at);
-      if (f.from && k < f.from) return false;
-      if (f.to && k > f.to) return false;
-      return true;
-    }).slice().sort((a, b) => newest
-      ? (new Date(b.at) - new Date(a.at) || String(b.id || "").localeCompare(String(a.id || "")))
-      : (new Date(a.at) - new Date(b.at) || String(a.id || "").localeCompare(String(b.id || ""))));
-    const totalQty = +rows.reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
-    const amQty = +rows.filter((r) => r.session === "am").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
-    const pmQty = +rows.filter((r) => r.session === "pm").reduce((s, r) => s + (r.liters || 0), 0).toFixed(2);
-    return { rows, totalQty, amQty, pmQty, active: !!(f.from || f.to || f.sess !== "all") };
-  }, [milkLogAll, milkLogFilt]);
 
   const DeskEntry = (
     <div style={{ display: "grid", gap: 14, maxWidth: 720, margin: "0 auto", width: "100%" }}>
