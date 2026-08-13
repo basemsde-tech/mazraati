@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.7", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.5.7": {
+    ar: [
+      "إصلاح ألوان النصوص على الأزرار والبطاقات — عناوين المنتجات تظهر بوضوح",
+    ],
+    en: [
+      "Fixed button and card text contrast — product titles are readable again",
+    ],
+  },
   "2.5.6": {
     ar: [
       "أيقونة التطبيق بشعار مزرعتي",
@@ -2324,7 +2332,7 @@ function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact }) 
   const s = big ? 66 : compact ? 36 : 52;
   const btn = (l, d) => <button type="button" onClick={() => { setTyping(null); onChange(Math.max(0, +((value || 0) + d).toFixed(2))); }}
     style={{ width: s, height: s, borderRadius: compact ? 4 : 6, border: "none", cursor: "pointer", flexShrink: 0,
-      background: l === "+" ? C.field : "#ECE9E0", color: l === "+" ? "#fff" : C.ink,
+      background: l === "+" ? C.field : C.paper, color: l === "+" ? "#fff" : C.ink,
       fontSize: big ? 30 : compact ? 18 : 24, fontWeight: 700, fontFamily: "var(--mono)", boxShadow: compact ? "none" : sh1 }}>{l}</button>;
   const shown = typing !== null ? typing : (((value || 0) % 1 === 0) ? String(value || 0) : (value || 0).toFixed(decimals || 2));
   return <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 10, justifyContent: "center" }}>
@@ -2395,8 +2403,8 @@ function Empty({ icon, title, sub, cta, onCta }) {
   </div>;
 }
 function Keypad({ value, onChange, max = 6, onSubmit }) {
-  const key = (label, fn, style) => <button key={label} onClick={fn} style={{ height: 58, borderRadius: 6, border: "none",
-    background: C.card, fontFamily: "var(--mono)", fontWeight: 700, fontSize: 24, cursor: "pointer", boxShadow: sh1, ...style }}>{label}</button>;
+  const key = (label, fn, style) => <button type="button" key={label} onClick={fn} style={{ height: 58, borderRadius: 6, border: "none",
+    background: C.card, color: C.ink, fontFamily: "var(--mono)", fontWeight: 700, fontSize: 24, cursor: "pointer", boxShadow: sh1, ...style }}>{label}</button>;
   useEffect(() => {
     if (!onSubmit) return;
     const onKey = (e) => { if (e.key === "Enter" && value.length >= 4) { e.preventDefault(); onSubmit(); } };
@@ -2412,7 +2420,7 @@ function Keypad({ value, onChange, max = 6, onSubmit }) {
       {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => key(d, () => value.length < max && onChange(value + d)))}
       <span />
       {key("0", () => value.length < max && onChange(value + "0"))}
-      {key("⌫", () => onChange(value.slice(0, -1)), { background: "#ECE9E0", fontSize: 20 })}
+      {key("⌫", () => onChange(value.slice(0, -1)), { background: C.paper, fontSize: 20 })}
     </div>
   </div>;
 }
@@ -3283,8 +3291,8 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
     <Step n="2" label={t("pickIcon")} />
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
       {CAT_ICONS.map((ic) => <button key={ic} type="button" onClick={() => setNewIcon(ic)} style={{ width: 52, height: 52, borderRadius: 4,
-        fontSize: 24, cursor: "pointer", background: newIcon === ic ? C.field : "#fff",
-        border: `1px solid ${newIcon === ic ? C.field : C.line}` }}>{ic}</button>)}
+        fontSize: 24, cursor: "pointer", background: newIcon === ic ? C.field : C.card, color: C.ink,
+        border: `1.5px solid ${newIcon === ic ? C.field : C.line}` }}>{ic}</button>)}
     </div>
     <button type="button" style={{ ...primaryBtn, opacity: newName.trim() ? 1 : .45 }} onClick={() => {
       const n = newName.trim(); if (!n) return;
@@ -3301,22 +3309,24 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
         {EXPENSE_GROUPS.map(([gk, ic, ar, en, col]) => (
           <button type="button" key={gk} onClick={() => { setGroup(gk); setCat(null); }}
-            style={{ background: group === gk ? col : "#fff", color: group === gk ? "#fff" : C.ink,
+            style={{ background: group === gk ? col : C.card, color: group === gk ? "#fff" : C.ink,
               border: `2px solid ${group === gk ? col : C.line}`, borderRadius: 6, padding: "16px 10px",
               cursor: "pointer", fontFamily: "var(--body)", textAlign: "center" }}>
             <div style={{ fontSize: 28 }}>{ic}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 6 }}>{lang === "ar" ? ar : en}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 6,
+              color: group === gk ? "#fff" : C.ink }}>{lang === "ar" ? ar : en}</div>
           </button>))}
       </div>
       {group && <>
         <Step n="2" label={t("pickItem")} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
           {items.map((c) => <button type="button" key={c.key} onClick={() => setCat(c.key)} style={{
-            background: cat === c.key ? c.color : "#fff", color: cat === c.key ? "#fff" : C.ink,
-            border: `1px solid ${cat === c.key ? c.color : C.line}`, borderRadius: 4, padding: "14px 4px",
+            background: cat === c.key ? c.color : C.card, color: cat === c.key ? "#fff" : C.ink,
+            border: `1.5px solid ${cat === c.key ? c.color : C.line}`, borderRadius: 4, padding: "14px 6px",
             cursor: "pointer", fontFamily: "var(--body)" }}>
             <div style={{ fontSize: 24 }}>{c.icon}</div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, lineHeight: 1.25 }}>{c.label}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4, lineHeight: 1.25,
+              color: cat === c.key ? "#fff" : C.ink }}>{c.label}</div>
           </button>)}
           <button type="button" onClick={() => setAdding(true)} style={{ background: C.card, border: `1px dashed ${C.line}`,
             borderRadius: 4, padding: "14px 4px", cursor: "pointer", fontFamily: "var(--body)", color: C.inkSoft }}>
@@ -3840,10 +3850,17 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     </Scroller>
     <Step n="2" label={t("product")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-      {PRODUCTS.map(([k, ic, ar, en]) => <button key={k} onClick={() => setProduct(k)} style={{ background: C.card,
-        border: `1.5px solid ${product === k ? C.field : C.line}`, borderRadius: 5, padding: "11px 3px", cursor: "pointer", boxShadow: sh1 }}>
-        <div style={{ fontSize: 20 }}>{ic}</div>
-        <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 2 }}>{lang === "ar" ? ar : en}</div></button>)}
+      {PRODUCTS.map(([k, ic, ar, en]) => {
+        const on = product === k;
+        return <button type="button" key={k} onClick={() => setProduct(k)} style={{
+          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
+          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 5, padding: "11px 6px",
+          cursor: "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
+          <div style={{ fontSize: 22, lineHeight: 1 }}>{ic}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, lineHeight: 1.25,
+            color: on ? "#fff" : C.ink }}>{lang === "ar" ? ar : en}</div>
+        </button>;
+      })}
     </div>
     <Step n="3" label={`${t("qty")} (${unit})`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
@@ -3894,10 +3911,16 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
     </div>
     <Step n="2" label={t("method")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
-      {[["cash", "💵", t("cash")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => (
-        <button key={k} onClick={() => setMethod(k)} style={{ background: C.card, border: `1.5px solid ${method === k ? C.field : C.line}`,
-          borderRadius: 6, padding: "12px 6px", cursor: "pointer", boxShadow: sh1 }}>
-          <div style={{ fontSize: 21 }}>{ic}</div><div style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>{lb}</div></button>))}
+      {[["cash", "💵", t("cash")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
+        const on = method === k;
+        return <button type="button" key={k} onClick={() => setMethod(k)} style={{
+          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
+          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 6, padding: "12px 6px",
+          cursor: "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
+          <div style={{ fontSize: 21 }}>{ic}</div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3, color: on ? "#fff" : C.ink }}>{lb}</div>
+        </button>;
+      })}
     </div>
     <Step n="3" label={`${t("paymentDate")} — ${dmy(date)}`} />
     <input type="date" value={date} max={dayKey(Date.now())}
@@ -3955,11 +3978,11 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
           </div>
           <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={lang === "ar" ? p[4] : p[5]} />
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button onClick={() => set(c.id, { paid: !r.paid, skip: false })} style={{ flex: 1, background: r.paid ? C.green : "#fff",
+            <button type="button" onClick={() => set(c.id, { paid: !r.paid, skip: false })} style={{ flex: 1, background: r.paid ? C.green : C.card,
               color: r.paid ? "#fff" : C.ink, border: `1.5px solid ${r.paid ? C.green : C.line}`, borderRadius: 5,
-              padding: "10px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{r.paid ? `✓ ${t("paidS")}` : t("unpaid")}</button>
-            <button onClick={() => set(c.id, { skip: !r.skip })} style={{ flex: 1, background: r.skip ? "#ECE9E0" : "#fff",
-              border: `1.5px solid ${C.line}`, borderRadius: 5, padding: "10px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer", color: C.ink }}>
+              padding: "10px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "var(--body)" }}>{r.paid ? `✓ ${t("paidS")}` : t("unpaid")}</button>
+            <button type="button" onClick={() => set(c.id, { skip: !r.skip })} style={{ flex: 1, background: r.skip ? C.paper : C.card,
+              border: `1.5px solid ${C.line}`, borderRadius: 5, padding: "10px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer", color: C.ink, fontFamily: "var(--body)" }}>
               {r.skip ? "↩︎" : `⏭️ ${t("skip")}`}</button>
           </div>
         </div>;
@@ -4058,10 +4081,17 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   return <Sheet title={`✏️ ${t("editTx")}`} sub={sale.no} onClose={onClose}>
     <Step n="1" label={t("product")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-      {PRODUCTS.map(([k, ic, ar, en]) => <button key={k} onClick={() => setProduct(k)} style={{ background: C.card,
-        border: `1px solid ${product === k ? C.field : C.line}`, borderRadius: 4, padding: "10px 3px", cursor: "pointer" }}>
-        <div style={{ fontSize: 18 }}>{ic}</div>
-        <div style={{ fontSize: 11.5, fontWeight: 600 }}>{lang === "ar" ? ar : en}</div></button>)}
+      {PRODUCTS.map(([k, ic, ar, en]) => {
+        const on = product === k;
+        return <button type="button" key={k} onClick={() => setProduct(k)} style={{
+          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
+          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 4, padding: "10px 6px",
+          cursor: "pointer", fontFamily: "var(--body)" }}>
+          <div style={{ fontSize: 20, lineHeight: 1 }}>{ic}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 3, lineHeight: 1.25,
+            color: on ? "#fff" : C.ink }}>{lang === "ar" ? ar : en}</div>
+        </button>;
+      })}
     </div>
     <Step n="2" label={`${t("qty")} (${lang === "ar" ? pr[4] : pr[5]})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
@@ -5016,7 +5046,7 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
     const bar = (label, value, color, key) => <div key={key || label} style={{ marginBottom: 9 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
         <span>{label}</span><span style={{ fontFamily: "var(--mono)" }}>{fmtC(value, S.rate, lang)}</span></div>
-      <div style={{ height: 10, background: "#ECE9E0", borderRadius: 6 }}>
+      <div style={{ height: 10, background: C.line, borderRadius: 6 }}>
         <div style={{ width: `${Math.min(100, (value / max) * 100)}%`, height: "100%", background: color, borderRadius: 6 }} /></div></div>;
     return <Card><Title>💵 {t("pl")}</Title>
       <div style={{ background: C.bg, borderRadius: 6, padding: 13, marginBottom: 10 }}>
@@ -6707,7 +6737,7 @@ function FarmApp() {
               <span style={{ fontFamily: "var(--mono)" }}>{(bytes / 1048576).toFixed(1)} MB</span>
               <span style={{ color: C.inkSoft, fontFamily: "var(--mono)" }}>{t("storageOf")} 4.4 MB</span>
             </div>
-            <div style={{ height: 8, background: "#ECE9E0", borderRadius: 99 }}>
+            <div style={{ height: 8, background: C.line, borderRadius: 99 }}>
               <div style={{ width: `${usedPct}%`, height: "100%", borderRadius: 99,
                 background: tight ? C.red : usedPct > 50 ? C.tag : C.green }} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11.5, color: C.inkSoft }}>
@@ -8210,7 +8240,8 @@ button,a,label,input,select,textarea{touch-action:manipulation}
 img{-webkit-user-drag:none}
 input,textarea,select{font-size:16px}
 button,input,textarea{font-family:var(--body)}
-button{transition:transform .14s var(--ease),box-shadow .14s var(--ease),opacity .12s ease,background .14s ease,border-color .14s ease}
+/* Explicit ink — OS dark mode otherwise paints ButtonText white on our light cards. */
+button{color:${C.ink};transition:transform .14s var(--ease),box-shadow .14s var(--ease),opacity .12s ease,background .14s ease,border-color .14s ease}
 button:hover{filter:brightness(1.02)}
 button:active{transform:translateY(1px) scale(.985);opacity:.92}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid ${C.tag};outline-offset:2px}
@@ -8227,6 +8258,8 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .app.theme-dark .dk-pill{background:${C.card};color:${C.ink}}
 .app.theme-dark .dk-search{background:${C.card};color:${C.inkSoft}}
 .app.theme-dark .pal-tile{background:${C.card}}
+.app.theme-dark .pal-tile:hover,.app.theme-dark .pal-tile.on{background:${C.paper};box-shadow:0 8px 20px rgba(0,0,0,.25)}
+.app.theme-dark .pal-tile.starred{background:${C.paper}}
 .app.theme-dark .set-sec{background:${C.card}}
 .app.theme-dark .money-tog-seg{background:${C.card}}
 .app.theme-dark .ctx-menu{background:${C.card}}
@@ -8351,7 +8384,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .banner.red{background:#F8E9EC;color:#7A1A2E;border-radius:12px;margin:8px 12px 0;border:1px solid ${C.red}44}
 .sheet-wrap{position:fixed;inset:0;background:${C.overlay};display:flex;align-items:center;
   justify-content:center;z-index:20;animation:fade .14s ease;padding:16px}
-.sheet{background:${C.paper};width:100%;max-width:560px;max-height:86vh;max-height:86dvh;overflow-y:auto;
+.sheet{background:${C.paper};color:${C.ink};width:100%;max-width:560px;max-height:86vh;max-height:86dvh;overflow-y:auto;
   overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
   border-radius:18px;border-top:3px solid ${C.tag};padding:12px 18px 18px;
   box-shadow:0 24px 60px rgba(12,58,49,.28);animation:rise .22s var(--ease)}
