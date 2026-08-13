@@ -12,9 +12,21 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.5.9", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.0": {
+    ar: [
+      "منصة الموردين: شراء → علينا حتى الدفع · ادفع الآن أو جزئيًا أو لاحقًا",
+      "لوحة مستحقات ومتأخر ومدفوع هذا الشهر · حساب المورد: فواتير مفتوحة ودفعات",
+      "الدفع الزائد يُحفظ كرصيد دائن للمورد",
+    ],
+    en: [
+      "Suppliers: purchase → we owe until paid · pay now, part, or later",
+      "Dashboard: total owed, overdue, paid this month · account: open bills & payments",
+      "Overpay is kept as supplier credit",
+    ],
+  },
   "2.5.9": {
     ar: [
       "تثبيت حفظ دفعات الموردين بدون تكرار عند التعديل",
@@ -301,23 +313,32 @@ const catLabel = (k, lang, custom) => {
 };
 const catIcon = (k, custom) => catMeta(k, custom).icon;
 const catColor = (k, custom) => catMeta(k, custom).color;
+/* Cent-based money — avoid float drift on pay / due / status. */
+const toCents = (n) => Math.round((+(n || 0)) * 100);
+const fromCents = (c) => +((c || 0) / 100).toFixed(2);
+const moneyStatus = (billC, paidC) => {
+  const dueC = Math.max(0, billC - paidC);
+  if (dueC <= 0) return "paid";
+  if (paidC <= 0) return "unpaid";
+  return "partial";
+};
 /* Cash that left the box for a non-supplier expense. Supplier bills use supplierPay. */
 const expenseCounted = (e) => {
   if (e.supplierId) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
-  if (st === "partial") return Math.min(e.amount || 0, e.paidAmount || 0);
-  return e.amount || 0;
+  if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
+  return fromCents(toCents(e.amount));
 };
 /* Full purchase cost for P&L (accrual) — owed or paid. */
-const expenseAccrued = (e) => +(e.amount || 0);
+const expenseAccrued = (e) => fromCents(toCents(e.amount));
 /* Paid portion that should become a supplierPay cash-out. */
 const supplierCashOut = (e) => {
   if (!e || !e.supplierId) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
-  if (st === "partial") return +Math.min(e.amount || 0, e.paidAmount || 0).toFixed(2);
-  return +(e.amount || 0);
+  if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
+  return fromCents(toCents(e.amount));
 };
 /* Older paid supplier bills may lack a supplierPay row — imply one for ledgers/cash. */
 function withImpliedSupplierPays(entries) {
@@ -381,7 +402,22 @@ const T = {
     addSupplier: "إضافة مورد", supplierName: "اسم المورد", supplierNote: "ملاحظة",
     supplierCreated: "تم إنشاء المورد", noSuppliers: "لا موردين بعد.",
     noSuppliersSub: "أضف مورّد علف أو دواء أو خدمات لتتبع ما تدين به.",
-    openSupplier: "فتح الحساب", paySupplier: "دفع للمورد", logSupplierBill: "تسجيل فاتورة",
+    openSupplier: "فتح الحساب", paySupplier: "دفع للمورد", logSupplierBill: "تسجيل شراء",
+    supplierBuy: "شراء من المورد", supplierBuySub: "يسجَّل كفاتورة علينا حتى تدفع",
+    supplierWhatBought: "ماذا اشتريت؟", supplierOpenBills: "فواتير مفتوحة",
+    supplierNoBills: "لا فواتير بعد — سجّل شراءً من هذا المورد",
+    supplierNoOpen: "لا فواتير غير مسددة", supplierPayThis: "ادفع",
+    supplierActivity: "كل الحركات", supplierBillsTab: "المستحقات", supplierPaysTab: "الدفعات",
+    supplierLeadOwe: "المبلغ المتبقي علينا لهذا المورد",
+    supplierLeadClear: "لا مستحقات — الحساب مسدّد",
+    payBillNow: "ادفع هذه الفاتورة",
+    supplierOutstanding: "إجمالي علينا", supplierOverdueKpi: "متأخر",
+    supplierPaidMonth: "مدفوع هذا الشهر", lastActivity: "آخر حركة",
+    statusClear: "مسدد", statusOwing: "علينا", statusOverdue: "متأخر",
+    payLater: "ادفع لاحقًا", payNowMode: "ادفع الآن", payPartialMode: "دفعة جزئية",
+    supplierCreditHint: "أي مبلغ فوق المستحق يُحفظ كرصيد دائن للمورد",
+    supplierCredit: "رصيد دائن",
+    saving: "جاري الحفظ…",
     totalBought: "إجمالي المشتريات", paidToSupplier: "المدفوع للمورد", weOwe: "علينا",
     supplierBills: "فواتير المورد", supplierPays: "دفعات المورد",
     pickSupplier: "اختر المورد", newSupplier: "مورد جديد", noSupplierLink: "بدون حساب مورد",
@@ -728,7 +764,22 @@ const T = {
     addSupplier: "Add supplier", supplierName: "Supplier name", supplierNote: "Note",
     supplierCreated: "Supplier created", noSuppliers: "No suppliers yet.",
     noSuppliersSub: "Add a feed, medicine or service supplier to track what you owe.",
-    openSupplier: "Open account", paySupplier: "Pay supplier", logSupplierBill: "Log bill",
+    openSupplier: "Open account", paySupplier: "Pay supplier", logSupplierBill: "Log purchase",
+    supplierBuy: "Buy from supplier", supplierBuySub: "Saved as a bill we owe until you pay",
+    supplierWhatBought: "What did you buy?", supplierOpenBills: "Open bills",
+    supplierNoBills: "No bills yet — log a purchase from this supplier",
+    supplierNoOpen: "No unpaid bills", supplierPayThis: "Pay",
+    supplierActivity: "All activity", supplierBillsTab: "Outstanding", supplierPaysTab: "Payments",
+    supplierLeadOwe: "Amount still owed to this supplier",
+    supplierLeadClear: "Nothing owed — account is clear",
+    payBillNow: "Pay this bill",
+    supplierOutstanding: "Total owed", supplierOverdueKpi: "Overdue",
+    supplierPaidMonth: "Paid this month", lastActivity: "Last activity",
+    statusClear: "Clear", statusOwing: "Owing", statusOverdue: "Overdue",
+    payLater: "Pay later", payNowMode: "Pay now", payPartialMode: "Partial pay",
+    supplierCreditHint: "Anything above what is owed is kept as supplier credit",
+    supplierCredit: "Supplier credit",
+    saving: "Saving…",
     totalBought: "Total bought", paidToSupplier: "Paid to supplier", weOwe: "We owe",
     supplierBills: "Supplier bills", supplierPays: "Supplier payments",
     pickSupplier: "Pick supplier", newSupplier: "New supplier", noSupplierLink: "No supplier account",
@@ -1751,35 +1802,58 @@ function buildSupplierLedger(entries, suppliers) {
   const bills = src.filter((e) => e.type === "expense" && e.supplierId)
     .slice().sort((a, b) => new Date(a.at) - new Date(b.at));
   const pays = src.filter((e) => e.type === "supplierPay");
-  const rec = {}; bills.forEach((b) => { rec[b.id] = 0; });
-  pays.filter((p) => p.expenseId && p.expenseId in rec).forEach((p) => { rec[p.expenseId] += p.amount || 0; });
-  const pool = {};
-  pays.filter((p) => !p.expenseId || !(p.expenseId in rec)).forEach((p) => {
-    pool[p.supplierId] = (pool[p.supplierId] || 0) + (p.amount || 0);
+  const recC = {}; bills.forEach((b) => { recC[b.id] = 0; });
+  pays.filter((p) => p.expenseId && p.expenseId in recC).forEach((p) => { recC[p.expenseId] += toCents(p.amount); });
+  const poolC = {};
+  pays.filter((p) => !p.expenseId || !(p.expenseId in recC)).forEach((p) => {
+    poolC[p.supplierId] = (poolC[p.supplierId] || 0) + toCents(p.amount);
+  });
+  /* Overpay on a linked bill spills into supplier credit. */
+  bills.forEach((b) => {
+    const billC = toCents(b.amount);
+    if (recC[b.id] > billC) {
+      poolC[b.supplierId] = (poolC[b.supplierId] || 0) + (recC[b.id] - billC);
+      recC[b.id] = billC;
+    }
   });
   const list = bills.map((b, i) => {
-    const remaining = Math.max(0, (b.amount || 0) - rec[b.id]);
-    const take = Math.min(remaining, pool[b.supplierId] || 0);
-    if (take > 0) { rec[b.id] += take; pool[b.supplierId] -= take; }
-    const paidAmount = +Math.min(b.amount || 0, rec[b.id]).toFixed(2);
-    const due = +Math.max(0, (b.amount || 0) - paidAmount).toFixed(2);
-    return { ...b, paidAmount, due, no: `BILL-${String(i + 1).padStart(4, "0")}`,
-      status: due <= 0.009 ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
-      lateDays: Math.floor((Date.now() - new Date(b.at)) / 864e5) };
+    const billC = toCents(b.amount);
+    let paidC = recC[b.id] || 0;
+    const need = Math.max(0, billC - paidC);
+    const take = Math.min(need, poolC[b.supplierId] || 0);
+    if (take > 0) { paidC += take; poolC[b.supplierId] -= take; recC[b.id] = paidC; }
+    const paidAmount = fromCents(Math.min(billC, paidC));
+    const due = fromCents(Math.max(0, billC - toCents(paidAmount)));
+    const dueDate = b.dueDate || dayKey(b.at);
+    const lateDays = due > 0 ? Math.max(0, Math.floor((Date.now() - new Date(dueDate)) / 864e5)) : 0;
+    return { ...b, paidAmount, due, dueDate, no: `BILL-${String(i + 1).padStart(4, "0")}`,
+      status: moneyStatus(billC, toCents(paidAmount)), lateDays, overdue: due > 0 && lateDays > 0 };
   });
   const bySupplier = {};
-  const blank = () => ({ bought: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
+  const blank = () => ({ bought: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0, openCount: 0, overdueDue: 0, lastAt: null });
   (suppliers || []).forEach((s) => { bySupplier[s.id] = blank(); });
   list.forEach((b) => {
     const row = bySupplier[b.supplierId] || (bySupplier[b.supplierId] = blank());
-    row.bought += b.amount || 0; row.paid += b.paidAmount; row.due += b.due; row.count += 1;
-    if (b.due > 0) row.oldest = Math.max(row.oldest, b.lateDays);
+    row.bought = fromCents(toCents(row.bought) + toCents(b.amount));
+    row.paid = fromCents(toCents(row.paid) + toCents(b.paidAmount));
+    row.due = fromCents(toCents(row.due) + toCents(b.due));
+    row.count += 1;
+    if (b.due > 0) {
+      row.openCount += 1;
+      row.oldest = Math.max(row.oldest, b.lateDays);
+      if (b.overdue) row.overdueDue = fromCents(toCents(row.overdueDue) + toCents(b.due));
+    }
+    if (!row.lastAt || new Date(b.at) > new Date(row.lastAt)) row.lastAt = b.at;
   });
-  Object.keys(pool).forEach((sid) => { if (bySupplier[sid] && pool[sid] > 0.009) bySupplier[sid].credit = +pool[sid].toFixed(2); });
-  Object.values(bySupplier).forEach((row) => {
-    row.bought = +row.bought.toFixed(2); row.paid = +row.paid.toFixed(2); row.due = +row.due.toFixed(2);
+  pays.forEach((p) => {
+    const row = bySupplier[p.supplierId];
+    if (!row) return;
+    if (!row.lastAt || new Date(p.at) > new Date(row.lastAt)) row.lastAt = p.at;
   });
-  return { list, bySupplier, pays, byBill: Object.fromEntries(list.map((b) => [b.id, b])) };
+  Object.keys(poolC).forEach((sid) => {
+    if (bySupplier[sid] && poolC[sid] > 0) bySupplier[sid].credit = fromCents(poolC[sid]);
+  });
+  return { list, bySupplier, pays: pays.filter((p) => !p.implied), byBill: Object.fromEntries(list.map((b) => [b.id, b])) };
 }
 function computeSums(list, S, workers, days) {
   const milk = milkTotals(list), eggs = prodTotals(list, "eggs");
@@ -2931,13 +3005,15 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
 function milkUnitOf(u) { return u === "kg" ? "kg" : "L"; }
 function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
 
-/* Bill / paid / remainder — no separate “part paid” mode. */
+/* Bill / paid / remainder — cent-safe; no separate “part paid” mode. */
 function payState(amount, paid) {
-  const bill = Math.max(0, +(amount || 0));
-  const got = +Math.max(0, Math.min(bill, +(paid || 0))).toFixed(2);
-  const due = +Math.max(0, bill - got).toFixed(2);
-  const status = due <= 0.009 ? "paid" : got <= 0.009 ? "unpaid" : "partial";
-  return { bill: +bill.toFixed(2), paid: got, due, status };
+  const billC = Math.max(0, toCents(amount));
+  const gotC = Math.max(0, Math.min(billC, toCents(paid)));
+  const dueC = Math.max(0, billC - gotC);
+  return {
+    bill: fromCents(billC), paid: fromCents(gotC), due: fromCents(dueC),
+    status: moneyStatus(billC, gotC),
+  };
 }
 function PaySplit({ amount, paid, onChange, rate, lang, t, supplierLinked }) {
   const p = payState(amount, paid);
@@ -3651,6 +3727,102 @@ function CustomerCreatedSheet({ lang, t, S, customer, acc, onViewFull, onView, o
 }
 
 const SUPPLIER_TAGS = [["feed", "🌾", "tagFeed"], ["med", "💊", "tagMed"], ["other", "📦", "tagOther"]];
+/* Common purchase types when logging a buy from a supplier (flat, one screen). */
+const SUPPLIER_BUY_CATS = [
+  "feed", "hay", "vet", "medicine", "livestock", "fuel", "repairs", "parts",
+  "electricity", "water", "supplies", "other",
+];
+
+/* One-screen purchase from a supplier: default owing; pay now / later / partial. */
+function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onClose, busy }) {
+  const cats = (() => {
+    const keys = [...SUPPLIER_BUY_CATS];
+    (custom || []).forEach((c) => { if (c.key && !keys.includes(c.key)) keys.push(c.key); });
+    return keys.map((k) => ({
+      key: k, icon: catIcon(k, custom), label: catLabel(k, lang, custom), color: catColor(k, custom),
+    }));
+  })();
+  const [cat, setCat] = useState(initial?.category || "feed");
+  const [amount, setAmount] = useState(initial?.amount || 0);
+  const initPaid = initial
+    ? (initial.payStatus === "paid" || !initial.payStatus ? (initial.amount || 0) : (initial.paidAmount || 0))
+    : 0;
+  const [paidAmount, setPaidAmount] = useState(initial ? initPaid : 0);
+  const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
+  const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
+  const [note, setNote] = useState(initial?.note || "");
+  const [cur, setCur] = useState(initial?.currency || "usd");
+  const pay = payState(amount, paidAmount);
+  const mode = pay.status === "paid" ? "now" : pay.status === "partial" ? "partial" : "later";
+  const setBill = (v) => {
+    const next = fromCents(toCents(v));
+    setAmount(next);
+    setPaidAmount((p) => fromCents(Math.min(toCents(p), toCents(next))));
+  };
+  const setMode = (m) => {
+    if (m === "later") setPaidAmount(0);
+    else if (m === "now") setPaidAmount(amount);
+    else setPaidAmount((p) => (p > 0 && p < amount ? p : fromCents(Math.round(toCents(amount) / 2))));
+  };
+  const save = () => {
+    if (busy || !(amount > 0) || !cat) return;
+    onSave({
+      id: initial?.id, category: cat, amount: pay.bill, note: note.trim(),
+      vendor: supplier.name, supplierId: supplier.id, supplier: supplier.name,
+      at: dayStamp(date), currency: cur, rateUsed: S.rate,
+      payStatus: pay.status, paidAmount: pay.paid,
+      dueDate: pay.status === "paid" ? "" : dueDate,
+      group: expGroupOf(cat) || "otherGrp",
+    });
+  };
+  return <Sheet title={initial ? `✏️ ${t("logSupplierBill")}` : `🧾 ${t("supplierBuy")}`}
+    sub={supplier.name} onClose={onClose}>
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 6, padding: "10px 12px",
+      marginBottom: 14, fontSize: 13, fontWeight: 600, color: C.inkSoft, lineHeight: 1.45 }}>
+      💡 {t("supplierBuySub")}
+    </div>
+    <Step n="1" label={t("supplierWhatBought")} />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
+      {cats.map((c) => {
+        const on = cat === c.key;
+        return <button type="button" key={c.key} onClick={() => setCat(c.key)} style={{
+          background: on ? c.color : C.card, color: on ? "#fff" : C.ink,
+          border: `1.5px solid ${on ? c.color : C.line}`, borderRadius: 6, padding: "10px 4px",
+          cursor: "pointer", fontFamily: "var(--body)" }}>
+          <div style={{ fontSize: 20, lineHeight: 1 }}>{c.icon}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 4, lineHeight: 1.2,
+            color: on ? "#fff" : C.ink }}>{c.label}</div>
+        </button>;
+      })}
+    </div>
+    <Step n="2" label={t("billTotal")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="3" label={t("amountPaid")} />
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <Chip active={mode === "later"} onClick={() => setMode("later")} color={C.red}>{t("payLater")}</Chip>
+      <Chip active={mode === "now"} onClick={() => setMode("now")} color={C.green}>{t("payNowMode")}</Chip>
+      <Chip active={mode === "partial"} onClick={() => setMode("partial")} color={C.amber}>{t("payPartialMode")}</Chip>
+    </div>
+    <PaySplit amount={amount} paid={paidAmount} onChange={setPaidAmount} rate={S.rate} lang={lang} t={t}
+      supplierLinked />
+    {pay.status !== "paid" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
+      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    </>}
+    <Step n="4" label={`${t("colDate")} — ${dmy(date)}`} />
+    <input type="date" value={date} max={dayKey(Date.now())}
+      onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes2")} — {t("optional")}</div>
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")}
+      style={{ ...inp, marginBottom: 16 }} />
+    <button type="button" disabled={busy || !(amount > 0) || !cat}
+      style={{ ...primaryBtn, opacity: busy || !(amount > 0) || !cat ? .45 : 1 }}
+      onClick={save}>{busy ? t("saving") : `✓ ${t("save")}`}</button>
+  </Sheet>;
+}
 
 function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || "");
@@ -3684,163 +3856,195 @@ function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
   </Sheet>;
 }
 
-function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose }) {
-  const b = ledger.bySupplier[supplier.id] || { due: 0, credit: 0 };
-  const open = ledger.list.filter((x) => x.supplierId === supplier.id && x.due > 0);
-  const [amount, setAmount] = useState(b.due > 0 ? b.due : 0);
+function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBillId, busy }) {
+  const b = ledger.bySupplier[supplier.id] || { due: 0, credit: 0, paid: 0 };
+  const open = ledger.list.filter((x) => x.supplierId === supplier.id && x.due > 0)
+    .slice().sort((a, c) => new Date(a.at) - new Date(c.at));
+  const startBill = preBillId && open.some((x) => x.id === preBillId) ? preBillId : null;
+  const pickDue = (id) => {
+    if (!id) return b.due;
+    const hit = open.find((x) => x.id === id);
+    return hit ? hit.due : b.due;
+  };
+  const [billId, setBillId] = useState(startBill);
+  const [amount, setAmount] = useState(pickDue(startBill));
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
-  const [billId, setBillId] = useState(null);
+  const selected = billId ? open.find((x) => x.id === billId) : null;
+  const overCap = selected
+    ? fromCents(Math.max(0, toCents(amount) - toCents(selected.due)))
+    : fromCents(Math.max(0, toCents(amount) - toCents(b.due)));
+  const save = () => {
+    const amt = fromCents(toCents(amount));
+    if (busy || !(amt > 0)) return;
+    onSave({
+      supplierId: supplier.id, amount: amt, method, note: note.trim(),
+      expenseId: billId || null, vendor: supplier.name, at: dayStamp(dayKey(Date.now())),
+    });
+  };
   return <Sheet title={`💵 ${t("paySupplier")}`} sub={supplier.name} onClose={onClose}>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 14 }}>
       <Kpi label={t("weOwe")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
-      <Kpi label={t("paidToSupplier")} value={fmtC(b.paid || 0, S.rate, lang)} tone={C.green} />
-    </div>
-    <Step n="1" label={t("amount")} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 12 }}>
-      <MoneyStepper usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} />
+      <Kpi label={t("supplierCredit")} value={fmtC(b.credit || 0, S.rate, lang)} tone={C.green} />
     </div>
     {open.length > 0 && <>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("supplierBills")}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("supplierOpenBills")}</div>
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-        <Chip active={!billId} onClick={() => setBillId(null)}>{t("allocAuto")}</Chip>
-        {open.slice(0, 6).map((bill) => (
-          <Chip key={bill.id} active={billId === bill.id} onClick={() => { setBillId(bill.id); setAmount(bill.due); }}
-            color={C.red}>{bill.no} · {fmtC(bill.due, S.rate, lang)}</Chip>))}
+        <Chip active={!billId} onClick={() => { setBillId(null); setAmount(b.due); }}>{t("allocAuto")}</Chip>
+        {open.map((bill) => (
+          <Chip key={bill.id} active={billId === bill.id}
+            onClick={() => { setBillId(bill.id); setAmount(bill.due); }}
+            color={bill.overdue ? C.red : C.amber}>
+            {bill.no} · {fmtC(bill.due, S.rate, lang)}{bill.overdue ? ` · ${t("overdue")}` : ""}
+          </Chip>))}
       </div>
     </>}
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 10 }}>
+      <MoneyStepper usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} />
+    </div>
+    {overCap > 0.009 && <div style={{ background: "#E6F6F0", color: "#0F5C4D", borderRadius: 4, padding: "8px 10px",
+      marginBottom: 12, fontSize: 12.5, fontWeight: 600 }}>💡 {t("supplierCreditHint")} · {fmtC(overCap, S.rate, lang)}</div>}
     <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
       <Chip active={method === "cash"} onClick={() => setMethod("cash")}>{t("cash")}</Chip>
       <Chip active={method === "transfer"} onClick={() => setMethod("transfer")}>{t("transfer")}</Chip>
     </div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")} style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({ supplierId: supplier.id, amount, method, note: note.trim(),
-        expenseId: billId, vendor: supplier.name, at: dayStamp(dayKey(Date.now())) })}>✓ {t("save")}</button>
+    <button type="button" disabled={busy || !(amount > 0)}
+      style={{ ...primaryBtn, opacity: busy || !(amount > 0) ? .45 : 1 }}
+      onClick={save}>{busy ? t("saving") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
 
-function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay, onManage, no }) {
-  const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
+function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay, onManage, onEditBill, no }) {
+  const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0, openCount: 0, overdueDue: 0 };
   const [sort, setSort] = useState("newest");
-  const [status, setStatus] = useState("all");
-  const [filtOpen, setFiltOpen] = useState(false);
   const newest = sort !== "oldest";
   const byDate = (a, c) => newest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
-  const allBills = ledger.list.filter((x) => x.supplierId === supplier.id);
-  const bills = allBills.filter((x) => status === "all" || x.status === status).slice().sort(byDate);
-  const pays = entries.filter((e) => e.type === "supplierPay" && e.supplierId === supplier.id)
-    .slice().sort(byDate);
+  const allBills = ledger.list.filter((x) => x.supplierId === supplier.id).slice().sort(byDate);
+  const openBills = allBills.filter((x) => x.due > 0.009);
+  const pays = (ledger.pays || entries.filter((e) => e.type === "supplierPay" && !e.implied))
+    .filter((e) => e.supplierId === supplier.id && !e.implied).slice().sort(byDate);
   const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : t("unpaid"));
   const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
-  const filtActive = status !== "all" ? 1 : 0;
-
-  const Overview = (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
-        <Kpi label={t("totalBought")} value={fmtC(b.bought, S.rate, lang)} />
-        <Kpi label={t("paidToSupplier")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
-        <Kpi label={t("weOwe")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
-        <Kpi label={t("txCount")} value={nf(bills.length)} tone={C.inkSoft} />
-      </div>
-      {b.credit > 0 && <div style={{ background: "#E0EFED", borderRadius: 4, padding: 11, fontWeight: 700, color: C.green }}>
-        ＋ {t("credit")}: {fmtC(b.credit, S.rate, lang)}</div>}
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-        {supplier.phone && <Row k={t("phone")} v={supplier.phone} />}
-        {(supplier.tags || []).length > 0 && <Row k={t("supplierTags")} v={(supplier.tags || []).map(tagLb).join(" · ")} />}
-        {supplier.note && <Row k={t("supplierNote")} v={supplier.note} />}
-        <Row k={t("since")} v={dmy(supplier.at)} />
-        <Row k={t("oldestDebt")} v={b.due > 0 && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
-          tone={b.due > 0 && b.oldest > 30 ? C.red : b.due > 0 && b.oldest > 0 ? C.amber : C.green} />
-      </div>
-      <div style={{ display: "grid", gap: 9 }}>
-        <button type="button" style={primaryBtn} onClick={onBill}>🧾 {t("logSupplierBill")}</button>
-        <div style={{ display: "flex", gap: 9 }}>
-          <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={onPay}>💵 {t("paySupplier")}</button>
-          <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={() => setTab("transactions")}>📊 {t("transactions")} ›</button>
-        </div>
-      </div>
-      {onManage && <button type="button" style={{ ...secondaryBtn, color: C.inkSoft, fontSize: 13.5 }} onClick={onManage}>⚙️ {t("manageSupplier")}</button>}
+  const activeTab = ["open", "payments", "all"].includes(tab) ? tab : (tab === "activity" ? "all" : "open");
+  const billTable = (rows, emptyMsg, { showPay } = {}) => (
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, overflowX: "auto" }}>
+      {rows.length === 0
+        ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div>
+        : <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
+            <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
+            <Th>{t("colStatus")}</Th>
+            {showPay ? <Th align="center">{t("actions")}</Th> : null}
+          </tr></thead>
+          <tbody>
+            {rows.map((bill) => (
+              <tr key={bill.id} style={{ cursor: onEditBill ? "pointer" : "default" }}
+                onClick={() => onEditBill && onEditBill(bill.id)}>
+                <Td mono>{dmy(bill.at)}</Td>
+                <Td mono tone={C.field}>{bill.no}</Td>
+                <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                  {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}
+                  {bill.overdue ? <span style={{ display: "block", fontSize: 11.5, color: C.red, fontWeight: 700 }}>{t("overdue")}</span> : null}
+                </Td>
+                <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
+                <Td align="end" mono tone={C.green}>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
+                <Td align="end" mono strong tone={bill.due > 0 ? C.red : C.inkSoft}>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
+                <Td><span style={{ border: `1.5px solid ${statusTone(bill.status)}`, color: statusTone(bill.status),
+                  borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusText(bill.status)}</span></Td>
+                {showPay ? <Td align="center">{bill.due > 0.009
+                  ? <button type="button" className="dk-pill"
+                    onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button>
+                  : "—"}</Td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>}
     </div>
   );
-
-  const Transactions = (
+  const Pays = (
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
+      {pays.length === 0
+        ? <div style={{ padding: 12, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
+        : <div style={{ display: "grid", gap: 7 }}>
+          {pays.map((p2) => (
+            <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
+              <span style={{ fontSize: 13 }}>
+                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
+                {p2.expenseId ? ` · ${t("invoice")}` : ` · ${t("allocAuto")}`}
+                {p2.note ? ` · ${p2.note}` : ""}</span>
+              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{fmtC(p2.amount, S.rate, lang)}</span>
+            </div>))}
+        </div>}
+    </div>
+  );
+  const Activity = (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <SortControl value={sort} onChange={setSort} label={t("sortBy")}
           options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />
       </div>
-      <FilterTray open={filtOpen} onToggle={() => setFiltOpen((o) => !o)} t={t} active={filtActive}
-        end={filtActive ? <button type="button" className="dk-pill" onClick={() => setStatus("all")}>✕ {t("clearFilters")}</button> : null}>
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-          {[["all", t("statusAll")], ["paid", t("paidS")], ["partial", t("partial")], ["unpaid", t("unpaid")]].map(([k, lb]) => (
-            <Chip key={k} active={status === k} onClick={() => setStatus(k)}
-              color={k === "all" ? C.field : statusTone(k)}>{lb}</Chip>))}
-        </div>
-      </FilterTray>
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, overflowX: "auto" }}>
-        {bills.length === 0
-          ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
-          : <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
-              <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("colDue")}</Th>
-              <Th>{t("colStatus")}</Th>
-            </tr></thead>
-            <tbody>
-              {bills.map((bill) => (
-                <tr key={bill.id}>
-                  <Td mono>{dmy(bill.at)}</Td>
-                  <Td mono tone={C.field}>{bill.no}</Td>
-                  <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
-                    {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</Td>
-                  <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
-                  <Td align="end" mono tone={C.green}>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong tone={bill.due > 0 ? C.red : C.inkSoft}>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
-                  <Td><span style={{ border: `1.5px solid ${statusTone(bill.status)}`, color: statusTone(bill.status),
-                    borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusText(bill.status)}</span></Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>}
-      </div>
-      {pays.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>💵 {t("supplierPays")}</div>
-        <div style={{ display: "grid", gap: 7 }}>
-          {pays.slice(0, 20).map((p2) => (
-            <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
-              <span style={{ fontSize: 13 }}>
-                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
-                {p2.note ? ` · ${p2.note}` : ""}</span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{nf(p2.amount)}</span>
-            </div>))}
-        </div>
-      </div>}
+      {billTable(allBills, t("supplierNoBills"))}
+      {pays.length > 0 && <>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>💵 {t("supplierPays")}</div>
+        {Pays}
+      </>}
     </div>
   );
 
   return <div style={{ display: "grid", gap: 12 }}>
-    <div style={{ display: "flex", gap: 12, alignItems: "center", background: C.card, border: `1px solid ${C.line}`,
-      borderRadius: 8, padding: "12px 14px" }}>
-      <div style={{ width: 44, height: 44, borderRadius: 8, background: C.field, color: "#fff", display: "grid",
-        placeItems: "center", fontWeight: 800, fontFamily: "var(--mono)", fontSize: 13 }}>{initials(supplier.name)}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 17 }}>{supplier.name}</div>
-        <div style={{ fontSize: 12.5, color: C.inkSoft, fontFamily: "var(--mono)" }}>{no}</div>
+    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", background: C.card,
+      border: `1px solid ${C.line}`, borderRadius: 8, padding: "14px 16px" }}>
+      <div style={{ width: 48, height: 48, borderRadius: 10, background: C.field, color: "#fff", display: "grid",
+        placeItems: "center", fontWeight: 800, fontFamily: "var(--mono)", fontSize: 14 }}>{initials(supplier.name)}</div>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>{supplier.name}</div>
+        <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 2 }}>
+          {no}{(supplier.tags || []).length ? ` · ${(supplier.tags || []).map(tagLb).join(" · ")}` : ""}
+          {supplier.phone ? ` · ${supplier.phone}` : ""}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: b.due > 0 ? C.red : C.green, marginTop: 4 }}>
+          {b.due > 0 ? t("supplierLeadOwe") : t("supplierLeadClear")}
+        </div>
       </div>
-      <div style={{ textAlign: "end" }}>
-        <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600 }}>{t("weOwe")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 18, color: moneyColor("due", b.due) }}>
+      <div style={{ textAlign: "end", background: b.due > 0 ? "#FBEFEF" : "#E8F2EC", borderRadius: 8,
+        padding: "10px 14px", border: `1px solid ${b.due > 0 ? "#EFD5D5" : "#CFE5D8"}` }}>
+        <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 700 }}>{t("weOwe")}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 22, color: moneyColor("due", b.due) }}>
           {fmtC(b.due, S.rate, lang)}</div>
+        {b.credit > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginTop: 2 }}>
+          ＋ {t("supplierCredit")} {fmtC(b.credit, S.rate, lang)}</div>}
       </div>
     </div>
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      {[["overview", `📋 ${t("overview")}`], ["transactions", `📊 ${t("transactions")} · ${bills.length}`]].map(([k, lb]) => (
-        <Chip key={k} active={tab === k} onClick={() => setTab(k)}>{lb}</Chip>))}
+      <button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px" }} onClick={onBill}>
+        ＋ {t("logSupplierBill")}</button>
+      <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "10px 16px" }} onClick={() => onPay(null)}>
+        💵 {t("paySupplier")}</button>
+      {onManage && <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "10px 14px", color: C.inkSoft }}
+        onClick={onManage}>⚙️ {t("manageSupplier")}</button>}
     </div>
-    {tab === "overview" ? Overview : Transactions}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
+      <Kpi label={t("totalBought")} value={fmtC(b.bought, S.rate, lang)} />
+      <Kpi label={t("paidToSupplier")} value={fmtC(b.paid, S.rate, lang)} tone={C.green} />
+      <Kpi label={t("supplierOpenBills")} value={nf(b.openCount || openBills.length)} tone={C.amber} />
+      <Kpi label={t("supplierOverdueKpi")} value={fmtC(b.overdueDue || 0, S.rate, lang)}
+        tone={moneyColor("due", b.overdueDue || 0)} />
+    </div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {[
+        ["open", `📋 ${t("supplierBillsTab")} · ${openBills.length}`],
+        ["payments", `💵 ${t("supplierPaysTab")} · ${pays.length}`],
+        ["all", `📊 ${t("supplierActivity")}`],
+      ].map(([k, lb]) => <Chip key={k} active={activeTab === k} onClick={() => setTab(k)}>{lb}</Chip>)}
+    </div>
+    {activeTab === "payments" ? Pays
+      : activeTab === "all" ? Activity
+        : billTable(openBills, t("supplierNoOpen"), { showPay: true })}
   </div>;
 }
 
@@ -5629,7 +5833,7 @@ function FarmApp() {
   const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "", sort: "newest" });
   const [selSupp, setSelSupp] = useState(null);
   const [openSupp, setOpenSupp] = useState([]);
-  const [suppTab, setSuppTab] = useState("overview");
+  const [suppTab, setSuppTab] = useState("open");
   const [suppQ, setSuppQ] = useState("");
   const [milkSess, setMilkSess] = useState(() => (new Date().getHours() < 14 ? "am" : "pm"));
   const [milkUnitDraft, setMilkUnitDraft] = useState(null);
@@ -5773,7 +5977,7 @@ function FarmApp() {
     setOpenSupp((list) => (list.includes(id) ? list : [...list, id]));
     setSelSupp(id);
     if (tab) setSuppTab(tab);
-    else setSuppTab("overview");
+    else setSuppTab("open");
   };
   const openAccountFull = (id, tab = "transactions") => {
     setSheet(null);
@@ -7607,6 +7811,19 @@ function FarmApp() {
     return `${s.name} ${s.phone || ""} ${(s.tags || []).join(" ")}`.toLowerCase().includes(q);
   }).slice().sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en", { sensitivity: "base" }));
 
+  const supplierDash = useMemo(() => {
+    const month = dayKey(Date.now()).slice(0, 7);
+    let owed = 0, overdue = 0, paidMonth = 0;
+    Object.values(supplierLedger.bySupplier || {}).forEach((row) => {
+      owed = fromCents(toCents(owed) + toCents(row.due));
+      overdue = fromCents(toCents(overdue) + toCents(row.overdueDue || 0));
+    });
+    (supplierLedger.pays || []).forEach((p) => {
+      if (dayKey(p.at).slice(0, 7) === month) paidMonth = fromCents(toCents(paidMonth) + toCents(p.amount));
+    });
+    return { owed, overdue, paidMonth };
+  }, [supplierLedger]);
+
   const DeskSuppliers = (
     <div style={{ display: "grid", gap: 14 }}>
       {openSupp.length > 0 && (
@@ -7620,7 +7837,7 @@ function FarmApp() {
               background: on ? C.field : C.paper, color: on ? "#fff" : C.ink,
               border: `1px solid ${on ? C.field : C.line}`, borderBottom: `3px solid ${on ? C.field : C.line}`,
               borderRadius: "4px 4px 0 0", padding: "7px 10px", fontSize: 13.5, fontWeight: 600 }}>
-              <button type="button" onClick={() => setSelSupp(id)}
+              <button type="button" onClick={() => { setSelSupp(id); setSuppTab("open"); }}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
                   fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
                 {s.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {nm(due)}</span> : ""}</button>
@@ -7632,14 +7849,18 @@ function FarmApp() {
       {selSupplier
         ? <DeskCard title={`🤝 ${selSupplier.name}`}
             right={<div style={{ display: "flex", gap: 7 }}>
-              <button type="button" className="dk-pill" onClick={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}>💵 {t("paySupplier")}</button>
+              <button type="button" className="dk-pill"
+                onClick={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}>＋ {t("logSupplierBill")}</button>
+              <button type="button" className="dk-pill"
+                onClick={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}>💵 {t("paySupplier")}</button>
               <button type="button" className="dk-pill" onClick={() => setSelSupp(null)}>‹ {t("backToSuppliers")}</button>
             </div>}>
             <SupplierAccount supplier={selSupplier} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
               no={supplierNo(suppliers, selSupplier.id)}
-              tab={suppTab} setTab={setSuppTab}
-              onBill={() => setSheet({ k: "expense", preSupplierId: selSupplier.id })}
-              onPay={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}
+              tab={["open", "payments", "all", "activity"].includes(suppTab) ? suppTab : "open"} setTab={setSuppTab}
+              onBill={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}
+              onPay={(billId) => setSheet({ k: "paySupplier", sid: selSupplier.id, billId: billId || null })}
+              onEditBill={(id) => setSheet({ k: "supplierBill", sid: selSupplier.id, id })}
               onManage={() => setSheet({ k: "editSupplier", sid: selSupplier.id })} />
           </DeskCard>
         : <DeskCard pad={0} title={`🤝 ${t("suppliers")} · ${activeSuppliers.length}`}
@@ -7649,6 +7870,14 @@ function FarmApp() {
               ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noSuppliers")} sub={t("noSuppliersSub")}
                   cta={`＋ ${t("addSupplier")}`} onCta={() => setSheet({ k: "addSupplier" })} /></div>
               : <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9,
+                  padding: "12px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
+                  <Kpi label={t("supplierOutstanding")} value={fmtC(supplierDash.owed, S.rate, lang)}
+                    tone={moneyColor("due", supplierDash.owed)} />
+                  <Kpi label={t("supplierOverdueKpi")} value={fmtC(supplierDash.overdue, S.rate, lang)}
+                    tone={moneyColor("due", supplierDash.overdue)} />
+                  <Kpi label={t("supplierPaidMonth")} value={fmtC(supplierDash.paidMonth, S.rate, lang)} tone={C.green} />
+                </div>
                 <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
                   <input value={suppQ} onChange={(e) => setSuppQ(e.target.value)} placeholder={t("searchSuppliers")}
                     style={{ ...inp, padding: "8px 10px", fontSize: 14 }} />
@@ -7658,22 +7887,28 @@ function FarmApp() {
                     <thead><tr>
                       <Th w={90}>{t("accountNo")}</Th>
                       <Th>{t("supplierName")}</Th>
-                      <Th w={120} align="end">{t("totalBought")}</Th>
-                      <Th w={110} align="end">{t("paidToSupplier")}</Th>
+                      <Th w={100}>{t("colStatus")}</Th>
                       <Th w={120} align="end">{t("weOwe")}</Th>
+                      <Th w={110} align="end">{t("paidToSupplier")}</Th>
+                      <Th w={120}>{t("lastActivity")}</Th>
                       <Th w={100} align="center">{t("actions")}</Th>
                     </tr></thead>
                     <tbody>
                       {filteredSuppliers.map((s) => {
-                        const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0 };
+                        const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
+                        const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+                        const stTone = st === "overdue" ? C.red : st === "owing" ? C.amber : C.green;
+                        const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
                         return <tr key={s.id} onClick={() => openSupplier(s.id)} style={{ cursor: "pointer" }}>
                           <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
                           <Td strong>{s.name}
                             {s.phone ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft, fontWeight: 500 }}>{s.phone}</span> : null}
                           </Td>
-                          <Td align="end" mono>{fmtC(bal.bought, S.rate, lang)}</Td>
-                          <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
+                          <Td><span style={{ border: `1.5px solid ${stTone}`, color: stTone, borderRadius: 2,
+                            padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{stLb}</span></Td>
                           <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
+                          <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
+                          <Td mono tone={C.inkSoft}>{bal.lastAt ? dmy(bal.lastAt) : "—"}</Td>
                           <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
                             className="dk-pill">{t("openSupplier")} ›</button></Td>
                         </tr>;
@@ -7933,28 +8168,69 @@ function FarmApp() {
             }} />;
         })()}
 
+        {sheet?.k === "supplierBill" && (() => {
+          const s = suppliers.find((x) => x.id === sheet.sid);
+          if (!s) return null;
+          const initial = sheet.id
+            ? entries.find((x) => x.id === sheet.id && x.type === "expense" && x.supplierId === s.id)
+            : null;
+          return <SupplierBillSheet key={sheet.id || "new-bill"} supplier={s} lang={lang} t={t} S={S}
+            custom={S.categories} initial={initial || undefined} busy={busy}
+            onClose={() => returnToSupplier(s.id)}
+            onSave={(v) => {
+              if (busy) return;
+              if (initial) {
+                const { es, list, sid, changed, expense } = resolveSupplierPatch({ ...v, id: initial.id });
+                const payRow = es.find((x) => x.type === "supplierPay");
+                rewriteEntries((rows) => {
+                  let next = (rows || [])
+                    .filter((x) => !(x.type === "supplierPay" && x.expenseId === initial.id))
+                    .map((x) => (x.id === initial.id ? { ...x, ...expense, id: initial.id, type: "expense" } : x));
+                  if (!next.some((x) => x.id === initial.id)) next = [{ type: "expense", ...expense }, ...next];
+                  if (payRow) {
+                    const now = iso(Date.now());
+                    next = [{ ...payRow, id: uid(), loggedAt: now, byId: me?.id || null, byName: me ? me.name : "—" }, ...next];
+                  }
+                  return next;
+                }, t("saved"));
+                if (changed) commit([], { suppliers: list });
+                returnToSupplier(sid || s.id);
+                return;
+              }
+              const { es, list, sid, changed } = resolveSupplierPatch(v);
+              commit(es, changed ? { suppliers: list } : null);
+              returnToSupplier(sid || s.id);
+              ping(t("saved"));
+            }} />;
+        })()}
+
         {sheet?.k === "paySupplier" && (() => {
           const s = suppliers.find((x) => x.id === sheet.sid);
           if (!s) return null;
           return <PaySupplierSheet supplier={s} ledger={supplierLedger} lang={lang} t={t} S={S}
+            preBillId={sheet.billId || null} busy={busy}
             onClose={() => returnToSupplier(s.id)}
             onSave={(v) => {
+              if (busy) return;
               rewriteEntries((rows) => {
                 const now = iso(Date.now());
+                const payAmt = fromCents(toCents(v.amount));
                 const pay = {
-                  type: "supplierPay", id: uid(), ...v, loggedAt: now,
+                  type: "supplierPay", id: uid(), ...v, amount: payAmt, loggedAt: now,
                   byId: me?.id || null, byName: me ? me.name : "—",
                 };
                 let next = [pay, ...(rows || [])];
                 if (v.expenseId) {
                   const bill = (rows || []).find((x) => x.id === v.expenseId && x.type === "expense");
                   if (bill) {
-                    const prevPaid = (rows || [])
+                    const prevPaidC = (rows || [])
                       .filter((x) => x.type === "supplierPay" && x.expenseId === v.expenseId)
-                      .reduce((a, p) => a + (p.amount || 0), 0);
-                    const paid = +Math.min(bill.amount || 0, prevPaid + (v.amount || 0)).toFixed(2);
-                    const due = +Math.max(0, (bill.amount || 0) - paid).toFixed(2);
-                    const payStatus = due <= 0.009 ? "paid" : paid > 0.009 ? "partial" : "unpaid";
+                      .reduce((a, p) => a + toCents(p.amount), 0);
+                    const billC = toCents(bill.amount);
+                    const paidC = Math.min(billC, prevPaidC + toCents(payAmt));
+                    const paid = fromCents(paidC);
+                    const due = fromCents(Math.max(0, billC - paidC));
+                    const payStatus = moneyStatus(billC, paidC);
                     next = next.map((x) => (x.id === v.expenseId
                       ? { ...x, paidAmount: paid, payStatus, dueDate: payStatus === "paid" ? "" : (x.dueDate || "") }
                       : x));
