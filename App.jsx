@@ -12,19 +12,31 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.4.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.5.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
-  "2.4.5": {
+  "2.5.1": {
     ar: [
-      "معاينة المستند داخل التطبيق قبل الطباعة (فواتير · إيصالات · كشوف · تقارير)",
-      "صندوق النقد ومزامنة الشركة وإعادة تعيين الرمز",
-      "ترتيب حركات الحساب من الأحدث للأقدم",
+      "دفعات الموردين تظهر بوضوح في صندوق النقد",
+      "تصفية قابلة للطي — أقل تشتيتًا",
+      "ترتيب: تبديل لخيارين أو قائمة لأكثر",
     ],
     en: [
-      "In-app document preview before printing (invoices · receipts · statements · reports)",
-      "Cash box, company sync, and passcode reset",
-      "Sort account transactions newest ↔ oldest",
+      "Supplier payments clearer in the cash box",
+      "Collapsible filters — less clutter",
+      "Sort: toggle for two options, dropdown for more",
+    ],
+  },
+  "2.5.0": {
+    ar: [
+      "حسابات الموردين — فواتير العلف والدواء وغيرها مع رصيد مستحق ودفعات",
+      "معاينة المستندات قبل الطباعة",
+      "صندوق النقد ومزامنة الشركة",
+    ],
+    en: [
+      "Supplier accounts — feed, medicine and other bills with balance due and payments",
+      "In-app document preview before printing",
+      "Cash box and company sync",
     ],
   },
 };
@@ -41,12 +53,12 @@ const LEGACY = { shared: "alreif-farm-v3", device: "alreif-device-v3", cloud: "a
 /* Soft forest themes — grey-tinted light for eye comfort, plus dark mode. */
 const THEMES = {
   light: {
-    ink: "#1A2420", inkSoft: "#5A6B64", line: "#B8C5BF", rule: "#9AAEA5",
+    ink: "#1A2420", inkSoft: "#5E6E67", line: "#C2CDC8", rule: "#A4B5AC",
     field: "#1B6B5A", fieldDeep: "#0C3A31", tag: "#C9A227",
-    bg: "#C9D3CE", card: "#DDE5E1", paper: "#D4DDD8",
+    bg: "#D0D8D3", card: "#E4EBE7", paper: "#DAE2DD",
     green: "#1F8F72", amber: "#C4842D", red: "#B53A4A", blue: "#2A5F6E",
-    glow: "rgba(27,107,90,.12)", glowGold: "rgba(201,162,39,.10)",
-    shadow: "rgba(21,42,36,.08)", overlay: "rgba(18,28,24,.48)",
+    glow: "rgba(27,107,90,.10)", glowGold: "rgba(201,162,39,.08)",
+    shadow: "rgba(21,42,36,.06)", overlay: "rgba(18,28,24,.45)",
   },
   dark: {
     ink: "#E6F0EB", inkSoft: "#9AADA4", line: "#2C3F38", rule: "#3A5249",
@@ -220,6 +232,8 @@ const catLabel = (k, lang, custom) => {
 const catIcon = (k, custom) => catMeta(k, custom).icon;
 const catColor = (k, custom) => catMeta(k, custom).color;
 const expenseCounted = (e) => {
+  /* Supplier-linked bills are settled via supplierPay — avoid double cash-out. */
+  if (e.supplierId) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
   if (st === "partial") return Math.min(e.amount || 0, e.paidAmount || 0);
@@ -249,7 +263,7 @@ const T = {
     cashFilterAll: "الكل", cashFilterIn: "قبض فقط", cashFilterOut: "صرف فقط",
     cashEmpty: "لا حركات نقدية في هذه الفترة.", cashTotals: "المجموع",
     cashExport: "تصدير Excel", cashAccount: "الصندوق / المزرعة",
-    animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", reports: "التقارير", settings: "الإعدادات",
+    animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", suppliers: "الموردون", reports: "التقارير", settings: "الإعدادات",
     farmWork: "عمل المزرعة", officeWork: "عمل المكتب",
     obligations: "الالتزامات", addObligation: "إضافة فاتورة دورية", obligationTypes: "نوع الالتزام",
     contract: "عقد", recurringBill: "فاتورة دورية", rent: "إيجار",
@@ -262,6 +276,17 @@ const T = {
     stillToPay: "لم تُدفع بعد", paidToday: "مدفوعة", expPaid: "مدفوعة", expPartial: "دفعة جزئية", expUnpaid: "غير مدفوعة",
     higherThanUsual: "أعلى من المعتاد", thisWeek: "هذا الأسبوع", thisMonth: "هذا الشهر", lastMonth: "الشهر الماضي",
     customRange: "فترة مخصصة", searchExpenses: "ابحث عن فاتورة أو مورد…", vendor: "المورد / الجهة",
+    addSupplier: "إضافة مورد", supplierName: "اسم المورد", supplierNote: "ملاحظة",
+    supplierCreated: "تم إنشاء المورد", noSuppliers: "لا موردين بعد.",
+    noSuppliersSub: "أضف مورّد علف أو دواء أو خدمات لتتبع ما تدين به.",
+    openSupplier: "فتح الحساب", paySupplier: "دفع للمورد", logSupplierBill: "تسجيل فاتورة",
+    totalBought: "إجمالي المشتريات", paidToSupplier: "المدفوع للمورد", weOwe: "علينا",
+    supplierBills: "فواتير المورد", supplierPays: "دفعات المورد",
+    pickSupplier: "اختر المورد", newSupplier: "مورد جديد", noSupplierLink: "بدون حساب مورد",
+    supplierTags: "يورّد", tagFeed: "علف", tagMed: "دواء", tagOther: "أخرى",
+    searchSuppliers: "ابحث عن مورد…", backToSuppliers: "الموردون",
+    supplierAccounts: "حسابات الموردين", manageSupplier: "إدارة المورد",
+    archiveSupplier: "أرشفة المورد", deleteSupplier: "حذف المورد",
     logExpense: "تسجيل مصروف", editExpense: "تعديل المصروف", noExpensesYet: "لا مصاريف بعد.",
     noExpensesYetSub: "سجّل أول مصروف بثلاث خطوات فقط.", recurringSetup: "فواتير متكررة",
     billsPanel: "الفواتير المستحقة", spendBreakdown: "توزيع المصروف", payWhat: "كم دفعت؟",
@@ -420,6 +445,7 @@ const T = {
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
+    showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
     fromDate: "من تاريخ", toDate: "إلى تاريخ", statusAll: "الكل", inRange: "ضمن الفترة المحددة",
     owingInRange: "المستحق في هذه الفترة", txCount: "عدد الحركات", editTx: "تعديل الحركة",
     deleteTx: "حذف الحركة", confirmDelete: "تأكيد الحذف", deleted: "تم الحذف",
@@ -576,7 +602,7 @@ const T = {
     cashFilterAll: "All", cashFilterIn: "In only", cashFilterOut: "Out only",
     cashEmpty: "No cash movements in this period.", cashTotals: "Totals",
     cashExport: "Export Excel", cashAccount: "Cash box / Farm",
-    animals: "Animals", entry: "Production", sales: "Sales", reports: "Reports", settings: "Settings",
+    animals: "Animals", entry: "Production", sales: "Sales", suppliers: "Suppliers", reports: "Reports", settings: "Settings",
     farmWork: "Farm work", officeWork: "Office work",
     obligations: "Obligations", addObligation: "Add recurring bill", obligationTypes: "Type",
     contract: "Contract", recurringBill: "Recurring bill", rent: "Rent",
@@ -589,6 +615,17 @@ const T = {
     stillToPay: "Still to pay", paidToday: "Paid", expPaid: "Paid", expPartial: "Part paid", expUnpaid: "Unpaid",
     higherThanUsual: "Higher than usual", thisWeek: "This week", thisMonth: "This month", lastMonth: "Last month",
     customRange: "Custom dates", searchExpenses: "Search receipt or vendor…", vendor: "Vendor",
+    addSupplier: "Add supplier", supplierName: "Supplier name", supplierNote: "Note",
+    supplierCreated: "Supplier created", noSuppliers: "No suppliers yet.",
+    noSuppliersSub: "Add a feed, medicine or service supplier to track what you owe.",
+    openSupplier: "Open account", paySupplier: "Pay supplier", logSupplierBill: "Log bill",
+    totalBought: "Total bought", paidToSupplier: "Paid to supplier", weOwe: "We owe",
+    supplierBills: "Supplier bills", supplierPays: "Supplier payments",
+    pickSupplier: "Pick supplier", newSupplier: "New supplier", noSupplierLink: "No supplier account",
+    supplierTags: "Supplies", tagFeed: "Feed", tagMed: "Medicine", tagOther: "Other",
+    searchSuppliers: "Search suppliers…", backToSuppliers: "Suppliers",
+    supplierAccounts: "Supplier accounts", manageSupplier: "Manage supplier",
+    archiveSupplier: "Archive supplier", deleteSupplier: "Delete supplier",
     logExpense: "Log expense", editExpense: "Edit expense", noExpensesYet: "No expenses yet.",
     noExpensesYetSub: "Log your first spend in three simple steps.", recurringSetup: "Recurring bills",
     billsPanel: "Bills due", spendBreakdown: "Where money went", payWhat: "How much paid?",
@@ -747,6 +784,7 @@ const T = {
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
+    showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
     fromDate: "From", toDate: "To", statusAll: "All", inRange: "in the selected range",
     owingInRange: "Owing in this range", txCount: "Transactions", editTx: "Edit transaction",
     deleteTx: "Delete transaction", confirmDelete: "Confirm delete", deleted: "Deleted",
@@ -1176,9 +1214,9 @@ function applyAppUpdate(onMsg) {
 
 const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", categories: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
-  profiles: [], animals: [], workers: [], customers: [], obligations: [], entries: [],
+  profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
 });
-const PROTECTED_ENTRIES = new Set(["sale", "payment", "customerAdd", "customerDelete", "customerArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit"]);
+const PROTECTED_ENTRIES = new Set(["sale", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit"]);
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
@@ -1196,6 +1234,7 @@ function migrate(farm) {
   f.settings = { logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", categories: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" }, ...f.settings };
   f.settings.docTpl = { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow", ...(f.settings.docTpl || {}) };
   if (!Array.isArray(f.obligations)) f.obligations = [];
+  if (!Array.isArray(f.suppliers)) f.suppliers = [];
   /* older records used separate types for feed and livestock purchases */
   f.entries = (f.entries || []).map((e) => {
     if (e.type === "feed") return { ...e, type: "expense", category: "feed", amount: e.amount ?? e.cost };
@@ -1422,6 +1461,10 @@ function accNo(customers, id) {
   const i = customers.findIndex((c) => c.id === id);
   return i < 0 ? "\u2014" : `C-${String(i + 1).padStart(4, "0")}`;
 }
+function supplierNo(suppliers, id) {
+  const i = suppliers.findIndex((s) => s.id === id);
+  return i < 0 ? "\u2014" : `V-${String(i + 1).padStart(4, "0")}`;
+}
 const OBL_TYPES = [["contract", "📄", "contract"], ["bill", "🧾", "recurringBill"], ["rent", "🏠", "rent"]];
 const OBL_FREQ = [["once", "freqOnce"], ["weekly", "freqWeekly"], ["monthly", "freqMonthly"], ["yearly", "freqYearly"]];
 function advanceDue(dk, freq) {
@@ -1458,16 +1501,18 @@ function initials(name) {
 /* Cash box: real money in (payments) and out (paid expenses / medicine cost). */
 function cashMoveAmount(e) {
   if (e.type === "payment") return +(e.amount || 0);
+  if (e.type === "supplierPay") return +(e.amount || 0);
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
   return 0;
 }
-function buildCashBox(entries, { customers = [], lang, t, custom, from, to } = {}) {
+function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom, from, to } = {}) {
   const cust = (id) => (customers.find((c) => c.id === id) || {}).name || "—";
+  const supp = (id) => (suppliers.find((s) => s.id === id) || {}).name || "—";
   const moves = (entries || []).filter((e) => {
     const amt = cashMoveAmount(e);
     if (!(amt > 0.0001)) return false;
-    if (e.type !== "payment" && e.type !== "expense" && e.type !== "med") return false;
+    if (e.type !== "payment" && e.type !== "supplierPay" && e.type !== "expense" && e.type !== "med") return false;
     const k = dayKey(e.at);
     if (from && k < from) return false;
     if (to && k > to) return false;
@@ -1481,7 +1526,7 @@ function buildCashBox(entries, { customers = [], lang, t, custom, from, to } = {
       if (!(amt > 0.0001)) return;
       if (dayKey(e.at) >= from) return;
       if (e.type === "payment") opening += amt;
-      else if (e.type === "expense" || e.type === "med") opening -= amt;
+      else if (e.type === "supplierPay" || e.type === "expense" || e.type === "med") opening -= amt;
     });
   }
   opening = +opening.toFixed(2);
@@ -1493,7 +1538,7 @@ function buildCashBox(entries, { customers = [], lang, t, custom, from, to } = {
     const isIn = e.type === "payment";
     if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
     else { bal = +(bal - amt).toFixed(2); outN += amt; }
-    const pref = isIn ? "RC" : (e.type === "med" ? "MD" : "PA");
+    const pref = isIn ? "RC" : (e.type === "supplierPay" ? "VP" : e.type === "med" ? "MD" : "PA");
     const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
     let parts;
     if (isIn) {
@@ -1501,6 +1546,16 @@ function buildCashBox(entries, { customers = [], lang, t, custom, from, to } = {
         { text: t("cashReceivedFrom"), tone: "in" },
         { text: " " },
         { text: cust(e.customerId), tone: "name" },
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    } else if (e.type === "supplierPay") {
+      const who = e.vendor || supp(e.supplierId);
+      parts = [
+        { text: t("cashPaidFor"), tone: "out" },
+        { text: " · " },
+        { text: who, tone: "name" },
+        { text: ` · ${t("supplierPays")}`, tone: "muted" },
+        e.method === "transfer" ? { text: ` · ${t("transfer")}`, tone: "muted" } : null,
         e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     } else if (e.type === "med") {
@@ -1573,6 +1628,40 @@ function buildLedger(entries, customers) {
   Object.keys(pool).forEach((cid) => { if (byCustomer[cid] && pool[cid] > 0.009) byCustomer[cid].credit = +pool[cid].toFixed(2); });
   Object.values(byCustomer).forEach((b) => { b.sold = +b.sold.toFixed(2); b.paid = +b.paid.toFixed(2); b.due = +b.due.toFixed(2); });
   return { list, byCustomer, pays };
+}
+function buildSupplierLedger(entries, suppliers) {
+  const bills = (entries || []).filter((e) => e.type === "expense" && e.supplierId)
+    .slice().sort((a, b) => new Date(a.at) - new Date(b.at));
+  const pays = (entries || []).filter((e) => e.type === "supplierPay");
+  const rec = {}; bills.forEach((b) => { rec[b.id] = 0; });
+  pays.filter((p) => p.expenseId && p.expenseId in rec).forEach((p) => { rec[p.expenseId] += p.amount || 0; });
+  const pool = {};
+  pays.filter((p) => !p.expenseId || !(p.expenseId in rec)).forEach((p) => {
+    pool[p.supplierId] = (pool[p.supplierId] || 0) + (p.amount || 0);
+  });
+  const list = bills.map((b, i) => {
+    const remaining = Math.max(0, (b.amount || 0) - rec[b.id]);
+    const take = Math.min(remaining, pool[b.supplierId] || 0);
+    if (take > 0) { rec[b.id] += take; pool[b.supplierId] -= take; }
+    const paidAmount = +Math.min(b.amount || 0, rec[b.id]).toFixed(2);
+    const due = +Math.max(0, (b.amount || 0) - paidAmount).toFixed(2);
+    return { ...b, paidAmount, due, no: `BILL-${String(i + 1).padStart(4, "0")}`,
+      status: due <= 0.009 ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
+      lateDays: Math.floor((Date.now() - new Date(b.at)) / 864e5) };
+  });
+  const bySupplier = {};
+  const blank = () => ({ bought: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
+  (suppliers || []).forEach((s) => { bySupplier[s.id] = blank(); });
+  list.forEach((b) => {
+    const row = bySupplier[b.supplierId] || (bySupplier[b.supplierId] = blank());
+    row.bought += b.amount || 0; row.paid += b.paidAmount; row.due += b.due; row.count += 1;
+    if (b.due > 0) row.oldest = Math.max(row.oldest, b.lateDays);
+  });
+  Object.keys(pool).forEach((sid) => { if (bySupplier[sid] && pool[sid] > 0.009) bySupplier[sid].credit = +pool[sid].toFixed(2); });
+  Object.values(bySupplier).forEach((row) => {
+    row.bought = +row.bought.toFixed(2); row.paid = +row.paid.toFixed(2); row.due = +row.due.toFixed(2);
+  });
+  return { list, bySupplier, pays };
 }
 function computeSums(list, S, workers, days) {
   const milk = milkTotals(list), eggs = prodTotals(list, "eggs");
@@ -2026,8 +2115,47 @@ function Scroller({ children, style }) {
 function Chip({ active, onClick, children, color = C.field }) {
   return <button type="button" onClick={onClick} className={`chip${active ? " on" : ""}`} style={{ border: `1.5px solid ${active ? color : C.line}`,
     background: active ? color : C.card, color: active ? "#fff" : C.ink, borderRadius: 999,
-    padding: "8px 14px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+    padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
     fontFamily: "var(--body)", flexShrink: 0, transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
+}
+/* Two options → toggle; three or more → dropdown. */
+function SortControl({ value, onChange, options, label }) {
+  const opts = options || [];
+  if (opts.length < 2) return null;
+  if (opts.length === 2) {
+    const i = Math.max(0, opts.findIndex((o) => o[0] === value));
+    const cur = opts[i] || opts[0];
+    const next = opts[(i + 1) % 2][0];
+    const dateish = opts.every(([k]) => k === "newest" || k === "oldest");
+    return <button type="button" className="sort-tog" onClick={() => onChange(next)}
+      title={opts.find((o) => o[0] === next)?.[1] || ""}>
+      {label ? <span className="sort-lbl">{label}</span> : null}
+      <span>{cur[1]}</span>
+      {dateish ? <span className="sort-arrow">{cur[0] === "newest" ? "↓" : "↑"}</span> : null}
+      <span className="sort-knob"><i style={{ insetInlineStart: i === 0 ? 2 : 18 }} /></span>
+    </button>;
+  }
+  return <label className="sort-dd">
+    {label ? <span className="sort-lbl">{label}</span> : null}
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {opts.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
+    </select>
+  </label>;
+}
+/* Filters stay out of the way until needed. */
+function FilterTray({ open, onToggle, t, active = 0, children, end }) {
+  return <div className="filter-tray">
+    <div className="filter-tray-bar">
+      <button type="button" className={`filter-tog${open ? " on" : ""}${active > 0 ? " hot" : ""}`}
+        onClick={onToggle} title={open ? t("hideFilters") : t("showFilters")}>
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+        <span>{t("filters")}</span>
+        {active > 0 ? <span className="filter-badge">{active}</span> : null}
+      </button>
+      {end}
+    </div>
+    {open ? <div className="filter-body">{children}</div> : null}
+  </div>;
 }
 function Step({ n, label }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 8px" }}>
@@ -2992,13 +3120,14 @@ function ReceiptSheet({ src, title, sub, lang, t, onClose, onRemove, onPrint, on
   </Sheet>;
 }
 
-function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSave, onSaveFeed, onAddCategory, onClose, initial, onSaveAndNew }) {
+function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSave, onSaveFeed, onAddCategory, onClose, initial, onSaveAndNew, suppliers = [], preSupplierId }) {
   const [step, setStep] = useState(initial ? 2 : 1);
   const [group, setGroup] = useState(initial ? expGroupOf(initial.category || "other") : null);
   const [cat, setCat] = useState(initial?.category || null);
   const [amount, setAmount] = useState(initial?.amount || 0);
   const [note, setNote] = useState(initial?.note || "");
   const [vendor, setVendor] = useState(initial?.vendor || "");
+  const [supplierId, setSupplierId] = useState(initial?.supplierId || preSupplierId || null);
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [cur, setCur] = useState(initial?.currency || "usd");
   const [adding, setAdding] = useState(false);
@@ -3010,6 +3139,9 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   const [paidAmount, setPaidAmount] = useState(initial?.paidAmount ?? 0);
   const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
 
+  const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
+  const pickSupplier = (s) => { setSupplierId(s ? s.id : null); setVendor(s ? s.name : ""); };
+
   const builtins = expensesInGroup(group || "otherGrp").map((e) => ({
     key: e[0], icon: e[1], label: lang === "ar" ? e[2] : e[3], color: e[4],
     auto: e[0] === "labour" || e[0] === "medicine",
@@ -3020,8 +3152,11 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
 
   const buildPayload = () => {
     const st = stillDue ? (payStatus === "partial" ? "partial" : "unpaid") : "paid";
+    const chosen = activeSuppliers.find((s) => s.id === supplierId);
+    const vendorName = (chosen ? chosen.name : vendor).trim();
     return {
-      category: cat, amount, note: note.trim(), vendor: vendor.trim(),
+      category: cat, amount, note: note.trim(), vendor: vendorName,
+      supplierId: chosen ? chosen.id : null,
       at: dayStamp(date), currency: cur, rateUsed: S.rate, receipt,
       payStatus: st,
       paidAmount: st === "paid" ? amount : st === "partial" ? paidAmount : 0,
@@ -3114,8 +3249,17 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
 
     {step === 3 && <>
       <Step n="3" label={`${t("optional")}`} />
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("vendor")}</div>
-      <input value={vendor} onChange={(e) => setVendor(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("pickSupplier")}</div>
+      {activeSuppliers.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+        <Chip active={!supplierId} onClick={() => pickSupplier(null)}>{t("noSupplierLink")}</Chip>
+        {activeSuppliers.slice(0, 12).map((s) => (
+          <Chip key={s.id} active={supplierId === s.id} onClick={() => pickSupplier(s)}>{s.name}</Chip>))}
+      </div>}
+      {!supplierId && <>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("vendor")}</div>
+        <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder={t("newSupplier")}
+          style={{ ...inp, marginBottom: 12 }} />
+      </>}
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("expenseNote")}</div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")} style={{ ...inp, marginBottom: 12 }} />
       <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
@@ -3151,19 +3295,21 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   </Sheet>;
 }
 
-function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose, onBack, backLabel }) {
+function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose, onBack, backLabel, suppliers = [] }) {
   const [feedType, setFeedType] = useState("hay");
   const [unit, setUnit] = useState("bag");
   const [qty, setQty] = useState(0);
   const [price, setPrice] = useState(0);
   const [sp, setSp] = useState("");
   const [supplier, setSupplier] = useState("");
+  const [supplierId, setSupplierId] = useState(null);
   const [receipt, setReceipt] = useState("");
   const [cur, setCur] = useState("usd");
   useEffect(() => { const p = lastPriceOf(feedType, unit); if (p) setPrice(p); }, [feedType, unit]);
   const total = +(qty * price).toFixed(2);
   const heads = animals.filter((a) => !sp || a.species === sp).reduce((s2, a) => s2 + headCount(a), 0);
   const last = lastPriceOf(feedType, unit);
+  const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
   return <Sheet title={`🌾 ${t("feedCost")}`} onClose={onClose} onBack={onBack} backLabel={backLabel}>
     <Step n="1" label={t("feedType")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -3205,12 +3351,22 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
           {SPECIES[k].icon} {spName(k, lang)}</Chip>)}
       </Scroller></>}
     <Step n={species.length > 1 ? "5" : "4"} label={`${t("supplier")} — ${t("optional")}`} />
-    <input value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
+    {activeSuppliers.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }}>
+      <Chip active={!supplierId} onClick={() => { setSupplierId(null); }}>{t("noSupplierLink")}</Chip>
+      {activeSuppliers.slice(0, 10).map((s) => (
+        <Chip key={s.id} active={supplierId === s.id} onClick={() => { setSupplierId(s.id); setSupplier(s.name); }}>{s.name}</Chip>))}
+    </div>}
+    {!supplierId && <input value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ ...inp, marginBottom: 14 }}
+      placeholder={t("newSupplier")} />}
+    {supplierId && <div style={{ height: 8 }} />}
     <Step n={species.length > 1 ? "6" : "5"} label={`${t("attachment")} — ${t("optional")}`} />
     <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
     <button style={{ ...primaryBtn, opacity: total > 0 ? 1 : .45 }} onClick={() => total > 0 && onSave({
       category: "feed", feedType, unit, qty, unitPrice: price, amount: total, species: sp,
-      supplier: supplier.trim(), currency: cur, rateUsed: S.rate, receipt })}>✓ {t("save")}</button>
+      supplier: (supplierId ? (activeSuppliers.find((s) => s.id === supplierId) || {}).name : supplier).trim() || supplier.trim(),
+      supplierId: supplierId || null, vendor: (supplierId ? (activeSuppliers.find((s) => s.id === supplierId) || {}).name : supplier).trim() || supplier.trim(),
+      payStatus: "paid", paidAmount: total,
+      currency: cur, rateUsed: S.rate, receipt })}>✓ {t("save")}</button>
   </Sheet>;
 }
 
@@ -3296,6 +3452,200 @@ function CustomerCreatedSheet({ lang, t, S, customer, acc, onViewFull, onView, o
     <button style={{ ...secondaryBtn, marginBottom: 10 }} onClick={onAddAnother}>➕ {t("addAnother")}</button>
     <button style={secondaryBtn} onClick={onClose}>{t("close")}</button>
   </Sheet>;
+}
+
+const SUPPLIER_TAGS = [["feed", "🌾", "tagFeed"], ["med", "💊", "tagMed"], ["other", "📦", "tagOther"]];
+
+function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [note, setNote] = useState(initial?.note || "");
+  const [tags, setTags] = useState(initial?.tags || []);
+  const [err, setErr] = useState("");
+  const toggleTag = (k) => setTags((list) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]));
+  return <Sheet title={initial ? `✏️ ${t("manageSupplier")}` : `➕ ${t("addSupplier")}`} onClose={onClose}>
+    <Step n="1" label={t("supplierName")} />
+    <input value={name} onChange={(e) => { setName(e.target.value); setErr(""); }}
+      style={{ ...inp, fontSize: 18, fontWeight: 700 }} autoFocus />
+    {err && <div style={{ color: C.red, fontWeight: 700, fontSize: 14, marginTop: 7 }}>⚠️ {err}</div>}
+    <div style={{ height: 14 }} />
+    <Step n="2" label={`${t("phone")} — ${t("optional")}`} />
+    <input value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} style={inp} />
+    <div style={{ height: 14 }} />
+    <Step n="3" label={t("supplierTags")} />
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      {SUPPLIER_TAGS.map(([k, ic, lb]) => (
+        <Chip key={k} active={tags.includes(k)} onClick={() => toggleTag(k)}>{ic} {t(lb)}</Chip>))}
+    </div>
+    <Step n="4" label={`${t("supplierNote")} — ${t("optional")}`} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 16 }} />
+    <button type="button" style={primaryBtn} onClick={() => {
+      const n = name.trim(); if (!n) return setErr(t("nameNeeded"));
+      if ((suppliers || []).some((s) => s.id !== initial?.id && s.name.trim().toLowerCase() === n.toLowerCase())) return setErr(t("nameTaken"));
+      onSave({ id: initial?.id || uid(), name: n, phone: phone.trim(), note: note.trim(), tags,
+        at: initial?.at || iso(Date.now()), archived: initial?.archived || false });
+    }}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
+function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose }) {
+  const b = ledger.bySupplier[supplier.id] || { due: 0, credit: 0 };
+  const open = ledger.list.filter((x) => x.supplierId === supplier.id && x.due > 0);
+  const [amount, setAmount] = useState(b.due > 0 ? b.due : 0);
+  const [method, setMethod] = useState("cash");
+  const [note, setNote] = useState("");
+  const [billId, setBillId] = useState(null);
+  return <Sheet title={`💵 ${t("paySupplier")}`} sub={supplier.name} onClose={onClose}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 14 }}>
+      <Kpi label={t("weOwe")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
+      <Kpi label={t("paidToSupplier")} value={fmtC(b.paid || 0, S.rate, lang)} tone={C.green} />
+    </div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 12 }}>
+      <MoneyStepper usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} />
+    </div>
+    {open.length > 0 && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("supplierBills")}</div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+        <Chip active={!billId} onClick={() => setBillId(null)}>{t("allocAuto")}</Chip>
+        {open.slice(0, 6).map((bill) => (
+          <Chip key={bill.id} active={billId === bill.id} onClick={() => { setBillId(bill.id); setAmount(bill.due); }}
+            color={C.red}>{bill.no} · {fmtC(bill.due, S.rate, lang)}</Chip>))}
+      </div>
+    </>}
+    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <Chip active={method === "cash"} onClick={() => setMethod("cash")}>{t("cash")}</Chip>
+      <Chip active={method === "transfer"} onClick={() => setMethod("transfer")}>{t("transfer")}</Chip>
+    </div>
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")} style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
+      onClick={() => amount > 0 && onSave({ supplierId: supplier.id, amount, method, note: note.trim(),
+        expenseId: billId, vendor: supplier.name, at: dayStamp(dayKey(Date.now())) })}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
+function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay, onManage, no }) {
+  const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
+  const [sort, setSort] = useState("newest");
+  const [status, setStatus] = useState("all");
+  const [filtOpen, setFiltOpen] = useState(false);
+  const newest = sort !== "oldest";
+  const byDate = (a, c) => newest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
+  const allBills = ledger.list.filter((x) => x.supplierId === supplier.id);
+  const bills = allBills.filter((x) => status === "all" || x.status === status).slice().sort(byDate);
+  const pays = entries.filter((e) => e.type === "supplierPay" && e.supplierId === supplier.id)
+    .slice().sort(byDate);
+  const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
+  const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : t("unpaid"));
+  const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
+  const filtActive = status !== "all" ? 1 : 0;
+
+  const Overview = (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
+        <Kpi label={t("totalBought")} value={fmtC(b.bought, S.rate, lang)} />
+        <Kpi label={t("paidToSupplier")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
+        <Kpi label={t("weOwe")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
+        <Kpi label={t("txCount")} value={nf(bills.length)} tone={C.inkSoft} />
+      </div>
+      {b.credit > 0 && <div style={{ background: "#E0EFED", borderRadius: 4, padding: 11, fontWeight: 700, color: C.green }}>
+        ＋ {t("credit")}: {fmtC(b.credit, S.rate, lang)}</div>}
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
+        {supplier.phone && <Row k={t("phone")} v={supplier.phone} />}
+        {(supplier.tags || []).length > 0 && <Row k={t("supplierTags")} v={(supplier.tags || []).map(tagLb).join(" · ")} />}
+        {supplier.note && <Row k={t("supplierNote")} v={supplier.note} />}
+        <Row k={t("since")} v={dmy(supplier.at)} />
+        <Row k={t("oldestDebt")} v={b.due > 0 && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
+          tone={b.due > 0 && b.oldest > 30 ? C.red : b.due > 0 && b.oldest > 0 ? C.amber : C.green} />
+      </div>
+      <div style={{ display: "grid", gap: 9 }}>
+        <button type="button" style={primaryBtn} onClick={onBill}>🧾 {t("logSupplierBill")}</button>
+        <div style={{ display: "flex", gap: 9 }}>
+          <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={onPay}>💵 {t("paySupplier")}</button>
+          <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={() => setTab("transactions")}>📊 {t("transactions")} ›</button>
+        </div>
+      </div>
+      {onManage && <button type="button" style={{ ...secondaryBtn, color: C.inkSoft, fontSize: 13.5 }} onClick={onManage}>⚙️ {t("manageSupplier")}</button>}
+    </div>
+  );
+
+  const Transactions = (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <SortControl value={sort} onChange={setSort} label={t("sortBy")}
+          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />
+      </div>
+      <FilterTray open={filtOpen} onToggle={() => setFiltOpen((o) => !o)} t={t} active={filtActive}
+        end={filtActive ? <button type="button" className="dk-pill" onClick={() => setStatus("all")}>✕ {t("clearFilters")}</button> : null}>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          {[["all", t("statusAll")], ["paid", t("paidS")], ["partial", t("partial")], ["unpaid", t("unpaid")]].map(([k, lb]) => (
+            <Chip key={k} active={status === k} onClick={() => setStatus(k)}
+              color={k === "all" ? C.field : statusTone(k)}>{lb}</Chip>))}
+        </div>
+      </FilterTray>
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, overflowX: "auto" }}>
+        {bills.length === 0
+          ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
+          : <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
+              <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("colDue")}</Th>
+              <Th>{t("colStatus")}</Th>
+            </tr></thead>
+            <tbody>
+              {bills.map((bill) => (
+                <tr key={bill.id}>
+                  <Td mono>{dmy(bill.at)}</Td>
+                  <Td mono tone={C.field}>{bill.no}</Td>
+                  <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                    {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</Td>
+                  <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
+                  <Td align="end" mono tone={C.green}>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong tone={bill.due > 0 ? C.red : C.inkSoft}>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
+                  <Td><span style={{ border: `1.5px solid ${statusTone(bill.status)}`, color: statusTone(bill.status),
+                    borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusText(bill.status)}</span></Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+      </div>
+      {pays.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>💵 {t("supplierPays")}</div>
+        <div style={{ display: "grid", gap: 7 }}>
+          {pays.slice(0, 20).map((p2) => (
+            <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
+              <span style={{ fontSize: 13 }}>
+                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
+                {p2.note ? ` · ${p2.note}` : ""}</span>
+              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{nf(p2.amount)}</span>
+            </div>))}
+        </div>
+      </div>}
+    </div>
+  );
+
+  return <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "flex", gap: 12, alignItems: "center", background: C.card, border: `1px solid ${C.line}`,
+      borderRadius: 8, padding: "12px 14px" }}>
+      <div style={{ width: 44, height: 44, borderRadius: 8, background: C.field, color: "#fff", display: "grid",
+        placeItems: "center", fontWeight: 800, fontFamily: "var(--mono)", fontSize: 13 }}>{initials(supplier.name)}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>{supplier.name}</div>
+        <div style={{ fontSize: 12.5, color: C.inkSoft, fontFamily: "var(--mono)" }}>{no}</div>
+      </div>
+      <div style={{ textAlign: "end" }}>
+        <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600 }}>{t("weOwe")}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 18, color: moneyColor("due", b.due) }}>
+          {fmtC(b.due, S.rate, lang)}</div>
+      </div>
+    </div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {[["overview", `📋 ${t("overview")}`], ["transactions", `📊 ${t("transactions")} · ${bills.length}`]].map(([k, lb]) => (
+        <Chip key={k} active={tab === k} onClick={() => setTab(k)}>{lb}</Chip>))}
+    </div>
+    {tab === "overview" ? Overview : Transactions}
+  </div>;
 }
 
 function ObligationForm({ lang, t, S, initial, onSave, onClose }) {
@@ -3688,6 +4038,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
   const f = filters;
+  const [filtOpen, setFiltOpen] = useState(false);
   const sortNewest = (f.sort || "newest") !== "oldest";
   const byDate = (a, c) => sortNewest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
   const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
@@ -3701,6 +4052,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const rPaid = rows.reduce((a2, x) => a2 + x.paidAmount, 0);
   const rDue = rows.reduce((a2, x) => a2 + x.due, 0);
   const ranged = !!(f.from || f.to || f.status !== "all" || f.q);
+  const filtActive = (f.from || f.to || f.status !== "all" ? 1 : 0) + (f.q ? 1 : 0);
   const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : t("unpaid"));
 
@@ -3738,18 +4090,19 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
   const Transactions = (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input value={f.q} onChange={(e) => setFilters({ ...f, q: e.target.value })} placeholder={t("searchTx")}
-          style={{ ...inp, marginBottom: 10 }} />
+          style={{ ...inp, flex: 1, minWidth: 160, padding: "9px 12px", fontSize: 14 }} />
+        <SortControl value={f.sort || "newest"} onChange={(v) => setFilters({ ...f, sort: v })} label={t("sortBy")}
+          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />
+      </div>
+      <FilterTray open={filtOpen} onToggle={() => setFiltOpen((o) => !o)} t={t} active={filtActive}
+        end={ranged ? <button type="button" className="dk-pill" onClick={() => setFilters({ q: "", status: "all", from: "", to: "", sort: f.sort || "newest" })}>
+          ✕ {t("clearFilters")}</button> : null}>
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
           {[["all", t("statusAll")], ["paid", t("paidS")], ["partial", t("partial")], ["unpaid", t("unpaid")]].map(([k, lb]) => (
             <Chip key={k} active={f.status === k} onClick={() => setFilters({ ...f, status: k })}
               color={k === "all" ? C.field : statusTone(k)}>{lb}</Chip>))}
-        </div>
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("sortBy")}</span>
-          <Chip active={sortNewest} onClick={() => setFilters({ ...f, sort: "newest" })}>{t("sortNewest")}</Chip>
-          <Chip active={!sortNewest} onClick={() => setFilters({ ...f, sort: "oldest" })}>{t("sortOldest")}</Chip>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
@@ -3759,9 +4112,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           <input type="date" value={f.to} onChange={(e) => setFilters({ ...f, to: e.target.value })}
             style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
         </div>
-        {ranged && <button onClick={() => setFilters({ q: "", status: "all", from: "", to: "", sort: f.sort || "newest" })}
-          style={{ ...secondaryBtn, marginTop: 10, padding: "9px 10px", fontSize: 13.5 }}>✕ {t("clearFilters")}</button>}
-      </div>
+      </FilterTray>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 9 }}>
         <Kpi label={`${t("totalSold")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rSold, S.rate, lang)} />
@@ -4986,6 +5337,9 @@ function FarmApp() {
   const [cashRange, setCashRange] = useState("today");
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
+  const [cashFiltOpen, setCashFiltOpen] = useState(false);
+  const [expFiltOpen, setExpFiltOpen] = useState(false);
+  const [reportFiltOpen, setReportFiltOpen] = useState(false);
   const [cashSel, setCashSel] = useState(null);
   const [report, setReport] = useState("summary");
   const [spFilter, setSpFilter] = useState("all");
@@ -5060,6 +5414,10 @@ function FarmApp() {
   const [openAcc, setOpenAcc] = useState([]);          // customers kept open as tabs
   const [accTab, setAccTab] = useState("overview");
   const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "", sort: "newest" });
+  const [selSupp, setSelSupp] = useState(null);
+  const [openSupp, setOpenSupp] = useState([]);
+  const [suppTab, setSuppTab] = useState("overview");
+  const [suppQ, setSuppQ] = useState("");
   const dataRef = useRef(null);
   const toastTimer = useRef(null);
   dataRef.current = data;
@@ -5193,6 +5551,12 @@ function FarmApp() {
     if (tab) setAccTab(tab);
     else setAccTab("overview");
   };
+  const openSupplier = (id, tab) => {
+    setOpenSupp((list) => (list.includes(id) ? list : [...list, id]));
+    setSelSupp(id);
+    if (tab) setSuppTab(tab);
+    else setSuppTab("overview");
+  };
   const openAccountFull = (id, tab = "transactions") => {
     setSheet(null);
     navigate("sales", { clearSheet: false });
@@ -5203,10 +5567,49 @@ function FarmApp() {
     if (cid) openAccount(cid, accTab);
     setSheet(null);
   };
+  const returnToSupplier = (sid) => {
+    if (sid) openSupplier(sid, suppTab);
+    setSheet(null);
+  };
   const closeAccount = (id) => {
     setOpenAcc((list) => { const next = list.filter((x) => x !== id);
       if (selCust === id) setSelCust(next.length ? next[next.length - 1] : null);
       return next; });
+  };
+  const closeSupplier = (id) => {
+    setOpenSupp((list) => { const next = list.filter((x) => x !== id);
+      if (selSupp === id) setSelSupp(next.length ? next[next.length - 1] : null);
+      return next; });
+  };
+
+  const resolveSupplierPatch = (payload) => {
+    let list = suppliers;
+    let sid = payload.supplierId || null;
+    const name = (payload.vendor || payload.supplier || "").trim();
+    if (!sid && name) {
+      const existing = suppliers.find((s) => !s.archived && s.name.trim().toLowerCase() === name.toLowerCase());
+      if (existing) sid = existing.id;
+      else {
+        const s = { id: uid(), name, phone: "", note: "", tags: payload.category === "feed" ? ["feed"]
+          : payload.category === "medicine" || payload.category === "vet" ? ["med"] : ["other"],
+          at: iso(Date.now()) };
+        list = [...suppliers, s];
+        sid = s.id;
+      }
+    }
+    const vendorName = sid ? ((list.find((s) => s.id === sid) || {}).name || name) : name;
+    const expenseId = payload.id || uid();
+    const expense = { ...payload, id: expenseId, supplierId: sid || null, vendor: vendorName,
+      supplier: payload.supplier || vendorName };
+    const es = [{ type: "expense", ...expense }];
+    if (sid && (expense.payStatus === "paid" || expense.payStatus === "partial")) {
+      const payAmt = expense.payStatus === "paid" ? (expense.amount || 0) : (expense.paidAmount || 0);
+      if (payAmt > 0.0001) {
+        es.push({ type: "supplierPay", supplierId: sid, amount: payAmt, method: "cash",
+          vendor: vendorName, note: expense.note || "", at: expense.at, expenseId });
+      }
+    }
+    return { es, list, sid, changed: list !== suppliers };
   };
 
   useEffect(() => {
@@ -5269,6 +5672,7 @@ function FarmApp() {
         animals: replace?.animals ? (patchRest.animals || []) : (patchRest.animals ? mergeById(base.animals, patchRest.animals) : base.animals),
         workers: replace?.workers ? (patchRest.workers || []) : (patchRest.workers ? mergeById(base.workers, patchRest.workers) : base.workers),
         customers: replace?.customers ? (patchRest.customers || []) : (patchRest.customers ? mergeById(base.customers, patchRest.customers) : base.customers),
+        suppliers: replace?.suppliers ? (patchRest.suppliers || []) : (patchRest.suppliers ? mergeById(base.suppliers, patchRest.suppliers) : base.suppliers),
         obligations: replace?.obligations ? (patchRest.obligations || []) : (patchRest.obligations ? mergeById(base.obligations, patchRest.obligations) : base.obligations),
         entries: trimEntries([...stamped, ...(base.entries || [])]) };
       const payload = JSON.stringify(merged);
@@ -5283,7 +5687,7 @@ function FarmApp() {
 
   const deleteEntry = async (id) => {
     setBusy(true);
-    const drop = (list) => (list || []).filter((e) => e.id !== id && e.saleId !== id);
+    const drop = (list) => (list || []).filter((e) => e.id !== id && e.saleId !== id && e.expenseId !== id);
     setData((prev) => ({ ...(prev || emptyFarm()), entries: drop((prev && prev.entries) || []) }));
     try {
       const base = await readSharedFarm(dataRef.current || emptyFarm());
@@ -5345,8 +5749,10 @@ function FarmApp() {
   const workers = (data && data.workers) || [];
   const obligations = (data && data.obligations) || [];
   const customers = (data && data.customers) || [];
+  const suppliers = (data && data.suppliers) || [];
   const activeCustomers = useMemo(() => customers.filter((c) => !c.archived), [customers]);
   const archivedCustomers = useMemo(() => customers.filter((c) => c.archived), [customers]);
+  const activeSuppliers = useMemo(() => suppliers.filter((s) => !s.archived), [suppliers]);
   const entries = (data && data.entries) || [];
   const D = draftS || S;
   const dirty = JSON.stringify(D) !== JSON.stringify(S);
@@ -5374,6 +5780,7 @@ function FarmApp() {
   }, [entries, range, from, to, days]);
 
   const ledger = useMemo(() => buildLedger(entries, customers), [entries, customers]);
+  const supplierLedger = useMemo(() => buildSupplierLedger(entries, suppliers), [entries, suppliers]);
   const outstanding = useMemo(() => activeCustomers.reduce((a, c) => a + ((ledger.byCustomer[c.id] || {}).due || 0), 0), [activeCustomers, ledger]);
   const scopedSales = useMemo(() => ledger.list.filter(inRange).map((iv) => ({ ...iv,
     customerName: (customers.find((c) => c.id === iv.customerId) || {}).name || "—" })), [ledger, inRange, customers]);
@@ -5410,12 +5817,14 @@ function FarmApp() {
   const cashBounds = useMemo(() => periodBounds(cashRange, cashFrom, cashTo), [cashRange, cashFrom, cashTo]);
   const cashBox = useMemo(() => {
     const box = buildCashBox(entries, {
-      customers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
+      customers, suppliers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
     });
     const rows = cashDir === "all" ? box.rows
       : box.rows.filter((r) => cashDir === "in" ? r.dir === "in" : r.dir === "out");
-    return { ...box, rows };
-  }, [entries, customers, lang, t, S.categories, cashBounds, cashDir]);
+    const totalIn = +rows.reduce((a, r) => a + r.debit, 0).toFixed(2);
+    const totalOut = +rows.reduce((a, r) => a + r.credit, 0).toFixed(2);
+    return { ...box, rows, totalIn, totalOut, filtered: cashDir !== "all" };
+  }, [entries, customers, suppliers, lang, t, S.categories, cashBounds, cashDir]);
 
   const expScoped = useMemo(() => entries.filter((e) => {
     if (e.type !== "expense" && !(e.type === "med" && (e.cost || 0) > 0)) return false;
@@ -5661,19 +6070,28 @@ function FarmApp() {
     ping(t("saved"));
   };
 
+  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expFocus !== "open" ? 1 : 0) + (expQ.trim() ? 1 : 0);
   const DeskExpenses = (
     <div style={{ display: "grid", gap: 14 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {[["today", t("today")], ["yesterday", t("yesterday")], ["month", t("thisMonth")], ["week", t("thisWeek")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
-          <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
-        <button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
-          onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>
-      </div>
-      {expRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} style={{ ...inp, width: 160 }} />
-        <span>→</span>
-        <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} style={{ ...inp, width: 160 }} />
-      </div>}
+      <FilterTray open={expFiltOpen} onToggle={() => setExpFiltOpen((o) => !o)} t={t} active={expFiltActive}
+        end={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
+          onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          {[["today", t("today")], ["yesterday", t("yesterday")], ["month", t("thisMonth")], ["week", t("thisWeek")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+            <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
+        </div>
+        {expRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} style={{ ...inp, width: 160 }} />
+          <span>→</span>
+          <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} style={{ ...inp, width: 160 }} />
+        </div>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <SortControl value={expFocus} onChange={setExpFocus}
+            options={[["open", t("openBills")], ["all", t("allExpenses")]]} />
+          <input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
+            style={{ ...inp, flex: 1, minWidth: 180, padding: "8px 10px", fontSize: 13.5 }} />
+        </div>
+      </FilterTray>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
         <StatTile icon="💸" label={t("moneySpentPeriod")} value={fmtC(expMoneySums.costs, S.rate, lang)} tone={C.red} />
@@ -5704,7 +6122,7 @@ function FarmApp() {
                       {hot && <span style={{ color: C.amber, marginInlineStart: 8, fontSize: 12 }}>⚠ {t("higherThanUsual")}</span>}</span>
                     <span style={{ fontFamily: "var(--mono)" }}>{fmtC(v, S.rate, lang)}</span>
                   </div>
-                  <div style={{ height: 10, background: "#ECE9E0", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: 8, background: C.paper, borderRadius: 99, overflow: "hidden", border: `1px solid ${C.line}` }}>
                     <div style={{ width: `${pctBar}%`, height: "100%", background: catColor(k, S.categories), borderRadius: 99 }} />
                   </div>
                 </div>;
@@ -5746,13 +6164,8 @@ function FarmApp() {
         </DeskCard>
       </div>
 
-      <DeskCard pad={0} title={`🧾 ${t("expenseRegister")}`}
-        right={<div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <Chip active={expFocus === "open"} onClick={() => setExpFocus("open")}>{t("openBills")}</Chip>
-          <Chip active={expFocus === "all"} onClick={() => setExpFocus("all")}>{t("allExpenses")}</Chip>
-          <input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
-            style={{ ...inp, width: 200, padding: "7px 10px", fontSize: 13.5 }} />
-        </div>}>
+      <DeskCard pad={0} title={`🧾 ${t("expenseRegister")}${expFocus === "open" ? ` · ${t("openBills")}` : ""}`}
+        right={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{t(expFocus === "open" ? "openBills" : "allExpenses")}</span>}>
         {(() => {
           const rows = [...expScoped].filter((e) => {
             const isMed = e.type === "med";
@@ -6217,6 +6630,7 @@ function FarmApp() {
 
   const selAnimal = sel ? animals.find((a) => a.id === sel) : null;
   const selCustomer = selCust ? customers.find((c) => c.id === selCust) : null;
+  const selSupplier = selSupp ? suppliers.find((s) => s.id === selSupp) : null;
 
   const sortRows = (rows, key) => {
     const arr = [...rows];
@@ -6331,6 +6745,15 @@ function FarmApp() {
     { key: "n7", icon: "👷", label: t("workers"), group: "farm", rank: 15, run: () => setSheet({ k: "workers" }) },
     { key: "n15", icon: "🌾", label: t("cmdFeed"), group: "farm", rank: 16,
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "feed" }); } },
+    { key: "n21", icon: "🤝", label: t("addSupplier"), group: "farm", rank: 17,
+      run: () => { navigate("suppliers", { clearSheet: false }); setSheet({ k: "addSupplier" }); } },
+    { key: "n22", icon: "💵", label: t("paySupplier"), group: "farm", rank: 18,
+      run: () => {
+        navigate("suppliers", { clearSheet: false });
+        const due = activeSuppliers.find((s) => ((supplierLedger.bySupplier[s.id] || {}).due || 0) > 0);
+        if (due) { openSupplier(due.id); setSheet({ k: "paySupplier", sid: due.id }); }
+        else setSheet({ k: "addSupplier" });
+      } },
     { key: "n9", icon: "📊", label: t("excel"), group: "action", rank: 20, run: doExcel },
     { key: "n8", icon: "📄", label: t("exportPdf"), group: "action", rank: 21,
       run: () => { navigate("reports"); setTimeout(() => setSheet({ k: "reportPreview" }), 120); } },
@@ -6353,7 +6776,7 @@ function FarmApp() {
   ];
 
   /* Farm = stock + production + farm costs. Office = sales + reports + settings. */
-  const farmNav = [["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")]];
+  const farmNav = [["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")], ["suppliers", "🤝", t("suppliers")]];
   const officeNav = [["sales", "🧾", t("sales")], ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]];
   const allNav = [["dashboard", "💵", t("cashBox")], ...farmNav, ...officeNav];
   const navLabel = (k) => (allNav.find((n) => n[0] === k) || ["", "", k])[2];
@@ -6372,40 +6795,46 @@ function FarmApp() {
         `"${(r.parts || []).map((p) => p.text).join("").replace(/"/g, '""')}"`,
         r.debit || "", r.credit || "", r.balance,
       ].join(",")),
-      ["", "", t("cashTotals"), cashBox.rows.reduce((a, r) => a + r.debit, 0).toFixed(2),
-        cashBox.rows.reduce((a, r) => a + r.credit, 0).toFixed(2), cashBox.closing].join(","),
+      ["", "", t("cashTotals"), cashBox.totalIn.toFixed(2),
+        cashBox.totalOut.toFixed(2), cashBox.closing].join(","),
     ];
     downloadBlob("\uFEFF" + lines.join("\n"), `cashbox-${cashBounds.from}-${cashBounds.to}.csv`, "text/csv;charset=utf-8");
     ping(t("saved"));
   };
 
+  const cashFiltActive = (cashRange !== "today" ? 1 : 0) + (cashDir !== "all" ? 1 : 0) + (cashRange === "custom" && (cashFrom || cashTo) ? 1 : 0);
   const DeskDashboard = (
     <div style={{ display: "grid", gap: 14 }} className="cash-box">
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
-          ["month", t("thisMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
-          <Chip key={k} active={cashRange === k || (k === "week" && cashRange === "thisWeek") || (k === "month" && cashRange === "thisMonth")}
-            onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
-        <span style={{ width: 8 }} />
-        {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
-          <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}
-            color={k === "in" ? C.green : k === "out" ? C.red : C.field}>{lb}</Chip>))}
-        <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13, marginInlineStart: "auto" }}
-          onClick={exportCashBox}>📊 {t("cashExport")}</button>
-        <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
-          onClick={() => window.print()}>🖨️ {t("print")}</button>
-      </div>
-      {cashRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
-        <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} style={{ ...inp, width: 160 }} />
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
-        <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} style={{ ...inp, width: 160 }} />
-      </div>}
+      <FilterTray open={cashFiltOpen} onToggle={() => setCashFiltOpen((o) => !o)} t={t} active={cashFiltActive}
+        end={<div style={{ display: "flex", gap: 7, marginInlineStart: "auto", flexWrap: "wrap" }}>
+          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
+            onClick={exportCashBox}>📊 {t("cashExport")}</button>
+          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
+            onClick={() => window.print()}>🖨️ {t("print")}</button>
+        </div>}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
+            ["month", t("thisMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+            <Chip key={k} active={cashRange === k || (k === "week" && cashRange === "thisWeek") || (k === "month" && cashRange === "thisMonth")}
+              onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
+            <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}
+              color={k === "in" ? C.green : k === "out" ? C.red : C.field}>{lb}</Chip>))}
+        </div>
+        {cashRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
+          <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} style={{ ...inp, width: 160 }} />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
+          <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} style={{ ...inp, width: 160 }} />
+        </div>}
+      </FilterTray>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
         <StatTile icon="💵" label={t("cashAccount")} value={S.farmName || t("cashBox")} tone={C.field} sub={t("cashBoxSub")} />
-        <StatTile icon="📥" label={t("cashIn")} value={fmtC(cashBox.rows.reduce((a, r) => a + r.debit, 0), S.rate, lang)} tone={C.green} />
-        <StatTile icon="📤" label={t("cashOut")} value={fmtC(cashBox.rows.reduce((a, r) => a + r.credit, 0), S.rate, lang)} tone={C.red} />
+        <StatTile icon="📥" label={t("cashIn")} value={fmtC(cashBox.totalIn, S.rate, lang)} tone={C.green} />
+        <StatTile icon="📤" label={t("cashOut")} value={fmtC(cashBox.totalOut, S.rate, lang)} tone={C.red} />
         <StatTile icon="⚖" label={t("cashBalance")} value={fmtC(cashBox.closing, S.rate, lang)}
           tone={cashBox.closing >= 0 ? C.green : C.red}
           sub={`${t("cashOpening")}: ${fmtC(cashBox.opening, S.rate, lang)}`} />
@@ -6451,8 +6880,8 @@ function FarmApp() {
             <tfoot>
               <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
                 <Td colSpan={3} strong>{t("cashTotals")}</Td>
-                <Td align="end" mono strong tone={C.green}>{fmtC(cashBox.rows.reduce((a, r) => a + r.debit, 0), S.rate, lang)}</Td>
-                <Td align="end" mono strong tone={C.red}>{fmtC(cashBox.rows.reduce((a, r) => a + r.credit, 0), S.rate, lang)}</Td>
+                <Td align="end" mono strong tone={C.green}>{fmtC(cashBox.totalIn, S.rate, lang)}</Td>
+                <Td align="end" mono strong tone={C.red}>{fmtC(cashBox.totalOut, S.rate, lang)}</Td>
                 <Td align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>
               </tr>
             </tfoot>
@@ -6833,10 +7262,7 @@ function FarmApp() {
               : <>
                 <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper,
                   display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft }}>{t("sortBy")}</span>
-                  {custSortOpts.map(([k, lb]) => (
-                    <button key={k} onClick={() => setCustSort(k)} className={`dk-pill${custSort === k ? " on" : ""}`}>{lb}</button>
-                  ))}
+                  <SortControl value={custSort} onChange={setCustSort} label={t("sortBy")} options={custSortOpts} />
                 </div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -6878,6 +7304,90 @@ function FarmApp() {
     </div>
   );
 
+  const filteredSuppliers = activeSuppliers.filter((s) => {
+    if (!suppQ.trim()) return true;
+    const q = suppQ.toLowerCase();
+    return `${s.name} ${s.phone || ""} ${(s.tags || []).join(" ")}`.toLowerCase().includes(q);
+  }).slice().sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en", { sensitivity: "base" }));
+
+  const DeskSuppliers = (
+    <div style={{ display: "grid", gap: 14 }}>
+      {openSupp.length > 0 && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
+          borderBottom: `1px solid ${C.line}`, paddingBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, marginInlineEnd: 4 }}>{t("supplierAccounts")}</span>
+          {openSupp.map((id) => { const s = suppliers.find((x) => x.id === id); if (!s) return null;
+            const due = (supplierLedger.bySupplier[id] || {}).due || 0;
+            const on = selSupp === id;
+            return <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6,
+              background: on ? C.field : C.paper, color: on ? "#fff" : C.ink,
+              border: `1px solid ${on ? C.field : C.line}`, borderBottom: `3px solid ${on ? C.field : C.line}`,
+              borderRadius: "4px 4px 0 0", padding: "7px 10px", fontSize: 13.5, fontWeight: 600 }}>
+              <button type="button" onClick={() => setSelSupp(id)}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
+                  fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
+                {s.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {nm(due)}</span> : ""}</button>
+              <button type="button" onClick={() => closeSupplier(id)} title={t("closeTab")}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
+            </span>; })}
+        </div>)}
+
+      {selSupplier
+        ? <DeskCard title={`🤝 ${selSupplier.name}`}
+            right={<div style={{ display: "flex", gap: 7 }}>
+              <button type="button" className="dk-pill" onClick={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}>💵 {t("paySupplier")}</button>
+              <button type="button" className="dk-pill" onClick={() => setSelSupp(null)}>‹ {t("backToSuppliers")}</button>
+            </div>}>
+            <SupplierAccount supplier={selSupplier} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
+              no={supplierNo(suppliers, selSupplier.id)}
+              tab={suppTab} setTab={setSuppTab}
+              onBill={() => setSheet({ k: "expense", preSupplierId: selSupplier.id })}
+              onPay={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}
+              onManage={() => setSheet({ k: "editSupplier", sid: selSupplier.id })} />
+          </DeskCard>
+        : <DeskCard pad={0} title={`🤝 ${t("suppliers")} · ${activeSuppliers.length}`}
+            right={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "8px 13px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "addSupplier" })}>＋ {t("addSupplier")}</button>}>
+            {activeSuppliers.length === 0
+              ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noSuppliers")} sub={t("noSuppliersSub")}
+                  cta={`＋ ${t("addSupplier")}`} onCta={() => setSheet({ k: "addSupplier" })} /></div>
+              : <>
+                <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
+                  <input value={suppQ} onChange={(e) => setSuppQ(e.target.value)} placeholder={t("searchSuppliers")}
+                    style={{ ...inp, padding: "8px 10px", fontSize: 14 }} />
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>
+                      <Th w={90}>{t("accountNo")}</Th>
+                      <Th>{t("supplierName")}</Th>
+                      <Th w={130}>{t("phone")}</Th>
+                      <Th w={160}>{t("supplierTags")}</Th>
+                      <Th w={120} align="end">{t("weOwe")}</Th>
+                      <Th w={100} align="center">{t("actions")}</Th>
+                    </tr></thead>
+                    <tbody>
+                      {filteredSuppliers.map((s) => {
+                        const bal = supplierLedger.bySupplier[s.id] || { due: 0 };
+                        const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
+                        return <tr key={s.id} onClick={() => openSupplier(s.id)} style={{ cursor: "pointer" }}>
+                          <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
+                          <Td strong>{s.name}</Td>
+                          <Td tone={C.inkSoft}>{s.phone || t("noPhone")}</Td>
+                          <Td tone={C.inkSoft}>{(s.tags || []).map(tagLb).join(" · ") || "—"}</Td>
+                          <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
+                          <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
+                            className="dk-pill">{t("openSupplier")} ›</button></Td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>}
+          </DeskCard>}
+    </div>
+  );
+
   const DeskReports = (
     <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 14, alignItems: "start" }}>
       <DeskCard pad={8}>
@@ -6895,15 +7405,18 @@ function FarmApp() {
         </div>
       </DeskCard>
       <div style={{ display: "grid", gap: 14 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {["today", "week", "month", "custom"].map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{t(r)}</Chip>)}
-          {range === "custom" && <>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
-          </>}
-          <span style={{ marginInlineStart: "auto", fontSize: 12.5, color: C.inkSoft }}>
-            {t("preparedBy")}: {me.name} · {periodLabel}</span>
-        </div>
+        <FilterTray open={reportFiltOpen} onToggle={() => setReportFiltOpen((o) => !o)} t={t}
+          active={range !== "today" ? 1 : 0}
+          end={<span style={{ marginInlineStart: "auto", fontSize: 12.5, color: C.inkSoft }}>
+            {t("preparedBy")}: {me?.name || "—"} · {periodLabel}</span>}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {["today", "week", "month", "custom"].map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{t(r)}</Chip>)}
+            {range === "custom" && <>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
+            </>}
+          </div>
+        </FilterTray>
         <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped, animals, workers, customers,
           summaryLines, series, outstanding, scopedSales, ledger,
           onReceipt: (x) => setSheet({ k: "receipt", id: x.id }) }} />
@@ -7098,30 +7611,92 @@ function FarmApp() {
             onPrint={() => previewReceipt(e.receipt, title, sub, { k: "receipt", id: e.id, back: sheet.back })} />;
         })()}
 
+        {sheet?.k === "addSupplier" && <SupplierForm lang={lang} t={t} suppliers={suppliers}
+          onClose={() => setSheet(null)}
+          onSave={(s) => {
+            commit([{ type: "supplierAdd", name: s.name }], { suppliers: [...suppliers, s] });
+            setSheet(null); navigate("suppliers", { clearSheet: false }); openSupplier(s.id); ping(t("supplierCreated"));
+          }} />}
+
+        {sheet?.k === "editSupplier" && (() => {
+          const s = suppliers.find((x) => x.id === sheet.sid);
+          if (!s) return null;
+          return <SupplierForm lang={lang} t={t} suppliers={suppliers} initial={s}
+            onClose={() => returnToSupplier(s.id)}
+            onSave={(next) => {
+              commit([{ type: "supplierAdd", name: next.name }], { suppliers: suppliers.map((x) => (x.id === s.id ? next : x)) });
+              returnToSupplier(s.id); ping(t("saved"));
+            }} />;
+        })()}
+
+        {sheet?.k === "paySupplier" && (() => {
+          const s = suppliers.find((x) => x.id === sheet.sid);
+          if (!s) return null;
+          return <PaySupplierSheet supplier={s} ledger={supplierLedger} lang={lang} t={t} S={S}
+            onClose={() => returnToSupplier(s.id)}
+            onSave={(v) => {
+              commit([{ type: "supplierPay", ...v }]);
+              returnToSupplier(s.id); ping(t("saved"));
+            }} />;
+        })()}
+
         {sheet?.k === "expense" && <ExpenseSheet key={sheet.fresh || "expense"} lang={lang} t={t} S={S} custom={S.categories} species={speciesPresent}
-          animals={animals} onClose={() => setSheet(null)}
-          onSaveFeed={() => setSheet({ k: "feed", back: { k: "expense" } })}
+          animals={animals} suppliers={activeSuppliers} preSupplierId={sheet.preSupplierId}
+          onClose={() => (sheet.preSupplierId ? returnToSupplier(sheet.preSupplierId) : setSheet(null))}
+          onSaveFeed={() => setSheet({ k: "feed", back: { k: "expense", preSupplierId: sheet.preSupplierId } })}
           onAddCategory={(c) => commit([{ type: "setting", field: "categories", value: 1 }],
             { settings: { ...S, categories: [...(S.categories || []), c] } })}
-          onSave={(v) => { commit([{ type: "expense", ...v }]); setSheet(null); ping(t("saved")); }}
-          onSaveAndNew={(v) => { commit([{ type: "expense", ...v }]); ping(t("saved")); setSheet({ k: "expense", fresh: uid() }); }} />}
+          onSave={(v) => {
+            const { es, list, sid, changed } = resolveSupplierPatch(v);
+            commit(es, changed ? { suppliers: list } : null);
+            if (sheet.preSupplierId || sid) returnToSupplier(sheet.preSupplierId || sid);
+            else setSheet(null);
+            ping(t("saved"));
+          }}
+          onSaveAndNew={(v) => {
+            const { es, list, changed } = resolveSupplierPatch(v);
+            commit(es, changed ? { suppliers: list } : null);
+            ping(t("saved"));
+            setSheet({ k: "expense", fresh: uid(), preSupplierId: sheet.preSupplierId });
+          }} />}
 
         {sheet?.k === "editExpense" && (() => {
           const e = entries.find((x) => x.id === sheet.id && x.type === "expense");
           if (!e) return null;
           return <ExpenseSheet lang={lang} t={t} S={S} custom={S.categories} species={speciesPresent}
-            animals={animals} initial={e} onClose={() => setSheet(null)}
+            animals={animals} suppliers={activeSuppliers} initial={e} onClose={() => setSheet(null)}
             onSaveFeed={() => setSheet({ k: "feed", back: { k: "editExpense", id: e.id } })}
             onAddCategory={(c) => commit([{ type: "setting", field: "categories", value: 1 }],
               { settings: { ...S, categories: [...(S.categories || []), c] } })}
-            onSave={(v) => { const { id, ...rest } = v; updateEntry(e.id, rest); setSheet(null); ping(t("saved")); }} />;
+            onSave={(v) => {
+              let list = suppliers;
+              let sid = v.supplierId || null;
+              const name = (v.vendor || "").trim();
+              if (!sid && name) {
+                const existing = suppliers.find((s) => !s.archived && s.name.trim().toLowerCase() === name.toLowerCase());
+                if (existing) sid = existing.id;
+                else {
+                  const s = { id: uid(), name, phone: "", note: "", tags: [], at: iso(Date.now()) };
+                  list = [...suppliers, s];
+                  sid = s.id;
+                }
+              }
+              const vendorName = sid ? ((list.find((x) => x.id === sid) || {}).name || name) : name;
+              updateEntry(e.id, { ...v, id: undefined, supplierId: sid || null, vendor: vendorName });
+              if (list !== suppliers) commit([], { suppliers: list });
+              setSheet(null); ping(t("saved"));
+            }} />;
         })()}
 
-        {sheet?.k === "feed" && <FeedSheet lang={lang} t={t} S={S} species={speciesPresent} animals={animals}
+        {sheet?.k === "feed" && <FeedSheet lang={lang} t={t} S={S} species={speciesPresent} animals={animals} suppliers={activeSuppliers}
           lastPriceOf={(ft, u) => { const e = entries.find((x) => x.type === "expense" && x.category === "feed" && x.feedType === ft && x.unit === u && x.unitPrice > 0); return e ? e.unitPrice : 0; }}
           onClose={() => setSheet(null)}
           onBack={() => setSheet(sheet.back || { k: "expense" })} backLabel={t("backBtn")}
-          onSave={(v) => { commit([{ type: "expense", payStatus: "paid", paidAmount: v.amount, group: "feedLive", ...v }]); setSheet(null); ping(t("saved")); }} />}
+          onSave={(v) => {
+            const { es, list, changed } = resolveSupplierPatch({ ...v, payStatus: "paid", paidAmount: v.amount, group: "feedLive" });
+            commit(es, changed ? { suppliers: list } : null);
+            setSheet(null); ping(t("saved"));
+          }} />}
 
         {sheet?.k === "workers" && (() => {
           const k = dayKey(Date.now());
@@ -7433,6 +8008,7 @@ function FarmApp() {
             {route === "animals" && DeskAnimals}
             {route === "entry" && DeskEntry}
             {route === "sales" && DeskSales}
+            {route === "suppliers" && DeskSuppliers}
             {(route === "expenses" || route === "obligations") && DeskExpenses}
             {route === "reports" && DeskReports}
             {route === "settings" && <div className="dk-settings">{Settings}</div>}
@@ -7725,6 +8301,32 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   font-family:var(--body);font-size:12.5px;font-weight:600;color:${C.ink};transition:all .14s var(--ease)}
 .dk-pill:hover{border-color:${C.field};transform:translateY(-1px)}
 .dk-pill.on{background:${C.field};border-color:${C.field};color:#fff;box-shadow:0 4px 12px ${C.field}33}
+.filter-tray{display:grid;gap:0}
+.filter-tray-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-tog{display:inline-flex;align-items:center;gap:7px;background:${C.card};border:1px solid ${C.line};
+  border-radius:8px;padding:8px 12px;cursor:pointer;font-family:var(--body);font-size:13px;font-weight:700;
+  color:${C.inkSoft};transition:border-color .15s ease,background .15s ease,color .15s ease}
+.filter-tog:hover{border-color:${C.field};color:${C.field}}
+.filter-tog.on{border-color:${C.field};color:${C.field};background:${C.paper}}
+.filter-tog.hot{border-color:${C.amber};color:${C.amber}}
+.filter-badge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:${C.amber};color:#fff;
+  font-size:11px;font-weight:800;display:inline-grid;place-items:center;font-family:var(--mono)}
+.filter-body{margin-top:10px;padding:12px 14px;background:${C.paper};border:1px solid ${C.line};border-radius:8px}
+.sort-tog{display:inline-flex;align-items:center;gap:8px;background:${C.card};border:1px solid ${C.line};
+  border-radius:999px;padding:6px 12px;cursor:pointer;font-family:var(--body);font-weight:700;font-size:13px;color:${C.field}}
+.sort-tog:hover{border-color:${C.field}}
+.sort-arrow{opacity:.7;font-size:12px}
+.sort-knob{width:34px;height:18px;border-radius:99px;background:${C.field};position:relative;flex-shrink:0}
+.sort-knob i{position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;
+  transition:inset-inline-start .15s ease;display:block}
+.sort-dd{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:${C.inkSoft}}
+.sort-dd select{appearance:none;-webkit-appearance:none;background:${C.card};border:1px solid ${C.line};border-radius:8px;
+  padding:7px 28px 7px 12px;font-family:var(--body);font-size:13px;font-weight:700;color:${C.ink};cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,${C.inkSoft} 50%),linear-gradient(135deg,${C.inkSoft} 50%,transparent 50%);
+  background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.sort-dd select:focus{outline:none;border-color:${C.field}}
+.sort-lbl{font-size:12px;font-weight:700;color:${C.inkSoft}}
+[dir=rtl] .sort-dd select{padding:7px 12px 7px 28px;background-position:10px 55%,15px 55%}
 .dk-quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 22px;background:${C.card};
   border-bottom:1px solid ${C.line}}
 .dk-quick-btn{display:inline-flex;align-items:center;gap:5px;background:${C.paper};border:1px solid ${C.line};
