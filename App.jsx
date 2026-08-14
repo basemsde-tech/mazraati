@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.2", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.2": {
+    ar: [
+      "إصلاح تعطل التطبيق عند فتح المزرعة بعد التحديث",
+    ],
+    en: [
+      "Fixed a crash when the farm loads after the last update",
+    ],
+  },
   "2.6.1": {
     ar: [
       "إصلاح دفعات الموردين: التوزيع التلقائي يحدّث الفواتير · التعديل لا يمسح الرصيد الزائد",
@@ -6243,6 +6251,21 @@ function FarmApp() {
 
   const ledger = useMemo(() => buildLedger(entries, customers), [entries, customers]);
   const supplierLedger = useMemo(() => buildSupplierLedger(entries, suppliers), [entries, suppliers]);
+  const supplierDash = useMemo(() => {
+    const month = dayKey(Date.now()).slice(0, 7);
+    const activeIds = new Set(activeSuppliers.map((s) => s.id));
+    let owed = 0, overdue = 0, paidMonth = 0;
+    Object.entries(supplierLedger.bySupplier || {}).forEach(([id, row]) => {
+      if (!activeIds.has(id)) return;
+      owed = fromCents(toCents(owed) + toCents(row.due));
+      overdue = fromCents(toCents(overdue) + toCents(row.overdueDue || 0));
+    });
+    (supplierLedger.pays || []).forEach((p) => {
+      if (!activeIds.has(p.supplierId)) return;
+      if (dayKey(p.at).slice(0, 7) === month) paidMonth = fromCents(toCents(paidMonth) + toCents(p.amount));
+    });
+    return { owed, overdue, paidMonth };
+  }, [supplierLedger, activeSuppliers]);
   const outstanding = useMemo(() => activeCustomers.reduce((a, c) => a + ((ledger.byCustomer[c.id] || {}).due || 0), 0), [activeCustomers, ledger]);
   const scopedSales = useMemo(() => ledger.list.filter(inRange).map((iv) => ({ ...iv,
     customerName: (customers.find((c) => c.id === iv.customerId) || {}).name || "—" })), [ledger, inRange, customers]);
@@ -7834,22 +7857,6 @@ function FarmApp() {
     const q = suppQ.toLowerCase();
     return `${s.name} ${s.phone || ""} ${(s.tags || []).join(" ")}`.toLowerCase().includes(q);
   }).slice().sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en", { sensitivity: "base" }));
-
-  const supplierDash = useMemo(() => {
-    const month = dayKey(Date.now()).slice(0, 7);
-    const activeIds = new Set(activeSuppliers.map((s) => s.id));
-    let owed = 0, overdue = 0, paidMonth = 0;
-    Object.entries(supplierLedger.bySupplier || {}).forEach(([id, row]) => {
-      if (!activeIds.has(id)) return;
-      owed = fromCents(toCents(owed) + toCents(row.due));
-      overdue = fromCents(toCents(overdue) + toCents(row.overdueDue || 0));
-    });
-    (supplierLedger.pays || []).forEach((p) => {
-      if (!activeIds.has(p.supplierId)) return;
-      if (dayKey(p.at).slice(0, 7) === month) paidMonth = fromCents(toCents(paidMonth) + toCents(p.amount));
-    });
-    return { owed, overdue, paidMonth };
-  }, [supplierLedger, activeSuppliers]);
 
   const DeskSuppliers = (
     <div style={{ display: "grid", gap: 14 }}>
