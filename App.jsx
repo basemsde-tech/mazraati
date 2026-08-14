@@ -12,9 +12,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.2", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.3": {
+    ar: [
+      "تبديل العملة يحدّث كل المبالغ فورًا حسب سعر الصرف المحدد",
+      "الحسابات والتقارير والطباعة تتبع عرض الدولار أو الليرة أو العملتين",
+    ],
+    en: [
+      "Currency switching now updates all amounts immediately using the set exchange rate",
+      "Accounts, reports and print views follow USD, LBP or both",
+    ],
+  },
   "2.6.2": {
     ar: [
       "إصلاح تعطل التطبيق عند فتح المزرعة بعد التحديث",
@@ -393,7 +403,7 @@ const T = {
   ar: {
     dir: "rtl", brand: "مزرعتي", sub: "نظام إدارة المزارع",
     home: "الرئيسية", overview: "نظرة عامة", cashBox: "صندوق النقد", cashBoxSub: "سجل قبض وصرف مع رصيد جارٍ",
-    cashIn: "مدين $", cashOut: "دائن $", cashBalance: "الرصيد $", cashValue: "القيمة",
+    cashIn: "قبض", cashOut: "صرف", cashBalance: "الرصيد", cashValue: "القيمة",
     cashRef: "المرجع", cashStatement: "البيان", cashEntryDate: "تاريخ القيد",
     cashReceivedFrom: "قبض من", cashPaidFor: "صرف", cashOpening: "رصيد افتتاحي",
     cashFilterAll: "الكل", cashFilterIn: "قبض فقط", cashFilterOut: "صرف فقط",
@@ -755,7 +765,7 @@ const T = {
   en: {
     dir: "ltr", brand: "MAZRAATI", sub: "Farm Management System",
     home: "Home", overview: "Overview", cashBox: "Cash box", cashBoxSub: "In and out log with running balance",
-    cashIn: "Debit $", cashOut: "Credit $", cashBalance: "Balance $", cashValue: "Amount",
+    cashIn: "Cash in", cashOut: "Cash out", cashBalance: "Balance", cashValue: "Amount",
     cashRef: "Reference", cashStatement: "Statement", cashEntryDate: "Entry date",
     cashReceivedFrom: "Received from", cashPaidFor: "Paid", cashOpening: "Opening balance",
     cashFilterAll: "All", cashFilterIn: "In only", cashFilterOut: "Out only",
@@ -1966,8 +1976,8 @@ function smartSummary({ lang, t, sums, prev, days, animals, workers, scoped, S, 
     const perL = sums.milk > 0 ? sums.feedCost / sums.milk : null;
     const perE = sums.eggs > 0 ? sums.feedCost / sums.eggs : null;
     const bits = [];
-    if (perL !== null) bits.push(ar ? `${perL.toFixed(2)}$ لكل ليتر حليب` : `$${perL.toFixed(2)} per liter of milk`);
-    if (perE !== null) bits.push(ar ? `${perE.toFixed(3)}$ لكل بيضة` : `$${perE.toFixed(3)} per egg`);
+    if (perL !== null) bits.push(ar ? `${money(perL)} لكل ليتر حليب` : `${money(perL)} per liter of milk`);
+    if (perE !== null) bits.push(ar ? `${money(perE)} لكل بيضة` : `${money(perE)} per egg`);
     out.push({ icon: "🌾", text: ar
       ? `كلفة العلف ${money(sums.feedCost)}: ${bits.join("، ")}.`
       : `Feed cost ${money(sums.feedCost)}: ${bits.join(", ")}.` });
@@ -2059,6 +2069,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
   const cOf = (id) => (customers || []).find((c) => c.id === id);
   const d = (e) => dmy(e.at), h = (e) => hhmm(e.at);
   const r2 = (n) => Math.round((n || 0) * 100) / 100;
+  const money = (n) => fmt(n, S.rate, lang);
   const sheets = [];
 
   sheets.push({ name: t("shSummary"), cols: [44, 16, 18], rows: [
@@ -2068,14 +2079,14 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     [t("period"), period, `${days} ${t("days")}`],
     [t("generated"), new Date().toLocaleString(lang === "ar" ? "ar-LB" : "en-GB")],
     [t("preparedBy"), me.name], [t("rate"), S.rate, "LBP / USD"], [],
-    [t("colItem"), "USD", "LBP"],
-    [t("salesIncome"), r2(sums.invoiced), Math.round(sums.invoiced * S.rate)],
-    [t("feed"), -r2(sums.feedCost), -Math.round(sums.feedCost * S.rate)],
-    [t("labour"), -r2(sums.laborCost), -Math.round(sums.laborCost * S.rate)],
-    [t("medicine"), -r2(sums.medCost), -Math.round(sums.medCost * S.rate)],
-    [t("purchases"), -r2(sums.buyCost), -Math.round(sums.buyCost * S.rate)],
-    [t("profit"), r2(sums.profit), Math.round(sums.profit * S.rate)], [],
-    [t("collected"), r2(sums.collected)], [t("outstanding"), r2(outstanding)], [],
+    [t("colItem"), t("amount")],
+    [t("salesIncome"), money(sums.invoiced)],
+    [t("feed"), money(-sums.feedCost)],
+    [t("labour"), money(-sums.laborCost)],
+    [t("medicine"), money(-sums.medCost)],
+    [t("purchases"), money(-sums.buyCost)],
+    [t("profit"), money(sums.profit)], [],
+    [t("collected"), money(sums.collected)], [t("outstanding"), money(outstanding)], [],
     [t("totalLiters"), r2(sums.milk)], [t("totalEggs"), r2(sums.eggs)],
     [t("losses"), sums.losses], [t("births"), sums.births],
     [t("herdSize"), animals.reduce((s, a) => s + headCount(a), 0)], [],
@@ -2097,47 +2108,47 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
       isFlock(a) ? "" : ageText(a, lang), headCount(a), a.weight || "", a.expected || "", a.parity || 0,
       a.source === "bought" ? t("bought") : t("born"), a.medicine || "", a.notes || ""])] });
 
-  sheets.push({ name: t("shSales"), cols: [12, 8, 20, 12, 10, 11, 12, 16, 12, 11, 13, 16],
-    rows: [[t("colDate"), t("colTime"), t("customerName"), t("product"), t("qty"), t("unitPrice"), "USD", "LBP",
+  sheets.push({ name: t("shSales"), cols: [12, 8, 20, 12, 10, 16, 20, 20, 20, 13, 16],
+    rows: [[t("colDate"), t("colTime"), t("customerName"), t("product"), t("qty"), t("unitPrice"), t("amount"),
       t("amountPaid"), t("due"), t("payStatus"), t("colUser")],
     ...(scopedSales || []).map((iv) => {
       const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
       return [dmy(iv.at), hhmm(iv.at), (cOf(iv.customerId) || {}).name || "—", lang === "ar" ? pr[2] : pr[3],
-        iv.qty, iv.price, r2(iv.amount), Math.round(iv.amount * S.rate), r2(iv.paidAmount), r2(iv.due),
+        iv.qty, money(iv.price), money(iv.amount), money(iv.paidAmount), money(iv.due),
         iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid"), iv.byName];
     })] });
 
-  sheets.push({ name: t("shCustomers"), cols: [22, 16, 12, 12, 10, 13, 13, 13, 11, 12],
+  sheets.push({ name: t("shCustomers"), cols: [22, 16, 18, 12, 10, 18, 18, 18, 11, 12],
     rows: [[t("customerName"), t("phone"), t("customerPrice"), t("dailyQty"), t("invoice"), t("totalSold"),
-      t("collected"), `${t("due")} USD`, t("daysLate"), t("payStatus")],
+      t("collected"), t("due"), t("daysLate"), t("payStatus")],
     ...(customers || []).map((c) => {
       const b = (ledger && ledger.byCustomer[c.id]) || { sold: 0, paid: 0, due: 0, oldest: 0, count: 0 };
-      return [c.name, c.phone || "", c.priceL || "", c.defaultQty || "", b.count, r2(b.sold), r2(b.paid), r2(b.due),
+      return [c.name, c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold), money(b.paid), money(b.due),
         b.due > 0 ? b.oldest : 0, b.due <= 0 ? t("paidS") : t("unpaid")];
-    }), [], [t("outstanding"), "", "", "", "", "", "", r2(outstanding)]] });
+    }), [], [t("outstanding"), "", "", "", "", "", "", money(outstanding)]] });
 
   sheets.push({ name: t("shMed"), cols: [12, 8, 20, 14, 10, 16],
     rows: [[t("colDate"), t("colTime"), t("colName"), t("colType"), t("colCost"), t("colUser")],
     ...scoped.filter((e) => e.type === "med").map((e) => [d(e), h(e), aLbl(e.animalId),
-      MED[e.medType] ? (lang === "ar" ? MED[e.medType].ar : MED[e.medType].en) : "", e.cost, e.byName])] });
+      MED[e.medType] ? (lang === "ar" ? MED[e.medType].ar : MED[e.medType].en) : "", money(e.cost), e.byName])] });
 
   sheets.push({ name: t("shWorkers"), cols: [12, 8, 20, 12, 10, 16],
     rows: [[t("colDate"), t("colTime"), t("colName"), t("colValue"), t("colCost"), t("colUser")],
     ...scoped.filter((e) => e.type === "attend").map((e) => {
       const w = (workers || []).find((x) => x.id === e.workerId);
-      return [d(e), h(e), w ? w.name : "—", e.present ? t("present") : t("absent"), e.present ? S.wage : 0, e.byName];
+      return [d(e), h(e), w ? w.name : "—", e.present ? t("present") : t("absent"), e.present ? money(S.wage) : "", e.byName];
     })] });
 
   sheets.push({ name: t("shMoney"), cols: [12, 8, 18, 26, 12, 10, 16],
-    rows: [[t("colDate"), t("colTime"), t("category"), t("colItem"), "USD", t("attachment"), t("colUser")],
+    rows: [[t("colDate"), t("colTime"), t("category"), t("colItem"), t("amount"), t("attachment"), t("colUser")],
     ...scoped.filter((e) => e.type === "expense").map((e) => [d(e), h(e),
       catLabel(e.category, lang, S.categories),
       [e.feedType ? t(e.feedType) : "", e.qty ? `${e.qty} ${e.unit === "bag" ? t("bag") : t("kgU")}` : "",
         e.supplier || "", e.note || "", e.species ? spName(e.species, lang) : "",
         e.animalId ? aLbl(e.animalId) : ""].filter(Boolean).join(" · "),
-      -(e.amount || 0), e.receipt ? t("attached") : "", e.byName]),
+      money(-(e.amount || 0)), e.receipt ? t("attached") : "", e.byName]),
     [], [t("byCategory")],
-    ...Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).map(([k, v]) => ["", "", catLabel(k, lang, S.categories), "", -Math.round(v * 100) / 100, "", ""])] });
+    ...Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).map(([k, v]) => ["", "", catLabel(k, lang, S.categories), "", money(-v), "", ""])] });
 
   const label = { milk: t("milk"), eggs: t("eggs"), med: t("meds"), attend: t("workers"), feed: t("feed"),
     sale: t("newSale"), payment: t("recordPayment"), purchase: t("purchases"), setting: t("settings"),
@@ -2159,7 +2170,7 @@ function exportExcel(opts) {
 /* One customer's ledger as its own workbook — the sheet a farmer actually
    sends to the person who owes them money. */
 function exportAccount({ customer, no, rows, pays, lang, t, S }) {
-  const money = (v) => Number(v.toFixed(2));
+  const money = (v) => fmt(v, S.rate, lang);
   const sheets = [
     { name: t("account"), cols: [18, 26], rows: [
       [t("customerName"), customer.name],
@@ -2467,15 +2478,15 @@ function printMoneyView(tpl) {
 }
 /* Text form of the same rule, for labels, chips and table cells. */
 const liraShort = (v, lang) => (v >= 1e6 ? `${(v / 1e6).toFixed(v / 1e6 >= 10 ? 0 : 1)}${lang === "ar" ? "م" : "M"}` : nf(v));
-function fmt(usd, rate, lang) {
-  const v = MONEY.view;
+function fmt(usd, rate, lang, forceView) {
+  const v = forceView || MONEY.view;
   if (!(rate > 0) || v === "usd") return `$${nm(usd)}`;
   const lira = `${nf((usd || 0) * rate)} ${lang === "ar" ? "ل.ل" : "LBP"}`;
   if (v === "lbp") return lira;
   return `$${nm(usd)} · ${lira}`;
 }
-function fmtC(usd, rate, lang) {
-  const v = MONEY.view;
+function fmtC(usd, rate, lang, forceView) {
+  const v = forceView || MONEY.view;
   if (!(rate > 0) || v === "usd") return `$${nm(usd)}`;
   const unit = lang === "ar" ? "ل.ل" : "LBP";
   if (v === "lbp") return `${liraShort((usd || 0) * rate, lang)} ${unit}`;
@@ -2683,7 +2694,7 @@ function StackedSVG({ parts, total }) {
       x += pw; return el; })}
   </svg>;
 }
-function HBarsSVG({ rows }) {
+function HBarsSVG({ rows, formatValue = nf }) {
   const w = 340, rowH = 25, max = Math.max(1, ...rows.map((r) => Math.max(r.value, r.target || 0)));
   return <svg viewBox={`0 0 ${w} ${rows.length * rowH + 6}`} style={{ width: "100%", height: "auto", direction: "ltr" }}>
     {rows.map((r, i) => { const y = i * rowH + 5, bw = (r.value / max) * (w - 100), tw = r.target ? (r.target / max) * (w - 100) : 0;
@@ -2691,7 +2702,8 @@ function HBarsSVG({ rows }) {
         <text x="0" y={y + 12} fontSize="10.5" fontWeight="700" fill={C.ink}>{r.label}</text>
         <rect x="58" y={y + 2} width={Math.max(2, bw)} height="12" rx="1" fill={r.color || C.field} />
         {r.target > 0 && <line x1={58 + tw} y1={y} x2={58 + tw} y2={y + 16} stroke={C.red} strokeWidth="2" strokeDasharray="3 2" />}
-        <text x={w - 38} y={y + 12} fontSize="10" fontWeight="600" fill={C.inkSoft} fontFamily="var(--mono)">{nf(r.value)}</text>
+        <text x={w - 3} y={y + 12} textAnchor="end" fontSize="10" fontWeight="600"
+          fill={C.inkSoft} fontFamily="var(--mono)">{formatValue(r.value)}</text>
       </g>; })}
   </svg>;
 }
@@ -5361,7 +5373,8 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
           : <div style={{ color: C.inkSoft, fontWeight: 500 }}>{t("noData")}</div>}</Card>
       <Card><Title>💳 {t("paidVsDue")}</Title>
         <HBarsSVG rows={[{ label: t("collected"), value: Math.round(sums.collected), color: C.green },
-          { label: t("outstanding"), value: Math.round(outstanding), color: C.red }]} /></Card>
+          { label: t("outstanding"), value: Math.round(outstanding), color: C.red }]}
+          formatValue={(v) => fmtC(v, S.rate, lang)} /></Card>
     </div>;
   }
 
@@ -5557,7 +5570,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger }) {
     const rows = [...ledger.list.filter((x) => x.customerId === doc.id).map((x) => {
       const pr = PRODUCTS.find((p) => p[0] === x.product) || PROD_OTHER;
       const pn = both ? `${pr[2]} / ${pr[3]}` : (dlang === "ar" ? pr[2] : pr[3]);
-      return { at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} × $${nm(x.price)}`, d: x.amount, c: 0 };
+      return { at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} × ${money(x.price)}`, d: x.amount, c: 0 };
     }), ...ledger.pays.filter((p) => p.customerId === doc.id).map((p) => ({ at: p.at, k: "p",
       label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount }))]
       .sort((a, b2) => new Date(a.at) - new Date(b2.at));
@@ -5654,6 +5667,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger }) {
 }
 
 function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped, scopedSales, summaryLines, series, periodLabel, outstanding }) {
+  const money = (v) => fmt(v, S.rate, lang);
   const costParts = Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => ({ label: catLabel(k, lang), value: v, color: catColor(k) }));
   const att = {};
@@ -5672,15 +5686,12 @@ function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, c
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}><tbody>
       {PRODUCTS.filter((p) => sums.byProduct[p[0]] > 0).map((p) => <tr key={p[0]}>
         <td style={td}>+ {lang === "ar" ? p[2] : p[3]}</td>
-        <td style={{ ...td, textAlign: "end", fontWeight: 700 }}>${nf(sums.byProduct[p[0]])}</td>
-        <td style={{ ...td, textAlign: "end" }}>{nf(sums.byProduct[p[0]] * S.rate)} LBP</td></tr>)}
+        <td style={{ ...td, textAlign: "end", fontWeight: 700 }}>{money(sums.byProduct[p[0]])}</td></tr>)}
       {Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
         .map(([ck, v]) => [catLabel(ck, lang), v]).map(([k, v]) => <tr key={k}>
-        <td style={td}>− {k}</td><td style={{ ...td, textAlign: "end", fontWeight: 700 }}>${nf(v)}</td>
-        <td style={{ ...td, textAlign: "end" }}>{nf(v * S.rate)} LBP</td></tr>)}
+        <td style={td}>− {k}</td><td style={{ ...td, textAlign: "end", fontWeight: 700 }}>{money(v)}</td></tr>)}
       <tr><td style={{ ...td, fontWeight: 800, background: "#EDEAE2" }}>{t("profit")}</td>
-        <td style={{ ...td, textAlign: "end", fontWeight: 800, background: "#EDEAE2" }}>${nf(sums.profit)}</td>
-        <td style={{ ...td, textAlign: "end", fontWeight: 800, background: "#EDEAE2" }}>{nf(sums.profit * S.rate)} LBP</td></tr>
+        <td style={{ ...td, textAlign: "end", fontWeight: 800, background: "#EDEAE2" }}>{money(sums.profit)}</td></tr>
     </tbody></table>
     <div style={{ marginTop: 8, width: "62%" }}><StackedSVG parts={costParts} total={sums.costs} /></div>
     <H>📦 {t("production")}</H>
@@ -5707,26 +5718,26 @@ function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, c
     <H>🧾 {t("sales")}</H>
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}><tbody>
       <tr><td style={tdh}>{t("invoiceNo")}</td><td style={tdh}>{t("colDate")}</td><td style={tdh}>{t("customerName")}</td>
-        <td style={tdh}>{t("product")}</td><td style={tdh}>{t("qty")}</td><td style={tdh}>USD</td>
+        <td style={tdh}>{t("product")}</td><td style={tdh}>{t("qty")}</td><td style={tdh}>{t("amount")}</td>
         <td style={tdh}>{t("due")}</td><td style={tdh}>{t("payStatus")}</td></tr>
       {(scopedSales || []).map((iv) => { const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
         return <tr key={iv.id}><td style={td}>{iv.no}</td><td style={td}>{dmy(iv.at)}</td>
           <td style={td}>{iv.customerName || "—"}</td><td style={td}>{lang === "ar" ? pr[2] : pr[3]}</td>
-          <td style={td}>{n1(iv.qty)}</td><td style={{ ...td, textAlign: "end" }}>{nm(iv.amount)}</td>
-          <td style={{ ...td, textAlign: "end" }}>{nm(iv.due)}</td>
+          <td style={td}>{n1(iv.qty)}</td><td style={{ ...td, textAlign: "end" }}>{money(iv.amount)}</td>
+          <td style={{ ...td, textAlign: "end" }}>{money(iv.due)}</td>
           <td style={td}>{iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid")}</td></tr>; })}
       <tr><td style={{ ...td, background: "#EDEAE2", fontWeight: 800 }} colSpan={5}>{t("outstanding")}</td>
-        <td style={{ ...td, background: "#EDEAE2", textAlign: "end", fontWeight: 800 }} colSpan={3}>${nm(outstanding)}</td></tr>
+        <td style={{ ...td, background: "#EDEAE2", textAlign: "end", fontWeight: 800 }} colSpan={3}>{money(outstanding)}</td></tr>
     </tbody></table>
     <H>👷 {t("labor")}</H>
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}><tbody>
-      <tr><td style={tdh}>{t("colName")}</td><td style={tdh}>{t("workerType")}</td><td style={tdh}>{t("days")}</td><td style={tdh}>USD</td></tr>
+      <tr><td style={tdh}>{t("colName")}</td><td style={tdh}>{t("workerType")}</td><td style={tdh}>{t("days")}</td><td style={tdh}>{t("amount")}</td></tr>
       {(workers || []).map((w) => <tr key={w.id}><td style={td}>{w.name}</td>
         <td style={td}>{w.type === "daily" ? t("daily") : t("monthly")}</td>
         <td style={td}>{w.type === "daily" ? (per[w.id] || 0) : days}</td>
-        <td style={{ ...td, textAlign: "end" }}>${nf(w.type === "daily" ? (per[w.id] || 0) * S.wage : (w.salary * days) / 30)}</td></tr>)}
+        <td style={{ ...td, textAlign: "end" }}>{money(w.type === "daily" ? (per[w.id] || 0) * S.wage : (w.salary * days) / 30)}</td></tr>)}
       <tr><td style={{ ...td, fontWeight: 800, background: "#EDEAE2" }} colSpan={3}>{t("payroll")}</td>
-        <td style={{ ...td, textAlign: "end", fontWeight: 800, background: "#EDEAE2" }}>${nf(sums.laborCost)}</td></tr>
+        <td style={{ ...td, textAlign: "end", fontWeight: 800, background: "#EDEAE2" }}>{money(sums.laborCost)}</td></tr>
     </tbody></table>
     <div style={{ display: "flex", gap: 44, marginTop: 36, fontSize: 11 }}>
       <div style={{ flex: 1, borderTop: "1px solid #000", paddingTop: 4 }}>{t("signOwner")}</div>
@@ -5876,7 +5887,8 @@ function FarmApp() {
   const toastTimer = useRef(null);
   dataRef.current = data;
 
-  useEffect(() => { MONEY.view = moneyView; }, [moneyView]);
+  /* Keep legacy format helpers in sync before descendants render. */
+  MONEY.view = moneyView;
   useEffect(() => { applyThemeColors(theme); }, [theme]);
 
   const t = (k) => T[lang][k] ?? k;
@@ -5938,7 +5950,8 @@ function FarmApp() {
         try { d = await store.get(DEVICE_KEY, false); } catch (e2) { d = await store.get(LEGACY.device, false); }
         if (d && d.value) {
           const p = JSON.parse(d.value); savedId = p.id;
-          if (p.lang) setLang(p.lang); if (p.money) setMoneyView(p.money);
+          if (p.lang) setLang(p.lang);
+          if (p.money) { MONEY.view = p.money; setMoneyView(p.money); }
           if (p.theme === "dark" || p.theme === "light") setTheme(p.theme);
           if (p.sideHidden) setSideHidden(!!p.sideHidden);
           if (p.hideDeviceBanner) setHideDeviceBanner(true);
@@ -6099,6 +6112,7 @@ function FarmApp() {
     try { await store.set(DEVICE_KEY, JSON.stringify(body), false); } catch (e) { /* device only */ }
   };
   const pickMoneyView = async (v) => {
+    MONEY.view = v;
     setMoneyView(v);
     await saveDevicePrefs({ money: v });
   };
@@ -6360,7 +6374,7 @@ function FarmApp() {
   }, [scoped, range, from, to, days]);
 
   const summaryLines = useMemo(() => smartSummary({ lang, t, sums, prev: prevSums, days, animals, workers, scoped, S, outstanding, customers, ledger }),
-    [lang, sums, prevSums, days, animals, workers, scoped, S, outstanding, customers, ledger]);
+    [lang, moneyView, sums, prevSums, days, animals, workers, scoped, S, outstanding, customers, ledger]);
   const periodLabel = range === "custom" && from && to ? `${dmy(from)} → ${dmy(to)}` : t(range);
 
   const sortedCustomers = useMemo(() => {
@@ -7315,15 +7329,16 @@ function FarmApp() {
 
   const exportCashBox = () => {
     const headers = [t("cashEntryDate"), t("cashRef"), t("cashStatement"), t("cashIn"), t("cashOut"), t("cashBalance")];
+    const csvMoney = (v) => `"${fmt(v || 0, S.rate, lang).replace(/"/g, '""')}"`;
     const lines = [
       headers.join(","),
       ...cashBox.rows.map((r) => [
         r.day, r.ref,
         `"${(r.parts || []).map((p) => p.text).join("").replace(/"/g, '""')}"`,
-        r.debit || "", r.credit || "", r.balance,
+        r.debit ? csvMoney(r.debit) : "", r.credit ? csvMoney(r.credit) : "", csvMoney(r.balance),
       ].join(",")),
-      ["", "", t("cashTotals"), cashBox.totalIn.toFixed(2),
-        cashBox.totalOut.toFixed(2), cashBox.closing].join(","),
+      ["", "", t("cashTotals"), csvMoney(cashBox.totalIn),
+        csvMoney(cashBox.totalOut), csvMoney(cashBox.closing)].join(","),
     ];
     downloadBlob("\uFEFF" + lines.join("\n"), `cashbox-${cashBounds.from}-${cashBounds.to}.csv`, "text/csv;charset=utf-8");
     ping(t("saved"));
@@ -7777,7 +7792,7 @@ function FarmApp() {
               <button onClick={() => { setSelCust(id); }}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
                   fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
-                {c.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {nm(due)}</span> : ""}</button>
+                {c.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
               <button onClick={() => closeAccount(id)} title={t("closeTab")}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
             </span>; })}
@@ -7874,7 +7889,7 @@ function FarmApp() {
               <button type="button" onClick={() => { setSelSupp(id); setSuppTab("open"); }}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
                   fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
-                {s.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {nm(due)}</span> : ""}</button>
+                {s.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
               <button type="button" onClick={() => closeSupplier(id)} title={t("closeTab")}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
             </span>; })}
