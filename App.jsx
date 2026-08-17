@@ -12,9 +12,25 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.6": {
+    ar: [
+      "اختيار إدخال سعر الوحدة أو إجمالي الفاتورة عند تسجيل مشتريات المورد",
+    ],
+    en: [
+      "Choose unit price or bill total when recording quantity-based supplier purchases",
+    ],
+  },
+  "2.6.5": {
+    ar: [
+      "إنشاء وطباعة فاتورة شراء للمورد وكشف حساب كامل من تبويب الموردين",
+    ],
+    en: [
+      "Generate and print supplier purchase invoices and full account statements from Suppliers",
+    ],
+  },
   "2.6.4": {
     ar: [
       "مشتريات الموردين تسجّل الكمية بوحدة مناسبة: كغ/كيس، ليتر، رأس، جرعة أو قطعة",
@@ -630,7 +646,8 @@ const T = {
     partial: "متبقي", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
     paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", transfer: "تحويل",
-    invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", invoiceNo: "رقم الفاتورة",
+    invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", purchaseInvoice: "فاتورة شراء", invoiceNo: "رقم الفاتورة",
+    priceAsTotal: "إدخال الإجمالي", pricePerUnit: "السعر لكل وحدة", calculatedTotal: "الإجمالي المحسوب",
     receiptNo: "رقم الإيصال", overdue: "متأخر", daysLate: "يوم تأخير", markPaid: "تسديد كامل المبلغ",
     noCustomers: "لا يوجد زبائن بعد.", noCustomersSub: "أضف أول زبون لتبدأ تسجيل المبيعات.",
     noSales: "لا توجد مبيعات في هذه الفترة.", allocAuto: "تُوزَّع الدفعة على أقدم الفواتير تلقائيًا.",
@@ -711,7 +728,7 @@ const T = {
     deviceOnly: "البيانات محفوظة على هذا الجهاز فقط. من الإعدادات سجّل بالبريد وأنشئ شركة لمزامنة الفريق.",
     help: "شرح", terms: "شرح المصطلحات", steps: "الخطوات", tip: "ملاحظة",
     preparedBy: "أعدّ التقرير", generated: "تاريخ الإصدار", period: "الفترة",
-    signOwner: "صاحب المزرعة", signVet: "الطبيب البيطري",
+    signOwner: "صاحب المزرعة", signSupplier: "توقيع المورد", signVet: "الطبيب البيطري",
     setup: "ابدأ من هنا", setupAnimals: "أضف حيواناتك", setupPrices: "أدخل الأسعار",
     setupWorkers: "أضف العمال", setupCustomers: "أضف الزبائن",
     cloud: "مزامنة الشركة", cloudSub: "حساب بريد لكل مستخدم — وقاعدة مزرعة واحدة للشركة.",
@@ -993,7 +1010,8 @@ const T = {
     partial: "Remainder", amountPaid: "Amount paid", outstanding: "Outstanding",
     collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record a payment",
     paymentAmount: "Payment amount", method: "Method", cash: "Cash", transfer: "Transfer",
-    invoice: "Invoice", receipt: "Receipt", statement: "Statement", invoiceNo: "Invoice no.",
+    invoice: "Invoice", receipt: "Receipt", statement: "Statement", purchaseInvoice: "Purchase invoice", invoiceNo: "Invoice no.",
+    priceAsTotal: "Enter total", pricePerUnit: "Price per unit", calculatedTotal: "Calculated total",
     receiptNo: "Receipt no.", overdue: "Overdue", daysLate: "days late", markPaid: "Settle the full amount",
     noCustomers: "No customers yet.", noCustomersSub: "Add your first customer to record sales.",
     noSales: "No sales in this period.", allocAuto: "Applied to the oldest invoices first.",
@@ -1074,7 +1092,7 @@ const T = {
     deviceOnly: "Data is saved on this device only. In Settings, sign in with email and create a company to sync the team.",
     help: "Help", terms: "What the words mean", steps: "Steps", tip: "Note",
     preparedBy: "Prepared by", generated: "Generated", period: "Period",
-    signOwner: "Farm owner", signVet: "Veterinarian",
+    signOwner: "Farm owner", signSupplier: "Supplier signature", signVet: "Veterinarian",
     setup: "Start here", setupAnimals: "Add your animals", setupPrices: "Enter your prices",
     setupWorkers: "Add your workers", setupCustomers: "Add your customers",
     cloud: "Company sync", cloudSub: "Email accounts for staff — one shared farm database for the company.",
@@ -1919,7 +1937,8 @@ function buildSupplierLedger(entries, suppliers) {
   Object.keys(poolC).forEach((sid) => {
     if (bySupplier[sid] && poolC[sid] > 0) bySupplier[sid].credit = fromCents(poolC[sid]);
   });
-  return { list, bySupplier, pays: pays.filter((p) => !p.implied), byBill: Object.fromEntries(list.map((b) => [b.id, b])) };
+  return { list, bySupplier, pays: pays.filter((p) => !p.implied), allPays: pays,
+    byBill: Object.fromEntries(list.map((b) => [b.id, b])) };
 }
 function computeSums(list, S, workers, days) {
   const milk = milkTotals(list), eggs = prodTotals(list, "eggs");
@@ -3812,6 +3831,9 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
   })();
   const [cat, setCat] = useState(initial?.category || "feed");
   const [amount, setAmount] = useState(initial?.amount || 0);
+  const [priceMode, setPriceMode] = useState(initial?.priceMode === "unit" ? "unit" : "total");
+  const [unitPrice, setUnitPrice] = useState(initial?.unitPrice
+    || (initial?.qty > 0 && initial?.amount > 0 ? initial.amount / initial.qty : 0));
   const initialQtyMeta = purchaseQtyMeta(initial?.category || "feed");
   const [qty, setQty] = useState(initial?.qty || 0);
   const [unit, setUnit] = useState(initial?.unit || initialQtyMeta?.defaultUnit || "");
@@ -3835,6 +3857,25 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     setAmount(next);
     setPaidAmount((p) => fromCents(Math.min(toCents(p), toCents(next))));
   };
+  const setUnitCost = (v, nextQty = qty) => {
+    const next = fromCents(toCents(v));
+    setUnitPrice(next);
+    setBill(fromCents(toCents(next * nextQty)));
+  };
+  const setPurchaseQty = (v) => {
+    const next = Math.max(0, Number(v) || 0);
+    setQty(next);
+    if (priceMode === "unit") setBill(fromCents(toCents(unitPrice * next)));
+  };
+  const choosePriceMode = (nextMode) => {
+    if (nextMode === priceMode) return;
+    if (nextMode === "unit" && qty > 0) {
+      const derived = fromCents(toCents(amount / qty));
+      setUnitPrice(derived);
+      setBill(fromCents(toCents(derived * qty)));
+    }
+    setPriceMode(nextMode);
+  };
   const setMode = (m) => {
     if (m === "later") setPaidAmount(0);
     else if (m === "now") setPaidAmount(amount);
@@ -3847,15 +3888,20 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     setQty(0);
     setUnit(meta?.defaultUnit || "");
     setFeedType(nextCat === "hay" ? "hay" : "otherFeed");
+    if (!meta) setPriceMode("total");
+    else if (priceMode === "unit") setBill(0);
   };
   const locked = busy || saving;
-  const invalid = !(amount > 0) || !cat || (qtyMeta && !(qty > 0));
+  const invalid = !(amount > 0) || !cat || (qtyMeta && !(qty > 0))
+    || (priceMode === "unit" && !(unitPrice > 0));
   const save = () => {
     if (locked || invalid) return;
     setSaving(true);
     onSave({
       id: initial?.id, category: cat, amount: pay.bill, note: note.trim(),
       qty: qtyMeta ? qty : undefined, unit: qtyMeta ? unit : undefined,
+      priceMode: qtyMeta ? priceMode : "total",
+      unitPrice: qtyMeta && priceMode === "unit" ? fromCents(toCents(unitPrice)) : undefined,
       feedType: cat === "feed" ? feedType : cat === "hay" ? "hay" : undefined,
       vendor: supplier.name, supplierId: supplier.id, supplier: supplier.name,
       at: dayStamp(date), currency: cur, rateUsed: S.rate,
@@ -3901,15 +3947,31 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
           {u === "bag" ? "🛍️" : "⚖️"} {purchaseUnitLabel(u, t)}</Chip>)}
       </div>}
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
-        <Stepper big value={qty} onChange={setQty} step={qtyMeta.step[unit] || 1}
+        <Stepper big value={qty} onChange={setPurchaseQty} step={qtyMeta.step[unit] || 1}
           decimals={unit === "kg" || unit === "L" ? 2 : 0} suffix={purchaseUnitLabel(unit, t)} />
       </div>
       {unit === "bag" && <div style={{ fontSize: 12.5, color: C.inkSoft, margin: "-5px 0 12px" }}>💡 {t("bagHint")}</div>}
     </>}
     <Step n={qtyMeta ? "3" : "2"} label={t("billTotal")} />
+    {qtyMeta && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <Chip active={priceMode === "total"} onClick={() => choosePriceMode("total")}>{t("priceAsTotal")}</Chip>
+      <Chip active={priceMode === "unit"} onClick={() => choosePriceMode("unit")}>{t("pricePerUnit")}</Chip>
+    </div>}
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
-      <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t}
-        step={5} currency={cur} setCurrency={setCur} />
+      {priceMode === "unit" && qtyMeta
+        ? <>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>
+            {t("pricePerUnit")} · {purchaseUnitLabel(unit, t)}</div>
+          <MoneyStepper big usd={unitPrice} onChange={setUnitCost} rate={S.rate} lang={lang} t={t}
+            step={0.05} currency={cur} setCurrency={setCur} />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+            paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+            <span style={{ color: C.inkSoft }}>{t("calculatedTotal")}</span>
+            <Money usd={amount} rate={S.rate} lang={lang} tone={C.field} />
+          </div>
+        </>
+        : <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t}
+          step={5} currency={cur} setCurrency={setCur} />}
     </div>
     <Step n={qtyMeta ? "4" : "3"} label={t("amountPaid")} />
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
@@ -4030,7 +4092,8 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
   </Sheet>;
 }
 
-function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay, onManage, onEditBill, no }) {
+function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay,
+  onDoc, onManage, onEditBill, no }) {
   const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0, openCount: 0, overdueDue: 0 };
   const [sort, setSort] = useState("newest");
   const newest = sort !== "oldest";
@@ -4052,7 +4115,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
             <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
             <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
             <Th>{t("colStatus")}</Th>
-            {showPay ? <Th align="center">{t("actions")}</Th> : null}
+            {showPay || onDoc ? <Th align="center">{t("actions")}</Th> : null}
           </tr></thead>
           <tbody>
             {rows.map((bill) => (
@@ -4071,10 +4134,12 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
                 <Td align="end" mono strong tone={bill.due > 0 ? C.red : C.inkSoft}>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
                 <Td><span style={{ border: `1.5px solid ${statusTone(bill.status)}`, color: statusTone(bill.status),
                   borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusText(bill.status)}</span></Td>
-                {showPay ? <Td align="center">{bill.due > 0.009
-                  ? <button type="button" className="dk-pill"
-                    onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button>
-                  : "—"}</Td> : null}
+                {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                  {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                    onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                  {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                    onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+                </div></Td> : null}
               </tr>
             ))}
           </tbody>
@@ -4408,19 +4473,23 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   </Sheet>;
 }
 
-function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledger, docId, cid }) {
+function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledger,
+  suppliers, supplierLedger, scope = "customer", docId, cid, sid }) {
   const [kind, setKind] = useState(kinds[0]);
   const [dl, setDl] = useState(lang);
   const [stage, setStage] = useState("opts");
-  const label = { invoice: `🧾 ${t("invoice")}`, receipt: `💵 ${t("receipt")}`, statement: `📑 ${t("statement")}` };
+  const label = { invoice: `🧾 ${t("invoice")}`, receipt: `💵 ${t("receipt")}`,
+    purchase: `🧾 ${t("purchaseInvoice")}`, statement: `📑 ${t("statement")}` };
   const tpl = docTplOf(S);
-  const doc = { kind, id: kind === "statement" ? cid : docId, docLang: dl };
+  const doc = { scope, kind, id: kind === "statement" ? (scope === "supplier" ? sid : cid) : docId,
+    cid: scope === "customer" ? cid : undefined, sid: scope === "supplier" ? sid : undefined, docLang: dl };
 
   if (stage === "preview") {
     return <Sheet title={`🖨️ ${t("previewDoc")}`} sub={label[kind]} onClose={onClose}
       onBack={() => setStage("opts")} backLabel={t("backToOptions")}>
       <div className="doc-preview no-print-chrome">
-        <PrintDoc doc={doc} lang={lang} t={t} S={S} me={me} customers={customers} ledger={ledger} />
+        <PrintDoc doc={doc} lang={lang} t={t} S={S} me={me} customers={customers} ledger={ledger}
+          suppliers={suppliers} supplierLedger={supplierLedger} />
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={() => setStage("opts")}>‹ {t("backToOptions")}</button>
@@ -5535,7 +5604,8 @@ function DocFarmLines({ name, phone, address, L2, size = "md" }) {
   </div>;
 }
 
-function DocHead({ lang, title, docNo, meta, both, logo, farmName, farmPhone, farmAddress, party, showParty = true }) {
+function DocHead({ lang, title, docNo, meta, both, logo, farmName, farmPhone, farmAddress,
+  party, partyLabel, showParty = true }) {
   const L2 = (ar, en) => docL2(both, lang, ar, en);
   const farm = { name: (farmName || "").trim(), phone: (farmPhone || "").trim(), address: (farmAddress || "").trim() };
   return <div style={{ marginBottom: 18 }}>
@@ -5565,7 +5635,7 @@ function DocHead({ lang, title, docNo, meta, both, logo, farmName, farmPhone, fa
       <div style={{ border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px", background: "#F3F5FA",
         borderInlineStart: `3px solid ${C.field}` }}>
         <div style={{ fontSize: 9, fontWeight: 700, color: C.inkSoft, letterSpacing: ".08em", marginBottom: 7 }}>
-          {L2(T.ar.issuedTo, T.en.issuedTo)}</div>
+          {partyLabel || L2(T.ar.issuedTo, T.en.issuedTo)}</div>
         <div style={{ fontWeight: 700, fontSize: 14.5, color: C.ink }}>{party.name}</div>
         {party.acc && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#555", marginTop: 4 }}>{party.acc}</div>}
         {party.phone && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#555", marginTop: 2, direction: "ltr" }}>{party.phone}</div>}
@@ -5591,7 +5661,7 @@ function DocFoot({ thanks, footer, note, signLeft, signRight, showSigns = true }
   </>;
 }
 
-function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger }) {
+function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = [], supplierLedger }) {
   if (doc.kind === "receiptImg") {
     const dlang = doc.docLang || lang;
     return <div dir={T[dlang].dir} style={{ ...docWrap, padding: 16 }}>
@@ -5634,6 +5704,112 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger }) {
     return <span style={{ display: "inline-block", background: bg, color: col, fontWeight: 700, fontSize: 11,
       padding: "4px 10px", borderRadius: 3, border: `1px solid ${col}44` }}>{lb}</span>;
   };
+
+  if (doc.scope === "supplier") {
+    const sl = supplierLedger || { list: [], bySupplier: {}, pays: [], allPays: [] };
+    const supplierLabel = L2(T.ar.supplierName, T.en.supplierName);
+    if (doc.kind === "statement") {
+      const s = suppliers.find((x) => x.id === doc.id);
+      if (!s) return <div dir={T[dlang].dir} style={docWrap}><p>{tApp("noData")}</p></div>;
+      const b = sl.bySupplier[doc.id] || { bought: 0, paid: 0, due: 0, credit: 0 };
+      const catName = (k) => both ? `${catLabel(k, "ar", S.categories)} / ${catLabel(k, "en", S.categories)}`
+        : catLabel(k, dlang, S.categories);
+      const rows = [...sl.list.filter((x) => x.supplierId === doc.id).map((x) => ({
+        at: x.at, k: "b", label: [x.no, catName(x.category), expenseQtyLabel(x, t)].filter(Boolean).join(" · "),
+        d: x.amount, c: 0,
+      })), ...(sl.allPays || sl.pays || []).filter((p) => p.supplierId === doc.id).map((p) => ({
+        at: p.at, k: "p", label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount,
+      }))].sort((a, b2) => new Date(a.at) - new Date(b2.at));
+      const paidTotal = rows.reduce((sum, r) => sum + r.c, 0);
+      let run = 0;
+      return <div dir={T[dlang].dir} style={docWrap}>
+        <DocHead lang={dlang} both={both} {...farm} title={t("statement")} docNo={supplierNo(suppliers, s.id)}
+          party={{ name: s.name, phone: s.phone, acc: supplierNo(suppliers, s.id) }} partyLabel={supplierLabel}
+          meta={[[t("generated"), now], [t("preparedBy"), me.name],
+            ...(tpl.showRate !== false && S.rate > 0 ? [[t("rate"), `1 USD = ${nf(S.rate)} ${L2("ل.ل", "LBP")}`]] : [])]} />
+        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
+          <tr>
+            <td style={docTh}>{t("colDate")}</td><td style={docTh}>{t("colItem")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("totalBought")}{showUsd && showLbp ? "" : showLbp ? ` (${L2("ل.ل", "LBP")})` : " (USD)"}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("paidToSupplier")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("balance")}</td>
+          </tr>
+          {rows.map((r, i) => { run += r.d - r.c; return <tr key={i} style={{ background: i % 2 ? "#FAFAF8" : "#fff" }}>
+            <td style={docTd}>{dmy(r.at)}<span style={{ color: "#888", marginInlineStart: 6, fontSize: 10 }}>{hhmm(r.at)}</span></td>
+            <td style={docTd}>{r.k === "b" ? r.label : `${t("paidToSupplier")} · ${r.label}`}</td>
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.d ? cellAmt(r.d) : ""}</td>
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.c ? cellAmt(r.c) : ""}</td>
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{cellAmt(run)}</td>
+          </tr>; })}
+          <tr>
+            <td style={docThSum} colSpan={2}>{t("balance")}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(b.bought)}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(paidTotal)}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)", color: b.due > 0 ? C.red : C.green }}>{cellAmt(b.due || -b.credit)}</td>
+          </tr>
+        </tbody></table>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <div style={{ minWidth: 220, border: `2px solid ${b.due > 0 ? C.red : C.green}`, borderRadius: 4, padding: "12px 16px",
+            background: b.due > 0 ? "#FBEFEF" : "#E8F2EC", textAlign: "end" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>{b.credit > 0 ? t("supplierCredit") : t("weOwe")}</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4,
+              color: b.due > 0 ? C.red : C.green }}>{money(b.credit > 0 ? b.credit : b.due)}</div>
+          </div>
+        </div>
+        {mkFoot(t("signOwner"), t("signSupplier"))}
+      </div>;
+    }
+
+    const bill = sl.list.find((x) => x.id === doc.id);
+    if (!bill) return <div dir={T[dlang].dir} style={docWrap}><p style={{ fontWeight: 600 }}>{tApp("noData")}</p></div>;
+    const s = suppliers.find((x) => x.id === bill.supplierId);
+    const catName = both ? `${catLabel(bill.category, "ar", S.categories)} / ${catLabel(bill.category, "en", S.categories)}`
+      : catLabel(bill.category, dlang, S.categories);
+    const qtyText = expenseQtyLabel(bill, t);
+    const unitPrice = bill.unitPrice > 0 ? bill.unitPrice : (bill.qty > 0 ? bill.amount / bill.qty : bill.amount);
+    return <div dir={T[dlang].dir} style={docWrap}>
+      <DocHead lang={dlang} both={both} {...farm} title={t("purchaseInvoice")} docNo={bill.no}
+        party={{ name: s ? s.name : "—", phone: s && s.phone, acc: s ? supplierNo(suppliers, s.id) : null }}
+        partyLabel={supplierLabel}
+        meta={[[t("colDate"), `${dmy(bill.at)} ${hhmm(bill.at)}`], [t("preparedBy"), me.name], [t("payStatus"), payBadge(bill.status)]]} />
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 4 }}><tbody>
+        <tr>
+          <td style={docTh}>{t("colItem")}</td><td style={{ ...docTh, textAlign: "center" }}>{t("qty")}</td>
+          <td style={{ ...docTh, textAlign: "end" }}>{t("unitPrice")}</td>
+          {showUsd && <td style={{ ...docTh, textAlign: "end" }}>USD</td>}
+          {showLbp && <td style={{ ...docTh, textAlign: "end" }}>{L2("ل.ل", "LBP")}</td>}
+        </tr>
+        <tr style={{ background: "#FAFAF8" }}>
+          <td style={docTd}>{catName}{bill.feedType ? ` · ${bill.feedType}` : ""}
+            {bill.note ? <div style={{ fontSize: 10, color: "#777", marginTop: 3 }}>{bill.note}</div> : null}</td>
+          <td style={{ ...docTd, textAlign: "center", fontFamily: "var(--mono)" }}>{qtyText || "—"}</td>
+          <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{showUsd ? `$${nm(unitPrice)}` : nf(unitPrice * (bill.rateUsed || S.rate))}</td>
+          {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{nm(bill.amount)}</td>}
+          {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: showUsd ? 400 : 700 }}>{nf(bill.amount * (bill.rateUsed || S.rate))}</td>}
+        </tr>
+        <tr>
+          <td style={{ ...docThSum, textAlign: "end" }} colSpan={3}>{t("total")}</td>
+          {showUsd && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(bill.amount)}</td>}
+          {showLbp && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(bill.amount * (bill.rateUsed || S.rate))}</td>}
+        </tr>
+        <tr><td style={docTd} colSpan={3}>{t("amountPaid")}</td>
+          {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(bill.paidAmount)}</td>}
+          {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(bill.paidAmount * (bill.rateUsed || S.rate))}</td>}
+        </tr>
+        <tr>
+          <td style={{ ...docTd, fontWeight: 800, background: bill.due > 0 ? "#FFECEC" : "#E0EFED" }} colSpan={3}>{bill.due > 0 ? t("weOwe") : t("paidS")}</td>
+          {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
+            background: bill.due > 0 ? "#FFECEC" : "#E0EFED", color: bill.due > 0 ? C.red : C.green }}>{nm(bill.due)}</td>}
+          {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
+            background: bill.due > 0 ? "#FFECEC" : "#E0EFED", color: bill.due > 0 ? C.red : C.green }}>{nf(bill.due * (bill.rateUsed || S.rate))}</td>}
+        </tr>
+      </tbody></table>
+      {tpl.showRate !== false && S.rate > 0 && <div style={{ fontSize: 10.5, color: "#666", marginTop: 10 }}>
+        {t("rate")}: 1 USD = {nf(bill.rateUsed || S.rate)} {L2("ل.ل", "LBP")}
+      </div>}
+      {mkFoot(t("signSupplier"), t("signOwner"))}
+    </div>;
+  }
 
   if (doc.kind === "statement") {
     const c = customers.find((x) => x.id === doc.id);
@@ -7982,6 +8158,9 @@ function FarmApp() {
                 onClick={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}>＋ {t("logSupplierBill")}</button>
               <button type="button" className="dk-pill"
                 onClick={() => setSheet({ k: "paySupplier", sid: selSupplier.id })}>💵 {t("paySupplier")}</button>
+              <button type="button" className="dk-pill"
+                onClick={() => setSheet({ k: "docgen", scope: "supplier", sid: selSupplier.id,
+                  id: selSupplier.id, kinds: ["statement"] })}>🖨️ {t("statement")}</button>
               <button type="button" className="dk-pill" onClick={() => setSelSupp(null)}>‹ {t("backToSuppliers")}</button>
             </div>}>
             <SupplierAccount supplier={selSupplier} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
@@ -7989,6 +8168,8 @@ function FarmApp() {
               tab={["open", "payments", "all", "activity"].includes(suppTab) ? suppTab : "open"} setTab={setSuppTab}
               onBill={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}
               onPay={(billId) => setSheet({ k: "paySupplier", sid: selSupplier.id, billId: billId || null })}
+              onDoc={(bill) => setSheet({ k: "docgen", scope: "supplier", sid: selSupplier.id,
+                id: bill.id, kinds: ["purchase", "statement"] })}
               onEditBill={(id) => setSheet({ k: "supplierBill", sid: selSupplier.id, id })}
               onManage={() => setSheet({ k: "editSupplier", sid: selSupplier.id })} />
           </DeskCard>
@@ -8038,8 +8219,13 @@ function FarmApp() {
                           <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
                           <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
                           <Td mono tone={C.inkSoft}>{bal.lastAt ? dmy(bal.lastAt) : "—"}</Td>
-                          <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
-                            className="dk-pill">{t("openSupplier")} ›</button></Td>
+                          <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                            <button type="button" className="dk-pill" title={t("statement")}
+                              onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "docgen", scope: "supplier",
+                                sid: s.id, id: s.id, kinds: ["statement"] }); }}>🖨️</button>
+                            <button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
+                              className="dk-pill">{t("openSupplier")} ›</button>
+                          </div></Td>
                         </tr>;
                       })}
                     </tbody>
@@ -8622,10 +8808,12 @@ function FarmApp() {
         })()}
 
                 {sheet?.k === "docgen" && <DocGenSheet lang={lang} t={t} S={S} kinds={sheet.kinds || ["invoice"]}
-          me={me} customers={customers} ledger={ledger} docId={sheet.id} cid={sheet.cid}
-          onClose={() => returnToAccount(sheet.cid)}
+          me={me} customers={customers} ledger={ledger} suppliers={suppliers} supplierLedger={supplierLedger}
+          scope={sheet.scope || "customer"} docId={sheet.id} cid={sheet.cid} sid={sheet.sid}
+          onClose={() => sheet.scope === "supplier" ? returnToSupplier(sheet.sid) : returnToAccount(sheet.cid)}
           onPrint={(doc) => {
-            returnToAccount(sheet.cid);
+            if (sheet.scope === "supplier") returnToSupplier(sheet.sid);
+            else returnToAccount(sheet.cid);
             doPrint(doc);
           }} />}
 
@@ -8816,7 +9004,7 @@ function FarmApp() {
       {toast && <div className="toast">✓ {toast}</div>}
 
       <div className={printing ? "print-sheet show" : "print-sheet"}>
-        {doc ? <PrintDoc {...{ doc, lang, t, S, me, customers, ledger }} />
+        {doc ? <PrintDoc {...{ doc, lang, t, S, me, customers, ledger, suppliers, supplierLedger }} />
           : <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped,
             scopedSales, summaryLines, series, periodLabel, outstanding }} />}
       </div>
