@@ -12,9 +12,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.6.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.6.4": {
+    ar: [
+      "مشتريات الموردين تسجّل الكمية بوحدة مناسبة: كغ/كيس، ليتر، رأس، جرعة أو قطعة",
+      "كميات العلف والتبن تظهر في حساب المورد وسجل المصاريف وتُجمع بالكيلوغرام",
+    ],
+    en: [
+      "Supplier purchases track category-aware quantities: kg/bag, litre, head, dose or item",
+      "Feed and hay quantities appear in supplier/expense records and aggregate in kilograms",
+    ],
+  },
   "2.6.3": {
     ar: [
       "تبديل العملة يحدّث كل المبالغ فورًا حسب سعر الصرف المحدد",
@@ -290,6 +300,26 @@ const ROLES = [
 const FEEDS = [
   ["hay", "🌾"], ["concentrate", "🥣"], ["barley", "🌿"], ["corn", "🌽"], ["bran", "🫓"], ["silage", "🍃"], ["otherFeed", "📦"],
 ];
+const BAG_KG = 50;
+/* Optional stock quantity metadata for supplier purchases. Money remains the AP total. */
+const PURCHASE_QTY = {
+  feed: { units: ["kg", "bag"], defaultUnit: "kg", step: { kg: 25, bag: 1 }, feed: true },
+  hay: { units: ["kg", "bag"], defaultUnit: "kg", step: { kg: 25, bag: 1 } },
+  fuel: { units: ["L"], defaultUnit: "L", step: { L: 10 } },
+  water: { units: ["L"], defaultUnit: "L", step: { L: 10 } },
+  livestock: { units: ["head"], defaultUnit: "head", step: { head: 1 } },
+  vet: { units: ["dose"], defaultUnit: "dose", step: { dose: 1 } },
+  medicine: { units: ["dose"], defaultUnit: "dose", step: { dose: 1 } },
+  parts: { units: ["item"], defaultUnit: "item", step: { item: 1 } },
+  supplies: { units: ["item"], defaultUnit: "item", step: { item: 1 } },
+  other: { units: ["item"], defaultUnit: "item", step: { item: 1 } },
+};
+const purchaseQtyMeta = (cat) => PURCHASE_QTY[cat] || null;
+const purchaseUnitLabel = (unit, t) => unit === "bag" ? t("bag")
+  : unit === "kg" ? t("kgU") : unit === "L" ? t("L")
+    : unit === "head" ? t("headUnit") : unit === "dose" ? t("doseUnit") : t("itemUnit");
+const expenseQtyLabel = (e, t) => !(e && e.qty > 0) ? ""
+  : `${n1(e.qty)} ${purchaseUnitLabel(e.unit || "item", t)}`;
 /* Farm money-out: groups for the picker, flat EXPENSES for labels / sums.
    Legacy keys (labour, other, feed, …) stay so old entries keep working. */
 const EXPENSE_GROUPS = [
@@ -723,7 +753,8 @@ const T = {
     species: "النوع", flockSize: "حجم القطيع", mortality: "نسبة النفوق", eggRate: "نسبة الإنتاج",
     feedType: "نوع العلف", hay: "تبن", concentrate: "علف مركز", barley: "شعير", corn: "ذرة",
     bran: "نخالة", silage: "سيلاج", otherFeed: "علف آخر",
-    qtyUnit: "وحدة القياس", kgU: "كيلو", bag: "كيس", bagHint: "الكيس ٥٠ كغ عادةً",
+    qtyUnit: "وحدة القياس", purchaseQty: "كم اشتريت؟", kgU: "كيلو", bag: "كيس", bagHint: "الكيس ٥٠ كغ عادةً",
+    headUnit: "رأس", doseUnit: "جرعة", itemUnit: "قطعة",
     unitPriceFeed: "سعر الوحدة", supplier: "المورّد", lastPrice: "آخر سعر",
     feedPerHead: "كلفة العلف لكل رأس يوميًا", feedPerLiter: "كلفة العلف لليتر", feedPerEgg: "كلفة العلف للبيضة",
     feedBreak: "العلف حسب النوع", totalFeed: "مجموع العلف", feedQty: "الكمية",
@@ -1085,7 +1116,8 @@ const T = {
     species: "Species", flockSize: "Flock size", mortality: "Mortality", eggRate: "Lay rate",
     feedType: "Feed type", hay: "Hay", concentrate: "Concentrate", barley: "Barley", corn: "Corn",
     bran: "Bran", silage: "Silage", otherFeed: "Other feed",
-    qtyUnit: "Unit", kgU: "kg", bag: "Bag", bagHint: "a bag is usually 50 kg",
+    qtyUnit: "Unit", purchaseQty: "How much did you buy?", kgU: "kg", bag: "Bag", bagHint: "a bag is usually 50 kg",
+    headUnit: "head", doseUnit: "dose", itemUnit: "item",
     unitPriceFeed: "Price per unit", supplier: "Supplier", lastPrice: "Last price",
     feedPerHead: "Feed cost per head per day", feedPerLiter: "Feed cost per liter", feedPerEgg: "Feed cost per egg",
     feedBreak: "Feed by type", totalFeed: "Total feed", feedQty: "Quantity",
@@ -1902,12 +1934,12 @@ function computeSums(list, S, workers, days) {
   list.filter((e) => e.type === "expense").forEach((e) => add(e.category || "other", expenseAccrued(e)));
   /* a medicine record is both a health note and a cost — recorded once, counted once */
   list.filter((e) => e.type === "med").forEach((e) => add("medicine", e.cost));
-  const feedRows = list.filter((e) => e.type === "expense" && (e.category || "") === "feed");
+  const feedRows = list.filter((e) => e.type === "expense" && ["feed", "hay"].includes(e.category || ""));
   const feedByType = {}; const feedQty = {};
-  feedRows.forEach((e) => { const k = e.feedType || "otherFeed";
+  feedRows.forEach((e) => { const k = e.feedType || (e.category === "hay" ? "hay" : "otherFeed");
     const amt = expenseAccrued(e);
     feedByType[k] = (feedByType[k] || 0) + amt;
-    if (e.qty && amt > 0) feedQty[k] = (feedQty[k] || 0) + (e.unit === "bag" ? e.qty * 50 : e.qty); });
+    if (e.qty && amt > 0) feedQty[k] = (feedQty[k] || 0) + (e.unit === "bag" ? e.qty * BAG_KG : e.qty); });
   const att = {};
   list.filter((e) => e.type === "attend").forEach((e) => { const k = `${dayKey(e.at)}|${e.workerId}`; if (!(k in att)) att[k] = e; });
   const shifts = Object.values(att).filter((e) => e.present).length;
@@ -1915,7 +1947,7 @@ function computeSums(list, S, workers, days) {
   const laborPayroll = shifts * (S.wage || 0) + (monthly * days) / 30;
   add("labour", laborPayroll);                       // wages join the same ledger
   const laborCost = byCategory.labour || 0;
-  const feedCost = byCategory.feed || 0;
+  const feedCost = (byCategory.feed || 0) + (byCategory.hay || 0);
   const medCost = byCategory.medicine || 0;
   const buyCost = byCategory.livestock || 0;
   const estValue = milk.total * (S.milkPrice || 0) + eggs.total * (S.eggPrice || 0);
@@ -2143,7 +2175,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     rows: [[t("colDate"), t("colTime"), t("category"), t("colItem"), t("amount"), t("attachment"), t("colUser")],
     ...scoped.filter((e) => e.type === "expense").map((e) => [d(e), h(e),
       catLabel(e.category, lang, S.categories),
-      [e.feedType ? t(e.feedType) : "", e.qty ? `${e.qty} ${e.unit === "bag" ? t("bag") : t("kgU")}` : "",
+      [e.feedType ? t(e.feedType) : "", expenseQtyLabel(e, t),
         e.supplier || "", e.note || "", e.species ? spName(e.species, lang) : "",
         e.animalId ? aLbl(e.animalId) : ""].filter(Boolean).join(" · "),
       money(-(e.amount || 0)), e.receipt ? t("attached") : "", e.byName]),
@@ -3780,6 +3812,10 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
   })();
   const [cat, setCat] = useState(initial?.category || "feed");
   const [amount, setAmount] = useState(initial?.amount || 0);
+  const initialQtyMeta = purchaseQtyMeta(initial?.category || "feed");
+  const [qty, setQty] = useState(initial?.qty || 0);
+  const [unit, setUnit] = useState(initial?.unit || initialQtyMeta?.defaultUnit || "");
+  const [feedType, setFeedType] = useState(initial?.feedType || (initial?.category === "hay" ? "hay" : "otherFeed"));
   /* Legacy bills with no payStatus were treated as fully paid. */
   const initPaid = !initial ? 0
     : !initial.payStatus ? (initial.amount || 0)
@@ -3791,6 +3827,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
   const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
   const [cur, setCur] = useState(initial?.currency || "usd");
+  const qtyMeta = purchaseQtyMeta(cat);
   const pay = payState(amount, paidAmount);
   const mode = pay.status === "paid" ? "now" : pay.status === "partial" ? "partial" : "later";
   const setBill = (v) => {
@@ -3803,12 +3840,23 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     else if (m === "now") setPaidAmount(amount);
     else setPaidAmount((p) => (p > 0 && p < amount ? p : fromCents(Math.round(toCents(amount) / 2))));
   };
+  const chooseCat = (nextCat) => {
+    if (nextCat === cat) return;
+    const meta = purchaseQtyMeta(nextCat);
+    setCat(nextCat);
+    setQty(0);
+    setUnit(meta?.defaultUnit || "");
+    setFeedType(nextCat === "hay" ? "hay" : "otherFeed");
+  };
   const locked = busy || saving;
+  const invalid = !(amount > 0) || !cat || (qtyMeta && !(qty > 0));
   const save = () => {
-    if (locked || !(amount > 0) || !cat) return;
+    if (locked || invalid) return;
     setSaving(true);
     onSave({
       id: initial?.id, category: cat, amount: pay.bill, note: note.trim(),
+      qty: qtyMeta ? qty : undefined, unit: qtyMeta ? unit : undefined,
+      feedType: cat === "feed" ? feedType : cat === "hay" ? "hay" : undefined,
       vendor: supplier.name, supplierId: supplier.id, supplier: supplier.name,
       at: dayStamp(date), currency: cur, rateUsed: S.rate,
       payStatus: pay.status, paidAmount: pay.paid,
@@ -3826,7 +3874,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
       {cats.map((c) => {
         const on = cat === c.key;
-        return <button type="button" key={c.key} onClick={() => setCat(c.key)} style={{
+        return <button type="button" key={c.key} onClick={() => chooseCat(c.key)} style={{
           background: on ? c.color : C.card, color: on ? "#fff" : C.ink,
           border: `1.5px solid ${on ? c.color : C.line}`, borderRadius: 6, padding: "10px 4px",
           cursor: "pointer", fontFamily: "var(--body)" }}>
@@ -3836,12 +3884,34 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
         </button>;
       })}
     </div>
-    <Step n="2" label={t("billTotal")} />
+    {qtyMeta && <>
+      {qtyMeta.feed && <>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("feedType")}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginBottom: 12 }}>
+          {FEEDS.map(([k, ic]) => <button type="button" key={k} onClick={() => setFeedType(k)} style={{
+            background: feedType === k ? C.field : C.paper, color: feedType === k ? "#fff" : C.ink,
+            border: `1px solid ${feedType === k ? C.field : C.line}`, borderRadius: 4, padding: "8px 3px",
+            cursor: "pointer", fontFamily: "var(--body)", fontSize: 11.5, fontWeight: 700 }}>
+            <div style={{ fontSize: 18 }}>{ic}</div>{t(k)}</button>)}
+        </div>
+      </>}
+      <Step n="2" label={t("purchaseQty")} />
+      {qtyMeta.units.length > 1 && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 9 }}>
+        {qtyMeta.units.map((u) => <Chip key={u} active={unit === u} onClick={() => setUnit(u)}>
+          {u === "bag" ? "🛍️" : "⚖️"} {purchaseUnitLabel(u, t)}</Chip>)}
+      </div>}
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
+        <Stepper big value={qty} onChange={setQty} step={qtyMeta.step[unit] || 1}
+          decimals={unit === "kg" || unit === "L" ? 2 : 0} suffix={purchaseUnitLabel(unit, t)} />
+      </div>
+      {unit === "bag" && <div style={{ fontSize: 12.5, color: C.inkSoft, margin: "-5px 0 12px" }}>💡 {t("bagHint")}</div>}
+    </>}
+    <Step n={qtyMeta ? "3" : "2"} label={t("billTotal")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
       <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t}
         step={5} currency={cur} setCurrency={setCur} />
     </div>
-    <Step n="3" label={t("amountPaid")} />
+    <Step n={qtyMeta ? "4" : "3"} label={t("amountPaid")} />
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
       <Chip active={mode === "later"} onClick={() => setMode("later")} color={C.red}>{t("payLater")}</Chip>
       <Chip active={mode === "now"} onClick={() => setMode("now")} color={C.green}>{t("payNowMode")}</Chip>
@@ -3853,14 +3923,14 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onCl
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
       <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
     </>}
-    <Step n="4" label={`${t("colDate")} — ${dmy(date)}`} />
+    <Step n={qtyMeta ? "5" : "4"} label={`${t("colDate")} — ${dmy(date)}`} />
     <input type="date" value={date} max={dayKey(Date.now())}
       onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes2")} — {t("optional")}</div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")}
       style={{ ...inp, marginBottom: 16 }} />
-    <button type="button" disabled={locked || !(amount > 0) || !cat}
-      style={{ ...primaryBtn, opacity: locked || !(amount > 0) || !cat ? .45 : 1 }}
+    <button type="button" disabled={locked || invalid}
+      style={{ ...primaryBtn, opacity: locked || invalid ? .45 : 1 }}
       onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
@@ -3991,6 +4061,8 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
                 <Td mono>{dmy(bill.at)}</Td>
                 <Td mono tone={C.field}>{bill.no}</Td>
                 <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                  {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                    {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
                   {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}
                   {bill.overdue ? <span style={{ display: "block", fontSize: 11.5, color: C.red, fontWeight: 700 }}>{t("overdue")}</span> : null}
                 </Td>
@@ -4913,7 +4985,7 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     eggs: ["🥚", `${backdated(e) ? "📅 " : ""}${t("collect")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)} ${t("eggsUnit")}`],
     med: [m ? m.i : "💉", `${m ? (lang === "ar" ? m.ar : m.en) : ""}${e.name ? ` (${e.name})` : ""} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
-    expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${n1(e.qty)} ${e.unit === "bag" ? t("bag") : t("kgU")}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
+    expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
     sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? c.name : "—"}`, fmtC(e.amount, rate, lang)],
     payment: ["💵", `${t("recordPayment")} · ${c ? c.name : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
@@ -6624,6 +6696,9 @@ function FarmApp() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
         <StatTile icon="💸" label={t("moneySpentPeriod")} value={fmtC(expMoneySums.costs, S.rate, lang)} tone={C.red} />
+        <StatTile icon="🌾" label={t("totalFeed")}
+          value={`${nf(Object.values(expMoneySums.feedQty || {}).reduce((a, v) => a + v, 0))} ${t("kgU")}`}
+          tone={C.field} sub={t("feedQty")} />
         <StatTile icon="📅" label={t("billsDue")} value={nf(billsDueList.length)}
           tone={billsDueList.length ? C.amber : C.green} sub={billsDueTotal ? fmtC(billsDueTotal, S.rate, lang) : undefined} />
         <StatTile icon="📊" label={t("topCategory")}
@@ -6731,14 +6806,19 @@ function FarmApp() {
                   const amt = isMed ? (e.cost || 0) : (e.amount || 0);
                   const due = isMed ? 0 : (bill ? bill.due
                     : (st === "unpaid" ? amt : st === "partial" ? Math.max(0, amt - (e.paidAmount || 0)) : 0));
+                  const editSheet = e.supplierId
+                    ? { k: "supplierBill", sid: e.supplierId, id: e.id }
+                    : { k: "editExpense", id: e.id };
                   return <tr key={e.id} style={{ cursor: isMed ? "default" : "pointer" }}
-                    onClick={() => !isMed && setSheet({ k: "editExpense", id: e.id })}
+                    onClick={() => !isMed && setSheet(editSheet)}
                     onContextMenu={(ev) => openCtx(ev, [
-                      !isMed && { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editExpense", id: e.id }) },
+                      !isMed && { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet(editSheet) },
                       e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), run: () => setSheet({ k: "receipt", id: e.id, back: null }) },
                     ].filter(Boolean))}>
                     <Td mono>{dmy(e.at)}</Td>
                     <Td><span style={{ color: catColor(cat, S.categories) }}>{catIcon(cat, S.categories)}</span> {catLabel(cat, lang, S.categories)}
+                      {e.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                        {e.feedType ? `${t(e.feedType)} · ` : ""}{expenseQtyLabel(e, t)}</span> : null}
                       {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
                     <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
                     <Td align="end" mono strong tone={C.red}>{fmtC(amt, S.rate, lang)}</Td>
@@ -6751,7 +6831,7 @@ function FarmApp() {
                     </Td>
                     <Td align="center">
                       {!isMed && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
-                        setSheet({ k: "editExpense", id: e.id }); }}>✏️</button>}
+                        setSheet(editSheet); }}>✏️</button>}
                     </Td>
                   </tr>;
                 })}
