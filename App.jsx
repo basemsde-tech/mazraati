@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.8.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.1": {
+    ar: [
+      "صندوق نقد أذكى: رصيد واضح، سجل قابل للبحث، وتفصيل مختصر للتدفقات",
+    ],
+    en: [
+      "A smarter Cash Box with a clear balance, searchable register, and compact flow breakdown",
+    ],
+  },
   "2.8.0": {
     ar: [
       "واجهة مصروفات أذكى وأهدأ تعرض المهم أولاً وتخفي التفاصيل الاختيارية",
@@ -473,6 +481,15 @@ const T = {
     cashFilterAll: "الكل", cashFilterIn: "قبض فقط", cashFilterOut: "صرف فقط",
     cashEmpty: "لا حركات نقدية في هذه الفترة.", cashTotals: "المجموع",
     cashExport: "تصدير Excel", cashAccount: "الصندوق / المزرعة",
+    cashOverview: "ملخص الصندوق", cashClosing: "الرصيد الختامي", cashNet: "صافي الحركة",
+    cashRegister: "سجل الصندوق", cashSearch: "ابحث في البيان أو المرجع…",
+    cashViewTotals: "إجمالي العرض", cashFullPeriod: "الفترة كاملة", cashFilteredHint: "الرصيد الجاري مخفي لأن العرض مفلتر",
+    cashShowRef: "إظهار المرجع", cashHideRef: "إخفاء المرجع",
+    cashShowFlow: "إظهار تفصيل التدفقات", cashHideFlow: "إخفاء تفصيل التدفقات",
+    cashFlowBreakdown: "تفصيل التدفقات", cashFlowSource: "المصدر / البند",
+    cashNoResults: "لا توجد حركات تطابق هذا العرض.", cashNoResultsSub: "جرّب مسح البحث أو تغيير نوع الحركة.",
+    cashExportComplete: "تصدير الفترة كاملة", cashOpenSource: "فتح القيد",
+    cashCustomerReceipts: "قبض الزبائن", cashOtherOut: "مصروفات أخرى",
     animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", suppliers: "الموردون", reports: "التقارير", settings: "الإعدادات",
     farmWork: "عمل المزرعة", officeWork: "عمل المكتب",
     obligations: "الالتزامات", addObligation: "إضافة فاتورة دورية", obligationTypes: "نوع الالتزام",
@@ -840,6 +857,15 @@ const T = {
     cashFilterAll: "All", cashFilterIn: "In only", cashFilterOut: "Out only",
     cashEmpty: "No cash movements in this period.", cashTotals: "Totals",
     cashExport: "Export Excel", cashAccount: "Cash box / Farm",
+    cashOverview: "Cash overview", cashClosing: "Closing balance", cashNet: "Net movement",
+    cashRegister: "Cash register", cashSearch: "Search statement or reference…",
+    cashViewTotals: "View totals", cashFullPeriod: "Full period", cashFilteredHint: "Running balance is hidden while this view is filtered",
+    cashShowRef: "Show reference", cashHideRef: "Hide reference",
+    cashShowFlow: "Show flow breakdown", cashHideFlow: "Hide flow breakdown",
+    cashFlowBreakdown: "Flow breakdown", cashFlowSource: "Source / category",
+    cashNoResults: "No movements match this view.", cashNoResultsSub: "Clear the search or change the movement type.",
+    cashExportComplete: "Export full period", cashOpenSource: "Open source",
+    cashCustomerReceipts: "Customer receipts", cashOtherOut: "Other expenses",
     animals: "Animals", entry: "Production", sales: "Sales", suppliers: "Suppliers", reports: "Reports", settings: "Settings",
     farmWork: "Farm work", officeWork: "Office work",
     obligations: "Obligations", addObligation: "Add recurring bill", obligationTypes: "Type",
@@ -6111,12 +6137,14 @@ function FarmApp() {
   const [cashRange, setCashRange] = useState("today");
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
+  const [cashQ, setCashQ] = useState("");
+  const [cashRefOpen, setCashRefOpen] = useState(false);
+  const [cashFlowOpen, setCashFlowOpen] = useState(false);
   const [cashFiltOpen, setCashFiltOpen] = useState(false);
   const [expFiltOpen, setExpFiltOpen] = useState(false);
   const [expBillsOpen, setExpBillsOpen] = useState(false);
   const [expInsightsOpen, setExpInsightsOpen] = useState(false);
   const [reportFiltOpen, setReportFiltOpen] = useState(false);
-  const [cashSel, setCashSel] = useState(null);
   const [report, setReport] = useState("summary");
   const [spFilter, setSpFilter] = useState("all");
   const [printing, setPrinting] = useState(false);
@@ -6630,16 +6658,40 @@ function FarmApp() {
   };
   const expBounds = useMemo(() => periodBounds(expRange, expFrom, expTo), [expRange, expFrom, expTo]);
   const cashBounds = useMemo(() => periodBounds(cashRange, cashFrom, cashTo), [cashRange, cashFrom, cashTo]);
-  const cashBox = useMemo(() => {
-    const box = buildCashBox(entries, {
+  const cashBox = useMemo(() => buildCashBox(entries, {
       customers, suppliers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
+    }), [entries, customers, suppliers, lang, t, S.categories, cashBounds]);
+  const cashView = useMemo(() => {
+    const q = cashQ.trim().toLowerCase();
+    const rows = cashBox.rows.filter((r) => {
+      if (cashDir !== "all" && r.dir !== cashDir) return false;
+      if (!q) return true;
+      const statement = (r.parts || []).map((p) => p.text).join("");
+      return `${r.day} ${r.ref} ${statement} ${r.debit || ""} ${r.credit || ""}`.toLowerCase().includes(q);
     });
-    const rows = cashDir === "all" ? box.rows
-      : box.rows.filter((r) => cashDir === "in" ? r.dir === "in" : r.dir === "out");
     const totalIn = +rows.reduce((a, r) => a + r.debit, 0).toFixed(2);
     const totalOut = +rows.reduce((a, r) => a + r.credit, 0).toFixed(2);
-    return { ...box, rows, totalIn, totalOut, filtered: cashDir !== "all" };
-  }, [entries, customers, suppliers, lang, t, S.categories, cashBounds, cashDir]);
+    return { rows, totalIn, totalOut, filtered: cashDir !== "all" || !!q };
+  }, [cashBox, cashDir, cashQ]);
+  const cashFlow = useMemo(() => {
+    const groups = {};
+    cashBox.rows.forEach((r) => {
+      const e = r.source || {};
+      let key;
+      if (r.dir === "in") key = t("cashCustomerReceipts");
+      else if (e.type === "supplierPay") {
+        const linked = e.expenseId && entries.find((x) => x.id === e.expenseId && x.type === "expense");
+        key = linked ? catLabel(linked.category, lang, S.categories) : t("supplierPays");
+      } else if (e.type === "med") key = t("medicine");
+      else key = catLabel(e.category || "other", lang, S.categories) || t("cashOtherOut");
+      const id = `${r.dir}:${key}`;
+      if (!groups[id]) groups[id] = { id, label: key, dir: r.dir, amount: 0, count: 0 };
+      groups[id].amount += r.debit || r.credit;
+      groups[id].count += 1;
+    });
+    return Object.values(groups).map((g) => ({ ...g, amount: +g.amount.toFixed(2) }))
+      .sort((a, b) => (a.dir === b.dir ? b.amount - a.amount : a.dir === "in" ? -1 : 1));
+  }, [cashBox, entries, lang, t, S.categories]);
 
   const expScoped = useMemo(() => entries.filter((e) => {
     if (e.type !== "expense" && !(e.type === "med" && (e.cost || 0) > 0)) return false;
@@ -7700,26 +7752,46 @@ function FarmApp() {
     ping(t("saved"));
   };
 
-  const cashFiltActive = (cashRange !== "today" ? 1 : 0) + (cashDir !== "all" ? 1 : 0) + (cashRange === "custom" && (cashFrom || cashTo) ? 1 : 0);
+  const openCashSource = (r) => {
+    const e = r && r.source;
+    if (!e) return;
+    if (e.type === "payment" && e.customerId) {
+      navigate("sales", { clearSheet: false });
+      openAccount(e.customerId, "transactions");
+      return;
+    }
+    if (e.type === "supplierPay") {
+      const bill = e.expenseId && entries.find((x) => x.id === e.expenseId && x.type === "expense");
+      if (bill && !e.implied && bill.supplierId) {
+        navigate("suppliers", { clearSheet: false });
+        setSheet({ k: "supplierBill", sid: bill.supplierId, id: bill.id });
+      } else if (e.supplierId) {
+        navigate("suppliers", { clearSheet: false });
+        openSupplier(e.supplierId, "activity");
+      }
+      return;
+    }
+    if (e.type === "expense") {
+      navigate(e.supplierId ? "suppliers" : "expenses", { clearSheet: false });
+      setSheet(e.supplierId ? { k: "supplierBill", sid: e.supplierId, id: e.id }
+        : { k: "editExpense", id: e.id });
+      return;
+    }
+    if (e.type === "med") navigate("expenses");
+  };
+  const cashFiltActive = (cashRange !== "today" ? 1 : 0) + (cashRange === "custom" && (cashFrom || cashTo) ? 1 : 0);
+  const cashPeriodLabel = cashRange === "today" ? t("today") : cashRange === "yesterday" ? t("yesterday")
+    : cashRange === "week" ? t("thisWeek") : cashRange === "lastMonth" ? t("lastMonth")
+      : cashRange === "custom" ? `${dmy(cashBounds.from)} — ${dmy(cashBounds.to)}` : t("thisMonth");
+  const cashNet = +(cashBox.totalIn - cashBox.totalOut).toFixed(2);
   const DeskDashboard = (
     <div style={{ display: "grid", gap: 14 }} className="cash-box">
-      <FilterTray open={cashFiltOpen} onToggle={() => setCashFiltOpen((o) => !o)} t={t} active={cashFiltActive}
-        end={<div style={{ display: "flex", gap: 7, marginInlineStart: "auto", flexWrap: "wrap" }}>
-          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
-            onClick={exportCashBox}>📊 {t("cashExport")}</button>
-          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
-            onClick={() => window.print()}>🖨️ {t("print")}</button>
-        </div>}>
+      <FilterTray open={cashFiltOpen} onToggle={() => setCashFiltOpen((o) => !o)} t={t} active={cashFiltActive}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
           {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
-            ["month", t("thisMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+            ["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
             <Chip key={k} active={cashRange === k || (k === "week" && cashRange === "thisWeek") || (k === "month" && cashRange === "thisMonth")}
               onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
-            <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}
-              color={k === "in" ? C.green : k === "out" ? C.red : C.field}>{lb}</Chip>))}
         </div>
         {cashRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
@@ -7729,63 +7801,120 @@ function FarmApp() {
         </div>}
       </FilterTray>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
-        <StatTile icon="💵" label={t("cashAccount")} value={S.farmName || t("cashBox")} tone={C.field} sub={t("cashBoxSub")} />
-        <StatTile icon="📥" label={t("cashIn")} value={fmtC(cashBox.totalIn, S.rate, lang)} tone={C.green} />
-        <StatTile icon="📤" label={t("cashOut")} value={fmtC(cashBox.totalOut, S.rate, lang)} tone={C.red} />
-        <StatTile icon="⚖" label={t("cashBalance")} value={fmtC(cashBox.closing, S.rate, lang)}
-          tone={cashBox.closing >= 0 ? C.green : C.red}
-          sub={`${t("cashOpening")}: ${fmtC(cashBox.opening, S.rate, lang)}`} />
-      </div>
+      <DeskCard pad={0} title={`✦ ${t("cashOverview")}`}>
+        <div className="cash-overview">
+          <div className="cash-closing">
+            <span>{t("cashClosing")}</span>
+            <Money usd={cashBox.closing} rate={S.rate} lang={lang} size={30} tone="#fff" />
+            <small>{cashPeriodLabel}</small>
+          </div>
+          {[
+            [t("cashOpening"), cashBox.opening, C.field],
+            [t("cashIn"), cashBox.totalIn, C.green],
+            [t("cashOut"), cashBox.totalOut, C.red],
+            [t("cashNet"), cashNet, cashNet >= 0 ? C.green : C.red],
+          ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
+            <span>{label}</span>
+            <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
+          </div>)}
+        </div>
+      </DeskCard>
 
-      <DeskCard pad={0} title={`💵 ${t("cashBox")} · ${dayLabel(cashBounds.from, lang)}${cashBounds.from !== cashBounds.to ? ` → ${dayLabel(cashBounds.to, lang)}` : ""}`}
-        right={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{cashBox.rows.length} {t("rows")}</span>}>
+      <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
+        right={<div className="cash-register-tools">
+          <div className="cash-dir">
+            {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
+              <button key={k} type="button" className={`dk-pill${cashDir === k ? " on" : ""}`}
+                onClick={() => setCashDir(k)}>{lb}</button>))}
+          </div>
+          <label className="cash-search"><span aria-hidden>⌕</span>
+            <input value={cashQ} onChange={(e) => setCashQ(e.target.value)} placeholder={t("cashSearch")} />
+          </label>
+          <button type="button" className={`dk-pill${cashRefOpen ? " on" : ""}`}
+            onClick={() => setCashRefOpen((v) => !v)}>{cashRefOpen ? t("cashHideRef") : t("cashShowRef")}</button>
+        </div>}>
+        {cashView.filtered && <div className="cash-filter-note">
+          <span>ⓘ {t("cashFilteredHint")}</span>
+          <b>{t("cashViewTotals")}: <span style={{ color: C.green }}>+{fmtC(cashView.totalIn, S.rate, lang)}</span>
+            {" · "}<span style={{ color: C.red }}>−{fmtC(cashView.totalOut, S.rate, lang)}</span></b>
+        </div>}
         <div style={{ overflowX: "auto" }}>
-          <table className="cash-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+          <table className="cash-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: cashRefOpen ? 720 : 620 }}>
             <thead><tr>
               <Th>{t("cashEntryDate")}</Th>
-              <Th>{t("cashRef")}</Th>
+              {cashRefOpen && <Th>{t("cashRef")}</Th>}
               <Th>{t("cashStatement")}</Th>
               <Th align="end">{t("cashIn")}</Th>
               <Th align="end">{t("cashOut")}</Th>
-              <Th align="end">{t("cashBalance")}</Th>
+              {!cashView.filtered && <Th align="end">{t("cashBalance")}</Th>}
             </tr></thead>
             <tbody>
-              {cashBox.opening !== 0 && (
+              {!cashView.filtered && cashBox.opening !== 0 && (
                 <tr style={{ background: C.paper }}>
                   <Td tone={C.inkSoft}>{cashBounds.from}</Td>
-                  <Td mono tone={C.inkSoft}>—</Td>
+                  {cashRefOpen && <Td mono tone={C.inkSoft}>—</Td>}
                   <Td><span style={{ fontWeight: 700, color: C.field }}>{t("cashOpening")}</span></Td>
                   <Td align="end" mono>—</Td>
                   <Td align="end" mono>—</Td>
                   <Td align="end" mono strong tone={cashBox.opening >= 0 ? C.green : C.red}>{fmtC(cashBox.opening, S.rate, lang)}</Td>
                 </tr>
               )}
-              {cashBox.rows.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</td></tr>
-              ) : cashBox.rows.map((r) => (
-                <tr key={r.id} onClick={() => setCashSel(r.id)}
-                  style={{ cursor: "pointer", background: cashSel === r.id ? "rgba(201,162,39,.22)" : "transparent" }}>
+              {cashView.rows.length === 0 ? (
+                <tr><td colSpan={(cashRefOpen ? 1 : 0) + (cashView.filtered ? 4 : 5)} style={{ padding: 30, textAlign: "center" }}>
+                  <div style={{ fontSize: 25, marginBottom: 5 }}>⌕</div>
+                  <b>{cashBox.rows.length ? t("cashNoResults") : t("cashEmpty")}</b>
+                  {cashBox.rows.length > 0 && <div style={{ color: C.inkSoft, fontSize: 12.5, marginTop: 4 }}>{t("cashNoResultsSub")}</div>}
+                </td></tr>
+              ) : cashView.rows.map((r) => (
+                <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
+                  style={{ cursor: "pointer" }}>
                   <Td mono>{r.day}</Td>
-                  <Td mono tone={C.inkSoft}>{r.ref}</Td>
+                  {cashRefOpen && <Td mono tone={C.inkSoft}>{r.ref}</Td>}
                   <Td><CashParts parts={r.parts} /></Td>
                   <Td align="end" mono strong tone={r.debit ? C.green : C.inkSoft}>{r.debit ? fmtC(r.debit, S.rate, lang) : "—"}</Td>
                   <Td align="end" mono strong tone={r.credit ? C.red : C.inkSoft}>{r.credit ? fmtC(r.credit, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>
+                  {!cashView.filtered && <Td align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
-                <Td colSpan={3} strong>{t("cashTotals")}</Td>
-                <Td align="end" mono strong tone={C.green}>{fmtC(cashBox.totalIn, S.rate, lang)}</Td>
-                <Td align="end" mono strong tone={C.red}>{fmtC(cashBox.totalOut, S.rate, lang)}</Td>
-                <Td align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>
+                <Td colSpan={cashRefOpen ? 3 : 2} strong>{cashView.filtered ? t("cashViewTotals") : t("cashTotals")}</Td>
+                <Td align="end" mono strong tone={C.green}>{fmtC(cashView.totalIn, S.rate, lang)}</Td>
+                <Td align="end" mono strong tone={C.red}>{fmtC(cashView.totalOut, S.rate, lang)}</Td>
+                {!cashView.filtered && <Td align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>}
               </tr>
             </tfoot>
           </table>
         </div>
       </DeskCard>
+
+      <div className="cash-secondary-actions">
+        <button type="button" className="dk-pill" onClick={exportCashBox}>↧ {t("cashExport")} · {t("cashFullPeriod")}</button>
+        <button type="button" className="dk-pill" onClick={() => window.print()}>🖨️ {t("print")}</button>
+        <button type="button" className="dk-pill" onClick={() => setCashFlowOpen((v) => !v)}>
+          📊 {cashFlowOpen ? t("cashHideFlow") : t("cashShowFlow")} {cashFlowOpen ? "▴" : "▾"}</button>
+        <button type="button" className="dk-pill" style={{ marginInlineStart: "auto" }}
+          onClick={() => navigate("expenses")}>💸 {t("expenses")} ›</button>
+      </div>
+
+      {cashFlowOpen && <DeskCard title={`📊 ${t("cashFlowBreakdown")} · ${cashPeriodLabel}`}
+        right={<button type="button" className="dk-pill" onClick={() => setCashFlowOpen(false)}>− {t("cashHideFlow")}</button>}>
+        {cashFlow.length === 0 ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</div>
+          : <div className="cash-flow-list">
+            {cashFlow.map((g) => {
+              const base = g.dir === "in" ? cashBox.totalIn : cashBox.totalOut;
+              const pct = base > 0 ? Math.round((g.amount / base) * 100) : 0;
+              const tone = g.dir === "in" ? C.green : C.red;
+              return <div className="cash-flow-row" key={g.id}>
+                <div><b>{g.dir === "in" ? "↙" : "↗"} {g.label}</b>
+                  <span>{g.count} {t("rows")} · {pct}%</span></div>
+                <strong style={{ color: tone }}>{fmtC(g.amount, S.rate, lang)}</strong>
+                <i><span style={{ width: `${pct}%`, background: tone }} /></i>
+              </div>;
+            })}
+          </div>}
+      </DeskCard>}
     </div>
   );
 
@@ -9386,6 +9515,37 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   font-family:var(--body);font-size:12.5px;font-weight:600;color:${C.ink};transition:all .14s var(--ease)}
 .dk-pill:hover{border-color:${C.field};transform:translateY(-1px)}
 .dk-pill.on{background:${C.field};border-color:${C.field};color:#fff;box-shadow:0 4px 12px ${C.field}33}
+.cash-overview{display:grid;grid-template-columns:minmax(230px,1.35fr) repeat(4,minmax(120px,1fr))}
+.cash-closing{background:${C.field};color:#fff;padding:18px 20px;display:grid;align-content:center;gap:5px;min-height:104px}
+.cash-closing>span{font-size:12px;font-weight:700;opacity:.8}
+.cash-closing>small{font-size:11.5px;opacity:.72}
+.cash-overview-stat{padding:16px;border-inline-start:1px solid ${C.line};display:grid;align-content:center;gap:7px;min-height:82px}
+.cash-overview-stat span{color:${C.inkSoft};font-size:11.5px;font-weight:700}
+.cash-overview-stat b{font-family:var(--mono);font-size:15px;line-height:1.35}
+.cash-register-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.cash-dir{display:flex;gap:4px}
+.cash-dir .dk-pill{padding:6px 10px}
+.cash-search{display:flex;align-items:center;gap:6px;background:${C.paper};border:1px solid ${C.line};border-radius:999px;padding:5px 10px;color:${C.inkSoft}}
+.cash-search:focus-within{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}18}
+.cash-search input{width:190px;border:0!important;outline:0!important;box-shadow:none!important;background:transparent;color:${C.ink};font-size:12.5px;padding:1px}
+.cash-filter-note{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 13px;
+  background:${C.paper};border-bottom:1px solid ${C.line};font-size:11.5px;color:${C.inkSoft}}
+.cash-filter-note b{font-family:var(--mono);font-weight:600}
+.cash-table tbody tr{transition:background .12s ease}
+.cash-table tbody tr[title]:hover{background:${C.paper}!important}
+.cash-secondary-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cash-flow-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px}
+.cash-flow-row{display:grid;grid-template-columns:1fr auto;gap:7px 12px;padding:11px 12px;border:1px solid ${C.line};border-radius:5px;background:${C.paper}}
+.cash-flow-row div{display:grid;gap:2px}.cash-flow-row b{font-size:13px}.cash-flow-row span{font-size:11.5px;color:${C.inkSoft}}
+.cash-flow-row strong{font-family:var(--mono);font-size:13px}
+.cash-flow-row i{grid-column:1/-1;height:4px;background:${C.line};border-radius:99px;overflow:hidden}
+.cash-flow-row i span{display:block;height:100%;border-radius:99px}
+@media(max-width:1050px){.cash-overview{grid-template-columns:repeat(4,1fr)}.cash-closing{grid-column:1/-1}}
+@media(max-width:700px){
+  .cash-overview{grid-template-columns:repeat(2,1fr)}.cash-closing{grid-column:1/-1}
+  .cash-register-tools{justify-content:flex-start;width:100%}.cash-search{order:3;width:100%}.cash-search input{width:100%}
+  .cash-secondary-actions .dk-pill:last-child{margin-inline-start:0!important}
+}
 .filter-tray{display:grid;gap:0}
 .filter-tray-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .filter-tog{display:inline-flex;align-items:center;gap:7px;background:${C.card};border:1px solid ${C.line};
