@@ -12,9 +12,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.6.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.7.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.7.0": {
+    ar: [
+      "تنظيم صفحة المصروفات مع إمكانية إخفاء وإظهار الفواتير المستحقة",
+      "اختيار الليتر أو الكيلوغرام عند تسجيل مبيعات الحليب",
+    ],
+    en: [
+      "Reorganized Expenses with hide/show controls for due bills",
+      "Choose liters or kilograms when recording milk sales",
+    ],
+  },
   "2.6.6": {
     ar: [
       "اختيار إدخال سعر الوحدة أو إجمالي الفاتورة عند تسجيل مشتريات المورد",
@@ -662,6 +672,8 @@ const T = {
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
+    hideDueBills: "إخفاء الفواتير المستحقة", showDueBills: "إظهار الفواتير المستحقة",
+    milkSaleUnit: "وحدة بيع الحليب", milkUnitMismatch: "وحدة البيع تختلف عن وحدة مخزون الحليب؛ لن يتم تحويل الكمية تلقائياً",
     fromDate: "من تاريخ", toDate: "إلى تاريخ", statusAll: "الكل", inRange: "ضمن الفترة المحددة",
     owingInRange: "المستحق في هذه الفترة", txCount: "عدد الحركات", editTx: "تعديل الحركة",
     deleteTx: "حذف الحركة", confirmDelete: "تأكيد الحذف", deleted: "تم الحذف",
@@ -1026,6 +1038,8 @@ const T = {
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
+    hideDueBills: "Hide due bills", showDueBills: "Show due bills",
+    milkSaleUnit: "Milk sale unit", milkUnitMismatch: "Sale unit differs from milk stock; quantity is not converted automatically",
     fromDate: "From", toDate: "To", statusAll: "All", inRange: "in the selected range",
     owingInRange: "Owing in this range", txCount: "Transactions", editTx: "Edit transaction",
     deleteTx: "Delete transaction", confirmDelete: "Confirm delete", deleted: "Deleted",
@@ -2165,7 +2179,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     ...(scopedSales || []).map((iv) => {
       const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
       return [dmy(iv.at), hhmm(iv.at), (cOf(iv.customerId) || {}).name || "—", lang === "ar" ? pr[2] : pr[3],
-        iv.qty, money(iv.price), money(iv.amount), money(iv.paidAmount), money(iv.due),
+        `${iv.qty} ${saleQtyUnit(iv, lang, t)}`, money(iv.price), money(iv.amount), money(iv.paidAmount), money(iv.due),
         iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid"), iv.byName];
     })] });
 
@@ -3091,6 +3105,11 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
 
 function milkUnitOf(u) { return u === "kg" ? "kg" : "L"; }
 function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
+function saleQtyUnit(sale, lang, t) {
+  if ((sale?.product || "milk") === "milk") return milkUnitLb(sale?.unit, t);
+  const pr = PRODUCTS.find((p) => p[0] === sale?.product) || PROD_OTHER;
+  return lang === "ar" ? pr[4] : pr[5];
+}
 
 /* Bill / paid / remainder — cent-safe; no separate “part paid” mode. */
 function payState(amount, paid) {
@@ -4290,13 +4309,15 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [paidNow, setPaidNow] = useState(0);
   const [paidTouched, setPaidTouched] = useState(false);
   const [cur, setCur] = useState("usd");
+  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => { if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); } }, [cid]);
   useEffect(() => { setPrice(defPrice(product) || 0); }, [cid, product]);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
-  const unit = lang === "ar" ? pr[4] : pr[5];
+  const unit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
+  const stockUnit = milkUnitOf(S.milkUnit);
   const amount = +(qty * price).toFixed(2);
   useEffect(() => {
     if (!paidTouched) return;
@@ -4306,7 +4327,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const payNow = pay.paid;
   const setPaid = (v) => { setPaidTouched(true); setPaidNow(v); };
   const milkAvail = milkStock(entries || [], date).available;
-  const oversell = product === "milk" && qty > milkAvail + 0.001;
+  const oversell = product === "milk" && milkSaleUnit === stockUnit && qty > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
@@ -4314,7 +4335,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkAvail)} {t("L")}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkAvail)} {milkUnitLb(stockUnit, t)}</span>
     </div>
     <Step n="1" label={t("pickCustomer")} />
     <Scroller>
@@ -4335,6 +4356,13 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
         </button>;
       })}
     </div>
+    {product === "milk" && <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("milkSaleUnit")}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
+          onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
+      </div>
+    </div>}
     <Step n="3" label={`${t("qty")} (${unit})`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
       <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1} />
@@ -4357,9 +4385,13 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <Step n="7" label={t("amountPaid")} />
     <PaySplit amount={amount} paid={paidNow} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {t("L")})</div>}
+      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {milkUnitLb(stockUnit, t)})</div>}
+    {product === "milk" && milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4,
+      padding: "10px 12px", marginBottom: 10, fontWeight: 600, color: "#7A5312", fontSize: 13 }}>
+      ⚠️ {t("milkUnitMismatch")}</div>}
     <button style={{ ...primaryBtn, opacity: cid && amount > 0 ? 1 : .45 }}
       onClick={() => cid && amount > 0 && onSave({ customerId: cid, product, qty, price, amount, payNow,
+        unit: product === "milk" ? milkSaleUnit : undefined,
         currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
   </Sheet>;
 }
@@ -4417,6 +4449,8 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   const regulars = customers.filter((c) => (c.defaultQty || 0) > 0);
   const init = {}; regulars.forEach((c) => { init[c.id] = { qty: c.defaultQty, paid: false, skip: false }; });
   const [rows, setRows] = useState(init);
+  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
+  const stockUnit = milkUnitOf(S.milkUnit);
   const priceOf = (c) => (c.priceL > 0 ? c.priceL : (c.product === "eggs" ? S.eggPrice : S.milkPrice));
   const set = (id, patch) => setRows((r) => ({ ...r, [id]: { ...r[id], ...patch } }));
   const active = regulars.filter((c) => !rows[c.id]?.skip && (rows[c.id]?.qty || 0) > 0);
@@ -4426,30 +4460,40 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   if (regulars.length === 0) return <Sheet title={`🚚 ${t("dailyRound")}`} onClose={onClose}>
     <Empty icon="🚚" title={t("noRegulars")} sub={t("dailyRoundSub")} /></Sheet>;
   return <Sheet title={`🚚 ${t("dailyRound")}`} sub={t("dailyRoundSub")} onClose={onClose}>
+    {regulars.some((c) => (c.product || "milk") === "milk") && <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("milkSaleUnit")}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
+          onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
+      </div>
+    </div>}
     {milkLeft != null && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, fontWeight: 700, fontSize: 13.5, display: "flex", justifyContent: "space-between" }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkQty > milkLeft + 0.001 ? C.red : C.field }}>
-        {n1(milkLeft)} {t("L")}{milkQty > 0 ? ` · −${n1(milkQty)}` : ""}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkSaleUnit === stockUnit && milkQty > milkLeft + 0.001 ? C.red : C.field }}>
+        {n1(milkLeft)} {milkUnitLb(stockUnit, t)}{milkQty > 0 ? ` · −${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}` : ""}</span>
     </div>}
-    {milkLeft != null && milkQty > milkLeft + 0.001 && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
+    {milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
+      fontWeight: 600, color: "#7A5312", fontSize: 13 }}>⚠️ {t("milkUnitMismatch")}</div>}
+    {milkLeft != null && milkSaleUnit === stockUnit && milkQty > milkLeft + 0.001 && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
       fontWeight: 600, color: "#7A5312", fontSize: 13 }}>⚠️ {t("oversellWarn")}</div>}
     <div style={{ display: "grid", gap: 10 }}>
       {regulars.map((c) => {
         const r = rows[c.id] || { qty: 0, paid: false, skip: false };
         const b = ledger.byCustomer[c.id] || { due: 0 };
         const p = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
+        const rowUnit = (c.product || "milk") === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? p[4] : p[5]);
         return <div key={c.id} style={{ background: C.card, borderRadius: 6, padding: 13, boxShadow: sh1,
           opacity: r.skip ? .5 : 1, borderInlineStart: `6px solid ${r.skip ? C.line : r.paid ? C.green : C.amber}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <span>
               <span style={{ display: "block", fontWeight: 800, fontSize: 16.5 }}>{p[1]} {c.name}</span>
               <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft, fontWeight: 600 }}>
-                {fmtC(priceOf(c), S.rate, lang)} / {lang === "ar" ? p[4] : p[5]}{b.due > 0 ? ` · ${t("due")} ${fmtC(b.due, S.rate, lang)}` : ""}</span>
+                {fmtC(priceOf(c), S.rate, lang)} / {rowUnit}{b.due > 0 ? ` · ${t("due")} ${fmtC(b.due, S.rate, lang)}` : ""}</span>
             </span>
             <span><Money usd={r.qty * priceOf(c)} rate={S.rate} lang={lang} size={18} tone={C.field} /></span>
           </div>
-          <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={lang === "ar" ? p[4] : p[5]} />
+          <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={rowUnit} />
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button type="button" onClick={() => set(c.id, { paid: !r.paid, skip: false })} style={{ flex: 1, background: r.paid ? C.green : C.card,
               color: r.paid ? "#fff" : C.ink, border: `1.5px solid ${r.paid ? C.green : C.line}`, borderRadius: 5,
@@ -4469,6 +4513,7 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
     </div>
     <button style={{ ...primaryBtn, opacity: active.length ? 1 : .45 }} onClick={() => active.length && onSave(
       active.map((c) => ({ customerId: c.id, product: c.product || "milk", qty: rows[c.id].qty, price: priceOf(c),
+        unit: (c.product || "milk") === "milk" ? milkSaleUnit : undefined,
         amount: +(rows[c.id].qty * priceOf(c)).toFixed(2), paid: rows[c.id].paid })))}>✓ {t("save")}</button>
   </Sheet>;
 }
@@ -4552,9 +4597,11 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const [date, setDate] = useState(dayKey(sale.at));
   const [note, setNote] = useState(sale.note || "");
   const [product, setProduct] = useState(sale.product || "milk");
+  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(sale.unit));
   const [confirm, setConfirm] = useState(false);
   const amount = +(qty * price).toFixed(2);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
+  const qtyUnit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   return <Sheet title={`✏️ ${t("editTx")}`} sub={sale.no} onClose={onClose}>
     <Step n="1" label={t("product")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -4570,9 +4617,13 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
         </button>;
       })}
     </div>
-    <Step n="2" label={`${t("qty")} (${lang === "ar" ? pr[4] : pr[5]})`} />
+    {product === "milk" && <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
+        onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
+    </div>}
+    <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
-      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} /></div>
+      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit} /></div>
     <Step n="3" label={t("unitPrice")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} /></div>
@@ -4586,7 +4637,9 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
       <Money usd={amount} rate={S.rate} lang={lang} size={24} tone="#fff" />
     </div>
     <button style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({ qty, price, amount, product, at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+      onClick={() => amount > 0 && onSave({ qty, price, amount, product,
+        unit: product === "milk" ? milkSaleUnit : undefined,
+        at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
     {!confirm
       ? <button style={{ ...secondaryBtn, marginTop: 10, color: C.red, borderColor: C.red }}
           onClick={() => setConfirm(true)}>🗑️ {t("deleteTx")}</button>
@@ -4747,7 +4800,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   <Td mono>{dmy(iv.at)}</Td>
                   <Td mono tone={C.field}>{iv.no}</Td>
                   <Td>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                  <Td align="end" mono>{n1(iv.qty)}</Td>
+                  <Td align="end" mono>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</Td>
                   <Td align="end" mono tone={C.inkSoft}>{fmtC(iv.price, S.rate, lang)}</Td>
                   <Td align="end" mono strong>{fmtC(iv.amount, S.rate, lang)}</Td>
                   <Td align="end" mono tone={C.green}>{iv.paidAmount ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
@@ -5818,7 +5871,9 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     const rows = [...ledger.list.filter((x) => x.customerId === doc.id).map((x) => {
       const pr = PRODUCTS.find((p) => p[0] === x.product) || PROD_OTHER;
       const pn = both ? `${pr[2]} / ${pr[3]}` : (dlang === "ar" ? pr[2] : pr[3]);
-      return { at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} × ${money(x.price)}`, d: x.amount, c: 0 };
+      const xu = (x.product || "milk") === "milk" ? milkUnitLb(x.unit, t)
+        : both ? `${pr[4]} / ${pr[5]}` : (dlang === "ar" ? pr[4] : pr[5]);
+      return { at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} ${xu} × ${money(x.price)}`, d: x.amount, c: 0 };
     }), ...ledger.pays.filter((p) => p.customerId === doc.id).map((p) => ({ at: p.at, k: "p",
       label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount }))]
       .sort((a, b2) => new Date(a.at) - new Date(b2.at));
@@ -5867,7 +5922,8 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
   const isReceipt = doc.kind === "receipt";
   const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
   const pn = both ? `${pr[2]} / ${pr[3]}` : (dlang === "ar" ? pr[2] : pr[3]);
-  const unit = both ? `${pr[4]} / ${pr[5]}` : (dlang === "ar" ? pr[4] : pr[5]);
+  const unit = (iv.product || "milk") === "milk" ? milkUnitLb(iv.unit, t)
+    : both ? `${pr[4]} / ${pr[5]}` : (dlang === "ar" ? pr[4] : pr[5]);
   const docNo = isReceipt ? iv.no.replace("INV", "REC") : iv.no;
   return <div dir={T[dlang].dir} style={docWrap}>
     <DocHead lang={dlang} both={both} {...farm} title={isReceipt ? t("receipt") : t("invoice")} docNo={docNo}
@@ -5971,7 +6027,7 @@ function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, c
       {(scopedSales || []).map((iv) => { const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
         return <tr key={iv.id}><td style={td}>{iv.no}</td><td style={td}>{dmy(iv.at)}</td>
           <td style={td}>{iv.customerName || "—"}</td><td style={td}>{lang === "ar" ? pr[2] : pr[3]}</td>
-          <td style={td}>{n1(iv.qty)}</td><td style={{ ...td, textAlign: "end" }}>{money(iv.amount)}</td>
+          <td style={td}>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</td><td style={{ ...td, textAlign: "end" }}>{money(iv.amount)}</td>
           <td style={{ ...td, textAlign: "end" }}>{money(iv.due)}</td>
           <td style={td}>{iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid")}</td></tr>; })}
       <tr><td style={{ ...td, background: "#EDEAE2", fontWeight: 800 }} colSpan={5}>{t("outstanding")}</td>
@@ -6047,6 +6103,7 @@ function FarmApp() {
   const [cashDir, setCashDir] = useState("all");
   const [cashFiltOpen, setCashFiltOpen] = useState(false);
   const [expFiltOpen, setExpFiltOpen] = useState(false);
+  const [expBillsOpen, setExpBillsOpen] = useState(true);
   const [reportFiltOpen, setReportFiltOpen] = useState(false);
   const [cashSel, setCashSel] = useState(null);
   const [report, setReport] = useState("summary");
@@ -6848,6 +6905,7 @@ function FarmApp() {
   };
 
   const expFiltActive = (expRange !== "today" ? 1 : 0) + (expFocus !== "open" ? 1 : 0) + (expQ.trim() ? 1 : 0);
+  const activeObligations = obligations.filter((o) => o.active);
   const DeskExpenses = (
     <div style={{ display: "grid", gap: 14 }}>
       <FilterTray open={expFiltOpen} onToggle={() => setExpFiltOpen((o) => !o)} t={t} active={expFiltActive}
@@ -6870,13 +6928,14 @@ function FarmApp() {
         </div>
       </FilterTray>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, order: 2 }}>
         <StatTile icon="💸" label={t("moneySpentPeriod")} value={fmtC(expMoneySums.costs, S.rate, lang)} tone={C.red} />
         <StatTile icon="🌾" label={t("totalFeed")}
           value={`${nf(Object.values(expMoneySums.feedQty || {}).reduce((a, v) => a + v, 0))} ${t("kgU")}`}
           tone={C.field} sub={t("feedQty")} />
         <StatTile icon="📅" label={t("billsDue")} value={nf(billsDueList.length)}
-          tone={billsDueList.length ? C.amber : C.green} sub={billsDueTotal ? fmtC(billsDueTotal, S.rate, lang) : undefined} />
+          tone={billsDueList.length ? C.amber : C.green} sub={billsDueTotal ? fmtC(billsDueTotal, S.rate, lang) : undefined}
+          onClick={() => setExpBillsOpen((open) => !open)} />
         <StatTile icon="📊" label={t("topCategory")}
           value={(() => { const top = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
             return top ? catLabel(top[0], lang, S.categories) : "—"; })()}
@@ -6887,7 +6946,7 @@ function FarmApp() {
           onClick={() => { setCashDir("out"); setRoute("dashboard"); }} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gap: 14, alignItems: "start", order: 3 }}>
         <DeskCard title={`📊 ${t("spendBreakdown")}`} pad={14}>
           {Object.keys(expMoneySums.byCategory || {}).length === 0
             ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("noExpensesYet")}</div>
@@ -6910,13 +6969,16 @@ function FarmApp() {
             </div>}
         </DeskCard>
 
-        <DeskCard title={`📅 ${t("billsPanel")}`}
-          right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "addObligation" })}>＋ {t("addObligation")}</button>}>
-          {obligations.filter((o) => o.active).length === 0
+        {expBillsOpen ? <DeskCard title={`📅 ${t("billsPanel")}`}
+          right={<div style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="dk-pill" onClick={() => setExpBillsOpen(false)}>− {t("hideDueBills")}</button>
+            <button type="button" className="dk-pill" onClick={() => setSheet({ k: "addObligation" })}>＋ {t("addObligation")}</button>
+          </div>}>
+          {activeObligations.length === 0
             ? <Empty icon="📋" title={t("noObligations")} sub={t("noObligationsSub")}
               cta={`＋ ${t("addObligation")}`} onCta={() => setSheet({ k: "addObligation" })} />
             : <div style={{ display: "grid", gap: 8 }}>
-              {[...obligations].filter((o) => o.active).sort((a, b) => new Date(a.nextDue || 0) - new Date(b.nextDue || 0)).slice(0, 8).map((o) => {
+              {[...activeObligations].sort((a, b) => new Date(a.nextDue || 0) - new Date(b.nextDue || 0)).slice(0, 8).map((o) => {
                 const typ = OBL_TYPES.find((x) => x[0] === o.type) || OBL_TYPES[1];
                 const dLeft = o.nextDue ? Math.ceil((new Date(o.nextDue) - Date.now()) / 864e5) : null;
                 const tone = dLeft !== null && dLeft < 0 ? C.red : dLeft !== null && dLeft <= 7 ? C.amber : C.green;
@@ -6942,9 +7004,14 @@ function FarmApp() {
               })}
             </div>}
         </DeskCard>
+          : <button type="button" className="dk-pill" onClick={() => setExpBillsOpen(true)}
+            style={{ justifySelf: "start", padding: "9px 13px" }}>
+            ▸ {t("showDueBills")} · {activeObligations.length}
+            {billsDueList.length > 0 ? ` (${billsDueList.length})` : ""}
+          </button>}
       </div>
 
-      <DeskCard pad={0} title={`🧾 ${t("expenseRegister")}${expFocus === "open" ? ` · ${t("openBills")}` : ""}`}
+      <DeskCard style={{ order: 1 }} pad={0} title={`🧾 ${t("expenseRegister")}${expFocus === "open" ? ` · ${t("openBills")}` : ""}`}
         right={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{t(expFocus === "open" ? "openBills" : "allExpenses")}</span>}>
         {(() => {
           const billOf = supplierLedger.byBill || {};
@@ -8777,9 +8844,9 @@ function FarmApp() {
           entries={entries}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, payNow, currency, rateUsed, at, note }) => {
+          onSave={({ customerId, product, qty, price, amount, payNow, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
-            const es = [{ id: saleId, type: "sale", customerId, product, qty, price, amount, currency, rateUsed, at, note }];
+            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, currency, rateUsed, at, note }];
             if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at });
             commit(es); returnToAccount(customerId); }} />}
 
@@ -8788,7 +8855,8 @@ function FarmApp() {
           onClose={() => setSheet(null)}
           onSave={(list) => { const es = [];
             list.forEach((x) => { const saleId = `sale-${uid()}`;
-              es.push({ id: saleId, type: "sale", customerId: x.customerId, product: x.product, qty: x.qty, price: x.price, amount: x.amount });
+              es.push({ id: saleId, type: "sale", customerId: x.customerId, product: x.product,
+                qty: x.qty, unit: x.unit, price: x.price, amount: x.amount });
               if (x.paid) es.push({ type: "payment", customerId: x.customerId, saleId, amount: x.amount, method: "cash" }); });
             commit(es); setSheet(null); }} />}
 
