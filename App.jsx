@@ -12,9 +12,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.7.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.0": {
+    ar: [
+      "واجهة مصروفات أذكى وأهدأ تعرض المهم أولاً وتخفي التفاصيل الاختيارية",
+    ],
+    en: [
+      "A calmer, smarter Expenses workspace that prioritizes essentials and tucks away optional detail",
+    ],
+  },
   "2.7.0": {
     ar: [
       "تنظيم صفحة المصروفات مع إمكانية إخفاء وإظهار الفواتير المستحقة",
@@ -673,6 +681,7 @@ const T = {
     searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
     hideDueBills: "إخفاء الفواتير المستحقة", showDueBills: "إظهار الفواتير المستحقة",
+    expenseOverview: "نظرة سريعة", showInsights: "إظهار تحليل المصروف", hideInsights: "إخفاء تحليل المصروف",
     milkSaleUnit: "وحدة بيع الحليب", milkUnitMismatch: "وحدة البيع تختلف عن وحدة مخزون الحليب؛ لن يتم تحويل الكمية تلقائياً",
     fromDate: "من تاريخ", toDate: "إلى تاريخ", statusAll: "الكل", inRange: "ضمن الفترة المحددة",
     owingInRange: "المستحق في هذه الفترة", txCount: "عدد الحركات", editTx: "تعديل الحركة",
@@ -1039,6 +1048,7 @@ const T = {
     searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
     hideDueBills: "Hide due bills", showDueBills: "Show due bills",
+    expenseOverview: "At a glance", showInsights: "Show spending insights", hideInsights: "Hide spending insights",
     milkSaleUnit: "Milk sale unit", milkUnitMismatch: "Sale unit differs from milk stock; quantity is not converted automatically",
     fromDate: "From", toDate: "To", statusAll: "All", inRange: "in the selected range",
     owingInRange: "Owing in this range", txCount: "Transactions", editTx: "Edit transaction",
@@ -6097,13 +6107,14 @@ function FarmApp() {
   const [expRange, setExpRange] = useState("today");
   const [expFrom, setExpFrom] = useState(""); const [expTo, setExpTo] = useState("");
   const [expQ, setExpQ] = useState("");
-  const [expFocus, setExpFocus] = useState("open");
+  const [expFocus, setExpFocus] = useState("all");
   const [cashRange, setCashRange] = useState("today");
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
   const [cashFiltOpen, setCashFiltOpen] = useState(false);
   const [expFiltOpen, setExpFiltOpen] = useState(false);
-  const [expBillsOpen, setExpBillsOpen] = useState(true);
+  const [expBillsOpen, setExpBillsOpen] = useState(false);
+  const [expInsightsOpen, setExpInsightsOpen] = useState(false);
   const [reportFiltOpen, setReportFiltOpen] = useState(false);
   const [cashSel, setCashSel] = useState(null);
   const [report, setReport] = useState("summary");
@@ -6651,7 +6662,6 @@ function FarmApp() {
   const expPrevMoney = useMemo(() => computeSums(expPrevScoped, S, workers, expBounds.days), [expPrevScoped, S, workers, expBounds]);
 
   const billsDueList = useMemo(() => obligations.filter((o) => o.active && obligationAlert(o, lang, t)), [obligations, lang, t]);
-  const billsDueTotal = useMemo(() => obligations.filter((o) => o.active).reduce((a, o) => a + (o.amount || 0), 0), [obligations]);
 
   const todayProd = (a) => {
     const k = dayKey(Date.now());
@@ -6904,8 +6914,13 @@ function FarmApp() {
     ping(t("saved"));
   };
 
-  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expFocus !== "open" ? 1 : 0) + (expQ.trim() ? 1 : 0);
+  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expFocus !== "all" ? 1 : 0) + (expQ.trim() ? 1 : 0);
   const activeObligations = obligations.filter((o) => o.active);
+  const urgentBillsTotal = billsDueList.reduce((sum, row) => sum + (row.amount || 0), 0);
+  const expTopCategory = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
+  const expPeriodLabel = expRange === "today" ? t("today") : expRange === "yesterday" ? t("yesterday")
+    : expRange === "week" ? t("thisWeek") : expRange === "lastMonth" ? t("lastMonth")
+      : expRange === "custom" ? `${dmy(expBounds.from)} — ${dmy(expBounds.to)}` : t("thisMonth");
   const DeskExpenses = (
     <div style={{ display: "grid", gap: 14 }}>
       <FilterTray open={expFiltOpen} onToggle={() => setExpFiltOpen((o) => !o)} t={t} active={expFiltActive}
@@ -6928,26 +6943,45 @@ function FarmApp() {
         </div>
       </FilterTray>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, order: 2 }}>
-        <StatTile icon="💸" label={t("moneySpentPeriod")} value={fmtC(expMoneySums.costs, S.rate, lang)} tone={C.red} />
-        <StatTile icon="🌾" label={t("totalFeed")}
-          value={`${nf(Object.values(expMoneySums.feedQty || {}).reduce((a, v) => a + v, 0))} ${t("kgU")}`}
-          tone={C.field} sub={t("feedQty")} />
-        <StatTile icon="📅" label={t("billsDue")} value={nf(billsDueList.length)}
-          tone={billsDueList.length ? C.amber : C.green} sub={billsDueTotal ? fmtC(billsDueTotal, S.rate, lang) : undefined}
-          onClick={() => setExpBillsOpen((open) => !open)} />
-        <StatTile icon="📊" label={t("topCategory")}
-          value={(() => { const top = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
-            return top ? catLabel(top[0], lang, S.categories) : "—"; })()}
-          tone={C.field}
-          sub={(() => { const top = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
-            return top ? fmtC(top[1], S.rate, lang) : undefined; })()} />
-        <StatTile icon="💵" label={t("cashBox")} value="→" tone={C.field} sub={t("seeCashBox")}
-          onClick={() => { setCashDir("out"); setRoute("dashboard"); }} />
+      <DeskCard style={{ order: 1 }} pad={0} title={`✦ ${t("expenseOverview")}`}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))" }}>
+          <div style={{ background: C.field, color: "#fff", padding: "18px 20px", minHeight: 82 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: .8 }}>{t("moneySpentPeriod")}</div>
+            <div style={{ marginTop: 6 }}><Money usd={expMoneySums.costs} rate={S.rate} lang={lang} size={27} tone="#fff" /></div>
+            <div style={{ fontSize: 11.5, opacity: .75, marginTop: 5 }}>{expPeriodLabel}</div>
+          </div>
+          {[
+            ["🤝", t("supplierOutstanding"), fmtC(supplierDash.owed, S.rate, lang), supplierDash.owed > 0 ? C.red : C.green],
+            ["📅", t("billsDue"), nf(billsDueList.length), billsDueList.length ? C.amber : C.green],
+            ["📊", t("topCategory"), expTopCategory ? catLabel(expTopCategory[0], lang, S.categories) : "—", C.field],
+          ].map(([ic, lb, val, tone]) => <div key={lb} style={{ padding: "15px 16px", borderInlineStart: `1px solid ${C.line}`,
+            display: "grid", alignContent: "center", minHeight: 82 }}>
+            <div style={{ color: C.inkSoft, fontSize: 11.5, fontWeight: 700 }}>{ic} {lb}</div>
+            <div style={{ color: tone, fontFamily: "var(--mono)", fontSize: 17, fontWeight: 800, marginTop: 7 }}>{val}</div>
+          </div>)}
+        </div>
+        {billsDueList.length > 0 && <button type="button" onClick={() => setExpBillsOpen(true)}
+          style={{ width: "100%", border: "none", borderTop: `1px solid ${C.line}`, background: "#FFF8E8",
+            color: "#7A5312", padding: "10px 16px", textAlign: "start", cursor: "pointer", fontFamily: "var(--body)",
+            fontSize: 12.5, fontWeight: 700 }}>
+          ⚠️ {nf(billsDueList.length)} {t("billsDue")} · {fmtC(urgentBillsTotal, S.rate, lang)} <span style={{ float: "inline-end" }}>›</span>
+        </button>}
+      </DeskCard>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", order: 3 }}>
+        <button type="button" className="dk-pill" onClick={() => setExpInsightsOpen((open) => !open)}>
+          📊 {t(expInsightsOpen ? "hideInsights" : "showInsights")} {expInsightsOpen ? "▴" : "▾"}</button>
+        <button type="button" className="dk-pill" onClick={() => setExpBillsOpen((open) => !open)}
+          style={billsDueList.length ? { borderColor: C.amber, color: "#7A5312" } : undefined}>
+          📅 {t(expBillsOpen ? "hideDueBills" : "showDueBills")} · {activeObligations.length} {expBillsOpen ? "▴" : "▾"}</button>
+        <button type="button" className="dk-pill" onClick={() => setSheet({ k: "addObligation" })}>＋ {t("addObligation")}</button>
+        <button type="button" className="dk-pill" style={{ marginInlineStart: "auto" }}
+          onClick={() => { setCashDir("out"); setRoute("dashboard"); }}>💵 {t("cashBox")} ›</button>
       </div>
 
-      <div style={{ display: "grid", gap: 14, alignItems: "start", order: 3 }}>
-        <DeskCard title={`📊 ${t("spendBreakdown")}`} pad={14}>
+      <div style={{ display: "grid", gap: 14, alignItems: "start", order: 4 }}>
+        {expInsightsOpen && <DeskCard title={`📊 ${t("spendBreakdown")}`} pad={14}
+          right={<button type="button" className="dk-pill" onClick={() => setExpInsightsOpen(false)}>− {t("hideInsights")}</button>}>
           {Object.keys(expMoneySums.byCategory || {}).length === 0
             ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("noExpensesYet")}</div>
             : <div style={{ display: "grid", gap: 10 }}>
@@ -6967,7 +7001,7 @@ function FarmApp() {
                 </div>;
               })}
             </div>}
-        </DeskCard>
+        </DeskCard>}
 
         {expBillsOpen ? <DeskCard title={`📅 ${t("billsPanel")}`}
           right={<div style={{ display: "flex", gap: 6 }}>
@@ -7003,16 +7037,15 @@ function FarmApp() {
                 </div>;
               })}
             </div>}
-        </DeskCard>
-          : <button type="button" className="dk-pill" onClick={() => setExpBillsOpen(true)}
-            style={{ justifySelf: "start", padding: "9px 13px" }}>
-            ▸ {t("showDueBills")} · {activeObligations.length}
-            {billsDueList.length > 0 ? ` (${billsDueList.length})` : ""}
-          </button>}
+        </DeskCard> : null}
       </div>
 
-      <DeskCard style={{ order: 1 }} pad={0} title={`🧾 ${t("expenseRegister")}${expFocus === "open" ? ` · ${t("openBills")}` : ""}`}
-        right={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{t(expFocus === "open" ? "openBills" : "allExpenses")}</span>}>
+      <DeskCard style={{ order: 2 }} pad={0} title={`🧾 ${t("expenseRegister")}`}
+        right={<div style={{ display: "flex", gap: 5 }}>
+          {[["all", t("allExpenses")], ["open", t("openBills")]].map(([k, lb]) => <button key={k} type="button"
+            className="dk-pill" onClick={() => setExpFocus(k)}
+            style={expFocus === k ? { background: C.field, color: "#fff", borderColor: C.field } : undefined}>{lb}</button>)}
+        </div>}>
         {(() => {
           const billOf = supplierLedger.byBill || {};
           const rows = [...expScoped].filter((e) => {
