@@ -12,9 +12,27 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.8.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.3": {
+    ar: [
+      "دليل حيوانات أبسط يركز على الهوية والحالة والبيانات الأساسية",
+      "تخصيص جدول صندوق النقد: كثافة الصفوف وترتيب الأعمدة وعرضها محفوظة على هذا الجهاز",
+    ],
+    en: [
+      "A simpler Animals directory focused on identity, condition, and essential reference data",
+      "Customize the Cash Box table density, column order, and widths—saved on this device",
+    ],
+  },
+  "2.8.2": {
+    ar: [
+      "دليل حيوانات أبسط يركز على الهوية والحالة والبيانات الأساسية",
+    ],
+    en: [
+      "A simpler Animals directory focused on identity, condition, and essential reference data",
+    ],
+  },
   "2.8.1": {
     ar: [
       "صندوق نقد أذكى: رصيد واضح، سجل قابل للبحث، وتفصيل مختصر للتدفقات",
@@ -210,6 +228,38 @@ const DEVICE_KEY = "mazraati-device-v1";
 const CLOUD_KEY = "mazraati-cloud-v1";
 /* Keys used before the app was renamed; read once, then carried across. */
 const LEGACY = { shared: "alreif-farm-v3", device: "alreif-device-v3", cloud: "alreif-cloud-v1" };
+
+const CASH_COLUMNS = [
+  { key: "date", label: "cashEntryDate", min: 100, max: 220, width: 125 },
+  { key: "ref", label: "cashRef", min: 100, max: 260, width: 135 },
+  { key: "statement", label: "cashStatement", min: 180, max: 640, width: 340 },
+  { key: "in", label: "cashIn", min: 120, max: 300, width: 155, align: "end" },
+  { key: "out", label: "cashOut", min: 120, max: 300, width: 155, align: "end" },
+  { key: "balance", label: "cashBalance", min: 130, max: 320, width: 170, align: "end" },
+];
+const CASH_COLUMN_KEYS = CASH_COLUMNS.map((c) => c.key);
+const CASH_DENSITIES = ["compact", "comfortable", "spacious"];
+function sanitizeCashTablePrefs(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const seen = new Set();
+  const order = [];
+  if (Array.isArray(source.order)) source.order.forEach((key) => {
+    if (CASH_COLUMN_KEYS.includes(key) && !seen.has(key)) { seen.add(key); order.push(key); }
+  });
+  CASH_COLUMN_KEYS.forEach((key) => { if (!seen.has(key)) order.push(key); });
+  const widths = {};
+  CASH_COLUMNS.forEach((col) => {
+    const value = Number(source.widths && source.widths[col.key]);
+    widths[col.key] = Number.isFinite(value)
+      ? Math.min(col.max, Math.max(col.min, Math.round(value)))
+      : col.width;
+  });
+  return {
+    density: CASH_DENSITIES.includes(source.density) ? source.density : "comfortable",
+    order,
+    widths,
+  };
+}
 
 /* ------------------------------ palette ------------------------------ */
 /* Soft forest themes — grey-tinted light for eye comfort, plus dark mode. */
@@ -490,6 +540,11 @@ const T = {
     cashNoResults: "لا توجد حركات تطابق هذا العرض.", cashNoResultsSub: "جرّب مسح البحث أو تغيير نوع الحركة.",
     cashExportComplete: "تصدير الفترة كاملة", cashOpenSource: "فتح القيد",
     cashCustomerReceipts: "قبض الزبائن", cashOtherOut: "مصروفات أخرى",
+    cashTableSettings: "تخصيص الجدول", cashTableSettingsHint: "اسحب الأعمدة لترتيبها واضبط عرض كل عمود ظاهر.",
+    cashDensity: "كثافة الصفوف", cashDensityCompact: "مضغوط", cashDensityComfortable: "مريح", cashDensitySpacious: "واسع",
+    cashColumnWidth: "عرض العمود", cashDragColumn: "اسحب لتغيير ترتيب العمود",
+    cashResizeColumn: "غيّر عرض العمود", cashMoveEarlier: "حرّك إلى السابق", cashMoveLater: "حرّك إلى التالي",
+    cashResetTable: "استعادة الترتيب الافتراضي",
     animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", suppliers: "الموردون", reports: "التقارير", settings: "الإعدادات",
     farmWork: "عمل المزرعة", officeWork: "عمل المكتب",
     obligations: "الالتزامات", addObligation: "إضافة فاتورة دورية", obligationTypes: "نوع الالتزام",
@@ -697,6 +752,10 @@ const T = {
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
+    herdOverview: "نظرة على القطيع", searchAnimals: "ابحث بالاسم أو الرقم أو السلالة…",
+    noAnimalsMatch: "لا توجد حيوانات مطابقة", noAnimalsMatchSub: "غيّر البحث أو أزل التصفية لرؤية القطيع.",
+    basicDetails: "البيانات الأساسية", moreDetails: "تفاصيل أكثر", needsAttention: "تحتاج متابعة",
+    animalDirectory: "دليل الحيوانات", totalHeads: "إجمالي الرؤوس",
     hideDueBills: "إخفاء الفواتير المستحقة", showDueBills: "إظهار الفواتير المستحقة",
     expenseOverview: "نظرة سريعة", showInsights: "إظهار تحليل المصروف", hideInsights: "إخفاء تحليل المصروف",
     milkSaleUnit: "وحدة بيع الحليب", milkUnitMismatch: "وحدة البيع تختلف عن وحدة مخزون الحليب؛ لن يتم تحويل الكمية تلقائياً",
@@ -866,6 +925,11 @@ const T = {
     cashNoResults: "No movements match this view.", cashNoResultsSub: "Clear the search or change the movement type.",
     cashExportComplete: "Export full period", cashOpenSource: "Open source",
     cashCustomerReceipts: "Customer receipts", cashOtherOut: "Other expenses",
+    cashTableSettings: "Customize table", cashTableSettingsHint: "Drag columns into order and adjust each visible column width.",
+    cashDensity: "Row density", cashDensityCompact: "Compact", cashDensityComfortable: "Comfortable", cashDensitySpacious: "Spacious",
+    cashColumnWidth: "Column width", cashDragColumn: "Drag to reorder column",
+    cashResizeColumn: "Resize column", cashMoveEarlier: "Move earlier", cashMoveLater: "Move later",
+    cashResetTable: "Reset table layout",
     animals: "Animals", entry: "Production", sales: "Sales", suppliers: "Suppliers", reports: "Reports", settings: "Settings",
     farmWork: "Farm work", officeWork: "Office work",
     obligations: "Obligations", addObligation: "Add recurring bill", obligationTypes: "Type",
@@ -1073,6 +1137,10 @@ const T = {
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
+    herdOverview: "Herd at a glance", searchAnimals: "Search name, tag, or breed…",
+    noAnimalsMatch: "No matching animals", noAnimalsMatchSub: "Change the search or clear filters to see the herd.",
+    basicDetails: "Basic details", moreDetails: "More details", needsAttention: "Needs attention",
+    animalDirectory: "Animal directory", totalHeads: "Total heads",
     hideDueBills: "Hide due bills", showDueBills: "Show due bills",
     expenseOverview: "At a glance", showInsights: "Show spending insights", hideInsights: "Hide spending insights",
     milkSaleUnit: "Milk sale unit", milkUnitMismatch: "Sale unit differs from milk stock; quantity is not converted automatically",
@@ -6141,12 +6209,18 @@ function FarmApp() {
   const [cashRefOpen, setCashRefOpen] = useState(false);
   const [cashFlowOpen, setCashFlowOpen] = useState(false);
   const [cashFiltOpen, setCashFiltOpen] = useState(false);
+  const [cashCustomizeOpen, setCashCustomizeOpen] = useState(false);
+  const [cashDragKey, setCashDragKey] = useState(null);
+  const [cashTable, setCashTable] = useState(() => sanitizeCashTablePrefs(null));
+  const cashTableRef = useRef(cashTable);
   const [expFiltOpen, setExpFiltOpen] = useState(false);
   const [expBillsOpen, setExpBillsOpen] = useState(false);
   const [expInsightsOpen, setExpInsightsOpen] = useState(false);
   const [reportFiltOpen, setReportFiltOpen] = useState(false);
   const [report, setReport] = useState("summary");
   const [spFilter, setSpFilter] = useState("all");
+  const [herdStatusFilter, setHerdStatusFilter] = useState("all");
+  const [herdFiltOpen, setHerdFiltOpen] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [doc, setDoc] = useState(null);
   const [draftS, setDraftS] = useState(null);
@@ -6230,6 +6304,7 @@ function FarmApp() {
   const dataRef = useRef(null);
   const toastTimer = useRef(null);
   dataRef.current = data;
+  cashTableRef.current = cashTable;
 
   /* Keep legacy format helpers in sync before descendants render. */
   MONEY.view = moneyView;
@@ -6300,6 +6375,7 @@ function FarmApp() {
           if (p.sideHidden) setSideHidden(!!p.sideHidden);
           if (p.hideDeviceBanner) setHideDeviceBanner(true);
           if (Array.isArray(p.favKeys) && p.favKeys.length) setFavKeys(p.favKeys.slice(0, 8));
+          setCashTable(sanitizeCashTablePrefs(p.cashTable));
           setSeenVersion(typeof p.seenVersion === "string" ? p.seenVersion : "");
         } else setSeenVersion("");
       } catch (e) { setSeenVersion(""); /* no profile on this device */ }
@@ -6452,8 +6528,54 @@ function FarmApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sheet, routeHist, sheetBack, goBackRoute]);
   const saveDevicePrefs = async (patch = {}) => {
-    const body = { id: me ? me.id : null, lang, money: moneyView, theme, sideHidden, hideDeviceBanner, favKeys, seenVersion, ...patch };
+    const body = {
+      id: me ? me.id : null, lang, money: moneyView, theme, sideHidden, hideDeviceBanner,
+      favKeys, seenVersion, cashTable: cashTableRef.current, ...patch,
+    };
     try { await store.set(DEVICE_KEY, JSON.stringify(body), false); } catch (e) { /* device only */ }
+  };
+  const applyCashTable = (value) => {
+    const next = sanitizeCashTablePrefs(typeof value === "function" ? value(cashTableRef.current) : value);
+    cashTableRef.current = next;
+    setCashTable(next);
+    saveDevicePrefs({ cashTable: next });
+  };
+  const moveCashColumn = (source, target, after = false) => {
+    if (!CASH_COLUMN_KEYS.includes(source) || !CASH_COLUMN_KEYS.includes(target) || source === target) return;
+    applyCashTable((prev) => {
+      const order = prev.order.filter((key) => key !== source);
+      const targetIndex = order.indexOf(target);
+      order.splice(targetIndex + (after ? 1 : 0), 0, source);
+      return { ...prev, order };
+    });
+  };
+  const resizeCashColumn = (key, width) => {
+    applyCashTable((prev) => ({ ...prev, widths: { ...prev.widths, [key]: width } }));
+  };
+  const startCashResize = (e, key) => {
+    const col = CASH_COLUMNS.find((item) => item.key === key);
+    if (!col) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = cashTableRef.current.widths[key];
+    let latest = startWidth;
+    const direction = dir === "rtl" ? -1 : 1;
+    const onMove = (event) => {
+      latest = Math.min(col.max, Math.max(col.min, Math.round(startWidth + ((event.clientX - startX) * direction))));
+      cashTableRef.current = sanitizeCashTablePrefs({
+        ...cashTableRef.current,
+        widths: { ...cashTableRef.current.widths, [key]: latest },
+      });
+      setCashTable(cashTableRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      resizeCashColumn(key, latest);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
   const pickMoneyView = async (v) => {
     MONEY.view = v;
@@ -7784,6 +7906,33 @@ function FarmApp() {
     : cashRange === "week" ? t("thisWeek") : cashRange === "lastMonth" ? t("lastMonth")
       : cashRange === "custom" ? `${dmy(cashBounds.from)} — ${dmy(cashBounds.to)}` : t("thisMonth");
   const cashNet = +(cashBox.totalIn - cashBox.totalOut).toFixed(2);
+  const cashColumnMap = Object.fromEntries(CASH_COLUMNS.map((col) => [col.key, col]));
+  const cashVisibleKeys = cashTable.order.filter((key) =>
+    (key !== "ref" || cashRefOpen) && (key !== "balance" || !cashView.filtered));
+  const cashTableWidth = cashVisibleKeys.reduce((sum, key) => sum + cashTable.widths[key], 0);
+  const cashDensityPad = { compact: "5px", comfortable: "9px", spacious: "14px" }[cashTable.density];
+  const renderCashRowCell = (key, r) => {
+    if (key === "date") return <Td key={key} mono>{r.day}</Td>;
+    if (key === "ref") return <Td key={key} mono tone={C.inkSoft}>{r.ref}</Td>;
+    if (key === "statement") return <Td key={key}><CashParts parts={r.parts} /></Td>;
+    if (key === "in") return <Td key={key} align="end" mono strong tone={r.debit ? C.green : C.inkSoft}>{r.debit ? fmtC(r.debit, S.rate, lang) : "—"}</Td>;
+    if (key === "out") return <Td key={key} align="end" mono strong tone={r.credit ? C.red : C.inkSoft}>{r.credit ? fmtC(r.credit, S.rate, lang) : "—"}</Td>;
+    return <Td key={key} align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>;
+  };
+  const renderCashOpeningCell = (key) => {
+    if (key === "date") return <Td key={key} tone={C.inkSoft}>{cashBounds.from}</Td>;
+    if (key === "ref") return <Td key={key} mono tone={C.inkSoft}>—</Td>;
+    if (key === "statement") return <Td key={key}><span style={{ fontWeight: 700, color: C.field }}>{t("cashOpening")}</span></Td>;
+    if (key === "balance") return <Td key={key} align="end" mono strong tone={cashBox.opening >= 0 ? C.green : C.red}>{fmtC(cashBox.opening, S.rate, lang)}</Td>;
+    return <Td key={key} align="end" mono>—</Td>;
+  };
+  const renderCashTotalCell = (key) => {
+    if (key === "statement") return <Td key={key} strong>{cashView.filtered ? t("cashViewTotals") : t("cashTotals")}</Td>;
+    if (key === "in") return <Td key={key} align="end" mono strong tone={C.green}>{fmtC(cashView.totalIn, S.rate, lang)}</Td>;
+    if (key === "out") return <Td key={key} align="end" mono strong tone={C.red}>{fmtC(cashView.totalOut, S.rate, lang)}</Td>;
+    if (key === "balance") return <Td key={key} align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>;
+    return <Td key={key} />;
+  };
   const DeskDashboard = (
     <div style={{ display: "grid", gap: 14 }} className="cash-box">
       <FilterTray open={cashFiltOpen} onToggle={() => setCashFiltOpen((o) => !o)} t={t} active={cashFiltActive}>
@@ -7832,35 +7981,119 @@ function FarmApp() {
           </label>
           <button type="button" className={`dk-pill${cashRefOpen ? " on" : ""}`}
             onClick={() => setCashRefOpen((v) => !v)}>{cashRefOpen ? t("cashHideRef") : t("cashShowRef")}</button>
+          <button type="button" className={`dk-pill${cashCustomizeOpen ? " on" : ""}`}
+            aria-expanded={cashCustomizeOpen} onClick={() => setCashCustomizeOpen((v) => !v)}>
+            ⚙ {t("cashTableSettings")} {cashCustomizeOpen ? "▴" : "▾"}</button>
         </div>}>
         {cashView.filtered && <div className="cash-filter-note">
           <span>ⓘ {t("cashFilteredHint")}</span>
           <b>{t("cashViewTotals")}: <span style={{ color: C.green }}>+{fmtC(cashView.totalIn, S.rate, lang)}</span>
             {" · "}<span style={{ color: C.red }}>−{fmtC(cashView.totalOut, S.rate, lang)}</span></b>
         </div>}
+        {cashCustomizeOpen && <div className="cash-customize">
+          <div className="cash-customize-top">
+            <div>
+              <b>{t("cashTableSettings")}</b>
+              <span>{t("cashTableSettingsHint")}</span>
+            </div>
+            <button type="button" className="dk-pill" onClick={() => applyCashTable(null)}>↺ {t("cashResetTable")}</button>
+          </div>
+          <div className="cash-density" role="group" aria-label={t("cashDensity")}>
+            <span>{t("cashDensity")}</span>
+            {CASH_DENSITIES.map((density) => <button type="button" key={density}
+              className={`dk-pill${cashTable.density === density ? " on" : ""}`}
+              aria-pressed={cashTable.density === density}
+              onClick={() => applyCashTable((prev) => ({ ...prev, density }))}>
+              {t(`cashDensity${density[0].toUpperCase()}${density.slice(1)}`)}
+            </button>)}
+          </div>
+          <div className="cash-column-list">
+            {cashVisibleKeys.map((key, index) => {
+              const col = cashColumnMap[key];
+              return <div className={`cash-column-control${cashDragKey === key ? " dragging" : ""}`} key={key}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  moveCashColumn(e.dataTransfer.getData("text/plain") || cashDragKey, key);
+                  setCashDragKey(null);
+                }}>
+                <button type="button" className="cash-drag" draggable
+                  aria-label={`${t("cashDragColumn")}: ${t(col.label)}`}
+                  title={t("cashDragColumn")}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", key);
+                    setCashDragKey(key);
+                  }}
+                  onDragEnd={() => setCashDragKey(null)}>⠿</button>
+                <b>{t(col.label)}</b>
+                <label>
+                  <span>{t("cashColumnWidth")}</span>
+                  <input type="range" min={col.min} max={col.max} step="5"
+                    value={cashTable.widths[key]}
+                    onChange={(e) => resizeCashColumn(key, Number(e.target.value))} />
+                  <output>{cashTable.widths[key]}px</output>
+                </label>
+                <div className="cash-column-move">
+                  <button type="button" disabled={index === 0} title={t("cashMoveEarlier")}
+                    aria-label={`${t("cashMoveEarlier")}: ${t(col.label)}`}
+                    onClick={() => moveCashColumn(key, cashVisibleKeys[index - 1])}>‹</button>
+                  <button type="button" disabled={index === cashVisibleKeys.length - 1} title={t("cashMoveLater")}
+                    aria-label={`${t("cashMoveLater")}: ${t(col.label)}`}
+                    onClick={() => moveCashColumn(key, cashVisibleKeys[index + 1], true)}>›</button>
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>}
         <div style={{ overflowX: "auto" }}>
-          <table className="cash-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: cashRefOpen ? 720 : 620 }}>
+          <table className={`cash-table cash-density-${cashTable.density}`}
+            style={{ width: `max(100%, ${cashTableWidth}px)`, minWidth: cashTableWidth, borderCollapse: "collapse",
+              tableLayout: "fixed", "--cash-cell-y": cashDensityPad }}>
+            <colgroup>{cashVisibleKeys.map((key) => <col key={key} style={{ width: cashTable.widths[key] }} />)}</colgroup>
             <thead><tr>
-              <Th>{t("cashEntryDate")}</Th>
-              {cashRefOpen && <Th>{t("cashRef")}</Th>}
-              <Th>{t("cashStatement")}</Th>
-              <Th align="end">{t("cashIn")}</Th>
-              <Th align="end">{t("cashOut")}</Th>
-              {!cashView.filtered && <Th align="end">{t("cashBalance")}</Th>}
+              {cashVisibleKeys.map((key) => {
+                const col = cashColumnMap[key];
+                return <Th key={key} w={cashTable.widths[key]} align={col.align}>
+                  <div className={`cash-column-head${cashDragKey === key ? " dragging" : ""}`}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      moveCashColumn(e.dataTransfer.getData("text/plain") || cashDragKey, key);
+                      setCashDragKey(null);
+                    }}>
+                    <button type="button" className="cash-drag cash-drag-head" draggable
+                      aria-label={`${t("cashDragColumn")}: ${t(col.label)}`}
+                      title={t("cashDragColumn")}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", key);
+                        setCashDragKey(key);
+                      }}
+                      onDragEnd={() => setCashDragKey(null)}>⠿</button>
+                    <span>{t(col.label)}</span>
+                    <button type="button" className="cash-col-resize"
+                      aria-label={`${t("cashResizeColumn")}: ${t(col.label)}`}
+                      title={t("cashResizeColumn")}
+                      onPointerDown={(e) => startCashResize(e, key)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                        e.preventDefault();
+                        const visualStep = e.key === "ArrowRight" ? 10 : -10;
+                        resizeCashColumn(key, cashTable.widths[key] + (dir === "rtl" ? -visualStep : visualStep));
+                      }} />
+                  </div>
+                </Th>;
+              })}
             </tr></thead>
             <tbody>
               {!cashView.filtered && cashBox.opening !== 0 && (
                 <tr style={{ background: C.paper }}>
-                  <Td tone={C.inkSoft}>{cashBounds.from}</Td>
-                  {cashRefOpen && <Td mono tone={C.inkSoft}>—</Td>}
-                  <Td><span style={{ fontWeight: 700, color: C.field }}>{t("cashOpening")}</span></Td>
-                  <Td align="end" mono>—</Td>
-                  <Td align="end" mono>—</Td>
-                  <Td align="end" mono strong tone={cashBox.opening >= 0 ? C.green : C.red}>{fmtC(cashBox.opening, S.rate, lang)}</Td>
+                  {cashVisibleKeys.map(renderCashOpeningCell)}
                 </tr>
               )}
               {cashView.rows.length === 0 ? (
-                <tr><td colSpan={(cashRefOpen ? 1 : 0) + (cashView.filtered ? 4 : 5)} style={{ padding: 30, textAlign: "center" }}>
+                <tr><td colSpan={cashVisibleKeys.length} style={{ padding: 30, textAlign: "center" }}>
                   <div style={{ fontSize: 25, marginBottom: 5 }}>⌕</div>
                   <b>{cashBox.rows.length ? t("cashNoResults") : t("cashEmpty")}</b>
                   {cashBox.rows.length > 0 && <div style={{ color: C.inkSoft, fontSize: 12.5, marginTop: 4 }}>{t("cashNoResultsSub")}</div>}
@@ -7868,21 +8101,13 @@ function FarmApp() {
               ) : cashView.rows.map((r) => (
                 <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
                   style={{ cursor: "pointer" }}>
-                  <Td mono>{r.day}</Td>
-                  {cashRefOpen && <Td mono tone={C.inkSoft}>{r.ref}</Td>}
-                  <Td><CashParts parts={r.parts} /></Td>
-                  <Td align="end" mono strong tone={r.debit ? C.green : C.inkSoft}>{r.debit ? fmtC(r.debit, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong tone={r.credit ? C.red : C.inkSoft}>{r.credit ? fmtC(r.credit, S.rate, lang) : "—"}</Td>
-                  {!cashView.filtered && <Td align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>}
+                  {cashVisibleKeys.map((key) => renderCashRowCell(key, r))}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
-                <Td colSpan={cashRefOpen ? 3 : 2} strong>{cashView.filtered ? t("cashViewTotals") : t("cashTotals")}</Td>
-                <Td align="end" mono strong tone={C.green}>{fmtC(cashView.totalIn, S.rate, lang)}</Td>
-                <Td align="end" mono strong tone={C.red}>{fmtC(cashView.totalOut, S.rate, lang)}</Td>
-                {!cashView.filtered && <Td align="end" mono strong tone={cashBox.closing >= 0 ? C.green : C.red}>{fmtC(cashBox.closing, S.rate, lang)}</Td>}
+                {cashVisibleKeys.map(renderCashTotalCell)}
               </tr>
             </tfoot>
           </table>
@@ -7918,125 +8143,129 @@ function FarmApp() {
     </div>
   );
 
+  const herdStatusKeys = [...new Set(animals.map((a) => a.status).filter(Boolean))];
+  const herdFilterActive = (spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0) + (q.trim() ? 1 : 0);
+  const herdRows = sortRows(animals.filter((a) => {
+    if (spFilter !== "all" && a.species !== spFilter) return false;
+    if (herdStatusFilter !== "all" && a.status !== herdStatusFilter) return false;
+    if (!q.trim()) return true;
+    const needle = q.trim().toLowerCase();
+    return `${animalLabel(a)} ${a.tag || ""} ${a.name || ""} ${breedLabel(a, "ar")} ${breedLabel(a, "en")} ${a.notes || ""}`
+      .toLowerCase().includes(needle);
+  }), (a) => ({
+    tag: isFlock(a) ? a.name : (+a.tag || a.tag),
+    sp: a.species, st: a.status, breed: breedLabel(a, lang),
+    age: a.dob ? new Date(a.dob).getTime() : -(a.ageYears || 0),
+  })[sortBy.k]);
+  const totalHeads = animals.reduce((sum, a) => sum + headCount(a), 0);
+  const sickCount = animals.filter((a) => a.status === "sick").reduce((sum, a) => sum + headCount(a), 0);
+  const pregnantCount = animals.filter((a) => a.status === "pregnant").reduce((sum, a) => sum + headCount(a), 0);
+  const attentionCount = animals.filter((a) => {
+    const r = repro(a);
+    return a.status === "sick" || !!a.medicine || !!(r && (r.needsCheck || r.dryDue || r.overdue));
+  }).length;
+  const speciesSummary = SP_KEYS.map((k) => {
+    const count = animals.filter((a) => a.species === k).reduce((sum, a) => sum + headCount(a), 0);
+    return count > 0 ? `${SPECIES[k].icon} ${nf(count)}` : null;
+  }).filter(Boolean).join(" · ");
+
+  const clearHerdFilters = () => { setQ(""); setSpFilter("all"); setHerdStatusFilter("all"); };
   const DeskAnimals = (
     <div style={{ display: "grid", gap: 14 }}>
-      {milkAnimals.length > 0 && (() => {
-        const stock = milkStock(entries);
-        const bal = milkDayBalance(entries, dayKey(Date.now()));
-        return <button type="button" onClick={() => setRoute("entry")}
-          style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "start",
-            background: C.field, color: "#fff", border: "none", borderRadius: 5, padding: "14px 18px",
-            cursor: "pointer", fontFamily: "var(--body)" }}>
-          <span style={{ fontSize: 28 }}>🥛</span>
-          <span style={{ flex: 1 }}>
-            <span style={{ display: "block", fontWeight: 700, fontSize: 16 }}>{t("farmDay")}</span>
-            <span style={{ display: "block", fontSize: 13, opacity: .9, marginTop: 2 }}>
-              🌅 {n1(bal.am)} · 🌙 {n1(bal.pm)} · {t("milkLeft")} {n1(stock.available)} {milkUnitLb(S.milkUnit, t)}
-            </span>
-          </span>
-          <span style={{ fontWeight: 700, fontSize: 18 }}>›</span>
-        </button>;
-      })()}
-    <div style={{ display: "grid", gridTemplateColumns: selAnimal ? "1fr 340px" : "1fr", gap: 14, alignItems: "start" }}>
-      <DeskCard pad={0} title={`🐾 ${t("animals")} · ${animals.length} ${t("rows")}`}
-        right={<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")}
-            style={{ ...inp, width: 170, padding: "7px 10px", fontSize: 14 }} />
-          <Chip active={spFilter === "all"} onClick={() => setSpFilter("all")}>{t("all")}</Chip>
+      <FilterTray open={herdFiltOpen} onToggle={() => setHerdFiltOpen((open) => !open)}
+        t={t} active={herdFilterActive}
+        end={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
+          onClick={() => setSheet({ k: "addAnimal" })}>＋ {t("addAnimal")}</button>}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchAnimals")}
+          style={{ ...inp, width: "100%", padding: "9px 11px", fontSize: 14, marginBottom: 10 }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 9 }}>
+          <Chip active={spFilter === "all"} onClick={() => setSpFilter("all")}>{t("all")} · {t("species")}</Chip>
           {speciesPresent.map((k) => <Chip key={k} active={spFilter === k} onClick={() => setSpFilter(k)} color={SPECIES[k].color}>
-            {SPECIES[k].icon}</Chip>)}
-          <button style={{ ...primaryBtn, width: "auto", padding: "8px 13px", fontSize: 13.5 }}
-            onClick={() => setSheet({ k: "addAnimal" })}>＋ {t("addAnimal")}</button>
-        </div>}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              {head("tag", t("colName"))}{head("sp", t("species"))}{head("st", t("status"))}
-              {head("breed", t("breed"))}{head("age", t("age"))}
-              {head("today", t("todayShort"), { align: "end" })}{head("exp", t("expectedShort2"), { align: "end" })}
-              <Th>{t("reproCol")}</Th><Th>{t("lastLog")}</Th>
-            </tr></thead>
-            <tbody>
-              {sortRows(animals.filter((a) => (spFilter === "all" || a.species === spFilter)
-                && (!q || animalLabel(a).toLowerCase().includes(q.toLowerCase()))),
-                (a) => ({ tag: isFlock(a) ? a.name : +a.tag || a.tag, sp: a.species, st: a.status,
-                  breed: a.breed, age: a.dob || "", today: todayProd(a), exp: a.expected || 0 })[sortBy.k]
-              ).map((a) => {
-                const got = todayProd(a);
-                const herdMode = S.milkMode === "total" && producesMilk(a);
-                const low = !herdMode && a.expected > 0 && got < a.expected * 0.7;
-                return <tr key={a.id} onClick={() => setSel(a.id)}
-                  onContextMenu={(e) => openCtx(e, [
-                    { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
-                    { key: "milk", icon: producesEggs(a) ? "🥚" : "🥛", label: producesEggs(a) ? t("collect") : (S.milkMode === "total" ? t("farmDay") : t("ctxMilk")),
-                      run: () => producesEggs(a) || S.milkMode !== "total" ? setSheet({ k: "prod", id: a.id, back: null }) : navigate("entry") },
-                    { key: "med", icon: "💉", label: t("ctxMed"), run: () => setSheet({ k: "med", pre: a.id, back: null }) },
-                    !isFlock(a) && { key: "repro", icon: "🍼", label: t("ctxRepro"), run: () => setSheet({ k: "repro", id: a.id, back: null }) },
-                    { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editAnimal", id: a.id, back: null }) },
-                  ].filter(Boolean))}
-                  style={{ cursor: "pointer", background: sel === a.id ? C.paper : "transparent" }}>
-                  <Td strong><span style={{ color: spOf(a).color }}>{spOf(a).icon}</span> {animalLabel(a)}</Td>
-                  <Td tone={C.inkSoft}>{spName(a.species, lang, true)}</Td>
-                  <Td><Stamp status={a.status} lang={lang} /></Td>
-                  <Td tone={C.inkSoft}>{breedLabel(a, lang)}</Td>
-                  <Td tone={C.inkSoft}>{isFlock(a) ? `${nf(a.birds)} ${t("birds")}` : ageText(a, lang)}</Td>
-                  <Td align="end" mono strong tone={low ? C.red : C.ink}>
-                    {herdMode ? <span style={{ color: C.inkSoft, fontWeight: 500 }}>—</span> : (got ? n1(got) : "—")}
-                    {low ? " ⚠️" : ""}</Td>
-                  <Td align="end" mono tone={C.inkSoft}>{a.expected ? n1(a.expected) : "—"}</Td>
-                  <Td>{(() => { const r = repro(a);
-                    if (!r) return <span style={{ color: C.inkSoft }}>—</span>;
-                    const urgent = r.needsCheck || r.dryDue || r.overdue;
-                    return <button onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "repro", id: a.id }); }}
-                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--body)",
-                        fontSize: 12.5, fontWeight: 600, color: urgent ? C.red : C.inkSoft, textAlign: "start" }}>
-                      {r.overdue ? "⚠️ " : r.dryDue ? "🥛 " : r.needsCheck ? "❓ " : "🍼 "}
-                      <span style={{ fontFamily: "var(--mono)" }}>{r.daysIn}</span>{L(lang, "ي", "d")}
-                      {r.daysToDue >= 0 ? ` · ${t("dueIn")} ${r.daysToDue}` : ""}</button>; })()}</Td>
-                  <Td tone={C.inkSoft}>{lastFor(a) ? stamp(lastFor(a), lang) : t("never")}</Td>
-                </tr>;
-              })}
-            </tbody>
-          </table>
-          {animals.length === 0 && <div style={{ padding: 24 }}>
-            <Empty icon="🐄" title={t("noAnimals")} sub={t("noAnimalsSub")} cta={`＋ ${t("addAnimal")}`} onCta={() => setSheet({ k: "addAnimal" })} /></div>}
+            {SPECIES[k].icon} {spName(k, lang, true)}</Chip>)}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Chip active={herdStatusFilter === "all"} onClick={() => setHerdStatusFilter("all")}>{t("statusAll")}</Chip>
+          {herdStatusKeys.map((k) => <Chip key={k} active={herdStatusFilter === k}
+            onClick={() => setHerdStatusFilter(k)} color={statusColor(k)}>{statusLabel(k, lang)}</Chip>)}
+          {herdFilterActive > 0 && <button type="button" className="dk-pill" onClick={clearHerdFilters}>{t("clearFilters")}</button>}
+        </div>
+      </FilterTray>
+
+      <DeskCard pad={0} title={`✦ ${t("herdOverview")}`}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))" }}>
+          <div style={{ background: C.field, color: "#fff", padding: "18px 20px", minHeight: 78 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: .82 }}>{t("totalHeads")}</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 29, fontWeight: 800, marginTop: 5 }}>{nf(totalHeads)}</div>
+            <div style={{ fontSize: 11.5, opacity: .76, marginTop: 4 }}>{nf(animals.length)} {t("rows")}</div>
+          </div>
+          {[
+            ["🐾", t("perSpecies"), speciesSummary || "—", C.field],
+            ["🍼", statusLabel("pregnant", lang), nf(pregnantCount), C.amber],
+            ["⚠️", t("needsAttention"), nf(attentionCount || sickCount), attentionCount ? C.red : C.green],
+          ].map(([ic, lb, val, tone]) => <div key={lb} style={{ padding: "15px 16px", borderInlineStart: `1px solid ${C.line}`,
+            display: "grid", alignContent: "center", minHeight: 78 }}>
+            <div style={{ color: C.inkSoft, fontSize: 11.5, fontWeight: 700 }}>{ic} {lb}</div>
+            <div style={{ color: tone, fontFamily: "var(--mono)", fontSize: 17, fontWeight: 800, marginTop: 7 }}>{val}</div>
+          </div>)}
         </div>
       </DeskCard>
 
-      {selAnimal && <DeskCard title={`${spOf(selAnimal).icon} ${animalLabel(selAnimal)}`}
-        right={<button onClick={() => setSel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.inkSoft }}>✕</button>}>
-        <div style={{ width: "100%", height: 130, borderRadius: 4, background: C.paper, border: `1px solid ${C.line}`,
-          display: "grid", placeItems: "center", fontSize: 48, overflow: "hidden", marginBottom: 12 }}>
-          {selAnimal.photo ? <img src={selAnimal.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : spOf(selAnimal).icon}
-        </div>
-        <Row k={t("status")} v={statusLabel(selAnimal.status, lang)} tone={statusColor(selAnimal.status)} />
-        <Row k={t("breed")} v={breedLabel(selAnimal, lang)} />
-        {isFlock(selAnimal) ? <Row k={t("birds")} v={nf(selAnimal.birds)} /> : <Row k={t("age")} v={ageText(selAnimal, lang)} />}
-        <Row k={t("todayShort")} v={`${n1(todayProd(selAnimal))} ${producesEggs(selAnimal) ? t("eggsUnit") : t("L")}`} />
-        <Row k={t("expectedShort2")} v={selAnimal.expected ? n1(selAnimal.expected) : t("unknown")} />
-        {!isFlock(selAnimal) && <Row k={t("weight")} v={selAnimal.weight ? `${nf(selAnimal.weight)} ${t("kg")}` : t("unknown")} />}
-        {selAnimal.due && <Row k={t("dueIn")} v={`${Math.max(0, Math.ceil((new Date(selAnimal.due) - Date.now()) / 864e5))} ${t("days")}`} />}
-        {selAnimal.medicine && <div style={{ marginTop: 8, color: C.red, fontWeight: 600, fontSize: 13.5 }}>💊 {selAnimal.medicine}</div>}
-        {selAnimal.notes && <div style={{ marginTop: 6, color: C.inkSoft, fontSize: 13.5 }}>📝 {selAnimal.notes}</div>}
-        <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
-          {producesEggs(selAnimal)
-            ? <button style={primaryBtn} onClick={() => setSheet({ k: "prod", id: selAnimal.id })}>🥚 {t("collect")}</button>
-            : (S.milkMode === "total"
-              ? <button style={secondaryBtn} onClick={() => setRoute("entry")}>🥛 {t("farmDay")} ›</button>
-              : <button style={primaryBtn} onClick={() => setSheet({ k: "prod", id: selAnimal.id })}>🥛 {t("milk")}</button>)}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={{ ...secondaryBtn, flex: 1 }} onClick={() => setSheet({ k: "med", pre: selAnimal.id })}>💉 {t("meds")}</button>
-            {!isFlock(selAnimal) && <button style={{ ...secondaryBtn, flex: 1 }} onClick={() => setSheet({ k: "repro", id: selAnimal.id, back: null })}>🍼 {t("repro")}</button>}
-            <button style={{ ...secondaryBtn, flex: 1 }} onClick={() => setSheet({ k: "editAnimal", id: selAnimal.id, back: null })}>✏️ {t("edit")}</button>
+      <div style={{ display: "grid", gridTemplateColumns: selAnimal ? "minmax(0,1fr) 310px" : "1fr", gap: 14, alignItems: "start" }}>
+        <DeskCard pad={0} title={`🐾 ${t("animalDirectory")} · ${herdRows.length}${herdRows.length !== animals.length ? ` / ${animals.length}` : ""}`}>
+          {animals.length === 0 ? <div style={{ padding: 24 }}>
+            <Empty icon="🐄" title={t("noAnimals")} sub={t("noAnimalsSub")} cta={`＋ ${t("addAnimal")}`}
+              onCta={() => setSheet({ k: "addAnimal" })} /></div>
+            : herdRows.length === 0 ? <div style={{ padding: 24 }}>
+              <Empty icon="🔎" title={t("noAnimalsMatch")} sub={t("noAnimalsMatchSub")}
+                cta={t("clearFilters")} onCta={clearHerdFilters} /></div>
+              : <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>
+                    {head("tag", t("colName"))}{head("sp", t("species"))}{head("st", t("status"))}
+                    {head("breed", t("breed"))}{head("age", t("age"))}
+                  </tr></thead>
+                  <tbody>
+                    {herdRows.map((a) => <tr key={a.id} onClick={() => setSel(a.id)}
+                      onContextMenu={(e) => openCtx(e, [
+                        { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
+                        { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editAnimal", id: a.id, back: null }) },
+                      ])}
+                      style={{ cursor: "pointer", background: sel === a.id ? C.paper : "transparent" }}>
+                      <Td strong><span style={{ color: spOf(a).color }}>{spOf(a).icon}</span> {animalLabel(a)}</Td>
+                      <Td tone={C.inkSoft}>{spName(a.species, lang, true)}</Td>
+                      <Td><Stamp status={a.status} lang={lang} /></Td>
+                      <Td tone={C.inkSoft}>{breedLabel(a, lang)}</Td>
+                      <Td tone={C.inkSoft}>{isFlock(a) ? `${nf(a.birds)} ${t("birds")}` : ageText(a, lang)}</Td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>}
+        </DeskCard>
+
+        {selAnimal && <DeskCard title={`${spOf(selAnimal).icon} ${animalLabel(selAnimal)}`}
+          right={<button type="button" onClick={() => setSel(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.inkSoft }}>✕</button>}>
+          <div style={{ width: "100%", height: 110, borderRadius: 6, background: C.paper, border: `1px solid ${C.line}`,
+            display: "grid", placeItems: "center", fontSize: 44, overflow: "hidden", marginBottom: 12 }}>
+            {selAnimal.photo ? <img src={selAnimal.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : spOf(selAnimal).icon}
           </div>
-        </div>
-        <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: C.inkSoft }}>{t("history")}</div>
-        <div style={{ display: "grid", gap: 7, marginTop: 8, maxHeight: 220, overflowY: "auto" }}>
-          {entries.filter((e) => e.animalId === selAnimal.id).slice(0, 10).map((e) => (
-            <LogRow key={e.id} e={e} lang={lang} t={t} animals={animals} workers={workers} customers={customers} rate={S.rate} custom={S.categories} onReceipt={(x) => setSheet({ k: "receipt", id: x.id, back: sheet })} />))}
-        </div>
-      </DeskCard>}
-    </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.inkSoft, marginBottom: 5 }}>{t("basicDetails")}</div>
+          <Row k={t("species")} v={spName(selAnimal.species, lang, true)} />
+          <Row k={t("status")} v={statusLabel(selAnimal.status, lang)} tone={statusColor(selAnimal.status)} />
+          <Row k={t("breed")} v={breedLabel(selAnimal, lang)} />
+          {isFlock(selAnimal)
+            ? <><Row k={t("birds")} v={nf(selAnimal.birds)} />{selAnimal.coop && <Row k={t("coop")} v={selAnimal.coop} />}</>
+            : <Row k={t("age")} v={ageText(selAnimal, lang)} />}
+          {selAnimal.notes && <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 4, background: C.paper,
+            color: C.inkSoft, fontSize: 12.5 }}>📝 {selAnimal.notes}</div>}
+          <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+            <button type="button" style={primaryBtn} onClick={() => setSheet({ k: "animal", id: selAnimal.id })}>
+              {t("moreDetails")} ›</button>
+            <button type="button" style={secondaryBtn} onClick={() => setSheet({ k: "editAnimal", id: selAnimal.id, back: null })}>
+              ✏️ {t("edit")}</button>
+          </div>
+        </DeskCard>}
+      </div>
     </div>
   );
 
@@ -9531,6 +9760,28 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .cash-filter-note{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 13px;
   background:${C.paper};border-bottom:1px solid ${C.line};font-size:11.5px;color:${C.inkSoft}}
 .cash-filter-note b{font-family:var(--mono);font-weight:600}
+.cash-customize{display:grid;gap:11px;padding:12px 14px;background:${C.paper};border-bottom:1px solid ${C.line}}
+.cash-customize-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cash-customize-top>div{display:grid;gap:2px}.cash-customize-top b{font-size:13px}.cash-customize-top span{font-size:11.5px;color:${C.inkSoft}}
+.cash-density{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cash-density>span{font-size:12px;font-weight:700;color:${C.inkSoft};margin-inline-end:3px}
+.cash-density .dk-pill{padding:5px 10px}
+.cash-column-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:7px}
+.cash-column-control{display:grid;grid-template-columns:28px minmax(72px,.65fr) minmax(110px,1fr) auto;align-items:center;gap:7px;
+  background:${C.card};border:1px solid ${C.line};border-radius:6px;padding:6px 7px;transition:opacity .12s,border-color .12s}
+.cash-column-control.dragging,.cash-column-head.dragging{opacity:.48}.cash-column-control:has(.cash-drag:hover){border-color:${C.field}}
+.cash-column-control>b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cash-column-control label{display:grid;grid-template-columns:auto minmax(55px,1fr) 40px;align-items:center;gap:5px;font-size:10.5px;color:${C.inkSoft}}
+.cash-column-control input[type=range]{min-width:55px;width:100%;accent-color:${C.field}}
+.cash-column-control output{font-family:var(--mono);font-size:10.5px;text-align:end}
+.cash-drag{width:26px;height:26px;border:0;border-radius:4px;background:transparent;color:${C.inkSoft};cursor:grab;font-size:17px;padding:0;line-height:1}
+.cash-drag:hover,.cash-drag:focus-visible{background:${C.field}15;color:${C.field}}.cash-drag:active{cursor:grabbing}
+.cash-column-move{display:flex;gap:2px}.cash-column-move button{width:23px;height:23px;border:1px solid ${C.line};background:${C.paper};
+  color:${C.ink};border-radius:4px;padding:0;cursor:pointer}.cash-column-move button:disabled{opacity:.3;cursor:default}
+.cash-column-head{position:relative;display:flex;align-items:center;gap:5px;min-height:24px;padding-inline-end:7px}
+.cash-column-head>span{overflow:hidden;text-overflow:ellipsis}.cash-drag-head{width:20px;height:20px;font-size:14px;flex:0 0 auto}
+.cash-col-resize{position:absolute;z-index:1;inset-block:-9px;inset-inline-end:-12px;width:9px;border:0;border-inline-end:2px solid transparent;
+  background:transparent;cursor:col-resize;padding:0;touch-action:none}
+.cash-col-resize:hover,.cash-col-resize:focus-visible{border-inline-end-color:${C.field};outline:0}
 .cash-table tbody tr{transition:background .12s ease}
 .cash-table tbody tr[title]:hover{background:${C.paper}!important}
 .cash-secondary-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -9545,6 +9796,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   .cash-overview{grid-template-columns:repeat(2,1fr)}.cash-closing{grid-column:1/-1}
   .cash-register-tools{justify-content:flex-start;width:100%}.cash-search{order:3;width:100%}.cash-search input{width:100%}
   .cash-secondary-actions .dk-pill:last-child{margin-inline-start:0!important}
+  .cash-customize-top{align-items:flex-start}.cash-column-list{grid-template-columns:1fr}
 }
 .filter-tray{display:grid;gap:0}
 .filter-tray-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -9677,14 +9929,14 @@ function StatTile({ label, value, sub, tone, icon, onClick }) {
   </div>;
 }
 const Th = ({ children, w, align, onClick, active, dirn }) => (
-  <th onClick={onClick} style={{ textAlign: align || "start", padding: "9px 12px", fontSize: 11.5, fontWeight: 700,
+  <th onClick={onClick} style={{ textAlign: align || "start", padding: "var(--cash-cell-y, 9px) 12px", fontSize: 11.5, fontWeight: 700,
     color: C.inkSoft, letterSpacing: ".04em", borderBottom: `1.5px solid ${C.line}`, width: w,
     cursor: onClick ? "pointer" : "default", whiteSpace: "nowrap", userSelect: "none" }}>
     {children}{active ? <span style={{ color: C.field }}>{dirn === "asc" ? " ▲" : " ▼"}</span> : null}
   </th>
 );
 const Td = ({ children, align, mono, strong, tone, w, colSpan }) => (
-  <td colSpan={colSpan} style={{ textAlign: align || "start", padding: "10px 12px", fontSize: 13.5, width: w,
+  <td colSpan={colSpan} style={{ textAlign: align || "start", padding: "var(--cash-cell-y, 10px) 12px", fontSize: 13.5, width: w,
     fontFamily: mono ? "var(--mono)" : "var(--body)", fontWeight: strong ? 700 : 500,
     color: tone || C.ink, borderBottom: `1px solid ${C.line}` }}>{children}</td>
 );
