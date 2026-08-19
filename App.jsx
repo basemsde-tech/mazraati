@@ -12,9 +12,39 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.8.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.6": {
+    ar: [
+      "تعويضات مصاريف الزبون أصبحت بنودًا مستقلة تُخصم من صافي الفاتورة من دون حركة نقدية",
+      "الفواتير وكشوف الحساب والتصدير تعرض الإجمالي والتعويضات والصافي بوضوح",
+      "أنواع مصاريف التعويض تُحفظ تلقائيًا في قائمة قابلة لإعادة الاستخدام عند البيع لاحقًا",
+    ],
+    en: [
+      "Customer expense reimbursements are now separate credits against an invoice with no cash movement",
+      "Invoices, statements, and exports clearly show gross, reimbursements, and net totals",
+      "Reimbursement expense types are saved automatically in a reusable sale dropdown",
+    ],
+  },
+  "2.8.5": {
+    ar: [
+      "تعزيز المصاريف: توافق السجلات القديمة، ومنع تكرار دفع الفاتورة الدورية للدورة نفسها",
+      "المصاريف والتحليلات تعرض حركات الدفع الفعلية فقط مع إبقاء الفواتير غير المدفوعة ضمن المستحقات",
+    ],
+    en: [
+      "Expenses hardening: legacy-record compatibility and duplicate protection for each recurring-bill cycle",
+      "Expense totals and insights show actual paid transactions only while unpaid bills remain in payables",
+    ],
+  },
+  "2.8.4": {
+    ar: [
+      "سجل المصاريف يعرض حركات الدفع الفعلية فقط؛ دفعة المورد تُسجّل مرة واحدة عند دفعها",
+    ],
+    en: [
+      "The Expense Register now shows actual paid transactions only; supplier payments are recorded once when paid",
+    ],
+  },
   "2.8.3": {
     ar: [
       "دليل حيوانات أبسط يركز على الهوية والحالة والبيانات الأساسية",
@@ -554,8 +584,9 @@ const T = {
     markBillPaid: "تسجيل كمدفوع", dueBills: "فواتير مستحقة", duePayments: "مستحقات الزبائن",
     expenses: "المصاريف", moneyOut: "المصاريف", moneySpent: "المصروف هذا الشهر", moneySpentPeriod: "المصروف",
     billsDue: "فواتير مستحقة", topCategory: "أكبر بند", farmNet: "صافي المزرعة",
-    seeCashBox: "الصرف المدفوع → صندوق النقد", expenseRegister: "سجل المصاريف", openBills: "غير المسددة",
+    seeCashBox: "الصرف المدفوع → صندوق النقد", expenseRegister: "سجل المصاريف", paidExpensesOnly: "المصاريف المدفوعة فقط", openBills: "غير المسددة",
     stillToPay: "لم تُدفع بعد", paidToday: "مدفوعة", expPaid: "مدفوعة", expPartial: "متبقي", expUnpaid: "غير مدفوعة",
+    noPaidExpenses: "لا توجد مصاريف مدفوعة في هذه الفترة", noPaidExpensesSub: "الفواتير غير المدفوعة تبقى في حساب المورد أو قسم الاستحقاقات.",
     billTotal: "قيمة الفاتورة", remainder: "المتبقي", payAll: "دفع الكل", payNone: "بدون دفع",
     supplierPayHint: "المدفوع يخرج من صندوق النقد · المتبقي يبقى «علينا» للمورد",
     supplierCashOutHint: "سيُسجَّل صرفًا في صندوق النقد",
@@ -598,7 +629,7 @@ const T = {
     netHint: "المبيعات ناقص المصروف", upcomingBills: "فواتير قادمة",
     customerCreated: "تم إنشاء الزبون", accountReady: "رقم الحساب جاهز", viewAccount: "فتح الحساب",
     addAnother: "إضافة زبون آخر", noObligations: "لا التزامات مسجّلة.", noObligationsSub: "أضف عقودًا وفواتير وإيجارات لتتذكّر مواعيدها.",
-    dueToday: "مستحق اليوم", dueInDays: "مستحق خلال", overdueBy: "متأخر", farmAlerts: "تنبيهات المزرعة",
+    dueToday: "مستحق اليوم", dueInDays: "مستحق خلال", overdueBy: "متأخر", paymentAlreadyRecorded: "دُفعت هذه الدورة مسبقًا", farmAlerts: "تنبيهات المزرعة",
     financialAlerts: "تنبيهات مالية", allClear: "لا مستحقات عاجلة.", productionToday: "إنتاج اليوم",
     appUpdate: "تحديث التطبيق", checkUpdate: "التحقق من التحديث", updateNow: "تحديث الآن",
     updateReady: "يتوفر إصدار جديد", upToDate: "أنت على أحدث إصدار.", updateChecking: "جاري التحقق…",
@@ -732,6 +763,12 @@ const T = {
     dailyRoundSub: "سجّل تسليم اليوم لكل الزبائن الدائمين دفعة واحدة.",
     noRegulars: "لا يوجد زبائن دائمون.", deliver: "تسليم",
     newSale: "بيع جديد", pickCustomer: "لمن تم البيع؟", product: "المنتج", qty: "الكمية",
+    reimbursements: "تعويضات مصاريف الزبون", reimbursement: "تعويض مصروف", expenseName: "نوع / اسم المصروف",
+    chooseOrAddExpenseType: "اختر نوعًا محفوظًا أو اكتب نوعًا جديدًا — سيُحفظ تلقائيًا للاستخدام لاحقًا.",
+    addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
+    netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "أدخل اسم المصروف لكل مبلغ تعويض.",
+    reimburseOverGross: "لا يمكن أن يتجاوز مجموع التعويضات إجمالي البيع.", reimburseReadOnly: "التعويضات المرتبطة محفوظة وتظهر هنا للقراءة فقط.",
+    creditsCollected: "الرصيد الدائن / المحصّل", actualPaid: "المدفوع فعليًا",
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
     partial: "متبقي", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
@@ -762,7 +799,7 @@ const T = {
     fromDate: "من تاريخ", toDate: "إلى تاريخ", statusAll: "الكل", inRange: "ضمن الفترة المحددة",
     owingInRange: "المستحق في هذه الفترة", txCount: "عدد الحركات", editTx: "تعديل الحركة",
     deleteTx: "حذف الحركة", confirmDelete: "تأكيد الحذف", deleted: "تم الحذف",
-    deleteWarn: "سيُحذف هذا السجل نهائيًا مع دفعاته.", saleDate: "تاريخ البيع", paymentDate: "تاريخ الدفع",
+    deleteWarn: "سيُحذف هذا البيع نهائيًا مع دفعاته وتعويضات المصاريف المرتبطة به.", saleDate: "تاريخ البيع", paymentDate: "تاريخ الدفع",
     notes2: "ملاحظات", noTx: "لا حركات مطابقة.", lastPayment: "آخر دفعة", payments: "الدفعات",
     colQty: "الكمية", colUnit: "السعر", colTotal: "الإجمالي", colPaid: "المدفوع", colDue: "المتبقي",
     colStatus: "الحالة", colNotes: "ملاحظات", actions: "إجراءات", welcomeBack: "أهلًا بعودتك",
@@ -939,8 +976,9 @@ const T = {
     markBillPaid: "Mark paid", dueBills: "Bills due", duePayments: "Customer dues",
     expenses: "Expenses", moneyOut: "Expenses", moneySpent: "Spent this month", moneySpentPeriod: "Money spent",
     billsDue: "Bills due", topCategory: "Top category", farmNet: "Farm net",
-    seeCashBox: "Paid cash outs → Cash box", expenseRegister: "Expense register", openBills: "Open bills",
+    seeCashBox: "Paid cash outs → Cash box", expenseRegister: "Expense register", paidExpensesOnly: "Paid expenses only", openBills: "Open bills",
     stillToPay: "Still to pay", paidToday: "Paid", expPaid: "Paid", expPartial: "Remainder", expUnpaid: "Unpaid",
+    noPaidExpenses: "No paid expenses in this period", noPaidExpensesSub: "Unpaid bills remain in the supplier account or due-bills section.",
     billTotal: "Bill total", remainder: "Remainder", payAll: "Pay all", payNone: "Pay nothing",
     supplierPayHint: "Paid amount leaves the cash box · remainder stays as “we owe” the supplier",
     supplierCashOutHint: "Will post as cash out in the cash box",
@@ -983,7 +1021,7 @@ const T = {
     netHint: "Sales minus expenses", upcomingBills: "Upcoming bills",
     customerCreated: "Customer created", accountReady: "Account number", viewAccount: "Open account",
     addAnother: "Add another", noObligations: "No bills yet.", noObligationsSub: "Track recurring bills, rent and contracts with due dates.",
-    dueToday: "Due today", dueInDays: "Due in", overdueBy: "Overdue", farmAlerts: "Farm alerts",
+    dueToday: "Due today", dueInDays: "Due in", overdueBy: "Overdue", paymentAlreadyRecorded: "This cycle was already paid", farmAlerts: "Farm alerts",
     financialAlerts: "Financial alerts", allClear: "Nothing urgent due.", productionToday: "Today's production",
     appUpdate: "App update", checkUpdate: "Check for updates", updateNow: "Update now",
     updateReady: "New version available", upToDate: "You're on the latest version.", updateChecking: "Checking…",
@@ -1117,6 +1155,12 @@ const T = {
     dailyRoundSub: "Invoice every regular customer in one go.",
     noRegulars: "No regular customers yet.", deliver: "Deliver",
     newSale: "New sale", pickCustomer: "Who bought it?", product: "Product", qty: "Quantity",
+    reimbursements: "Customer expense reimbursements", reimbursement: "Expense reimbursement", expenseName: "Expense type / name",
+    chooseOrAddExpenseType: "Choose a saved type or enter a new one — it will be saved automatically for future sales.",
+    addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
+    netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Enter an expense name for every reimbursement amount.",
+    reimburseOverGross: "Reimbursements cannot exceed the gross sale total.", reimburseReadOnly: "Linked reimbursements are preserved and shown here read-only.",
+    creditsCollected: "Credits / Collected", actualPaid: "Actual paid",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
     partial: "Remainder", amountPaid: "Amount paid", outstanding: "Outstanding",
     collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record a payment",
@@ -1147,7 +1191,7 @@ const T = {
     fromDate: "From", toDate: "To", statusAll: "All", inRange: "in the selected range",
     owingInRange: "Owing in this range", txCount: "Transactions", editTx: "Edit transaction",
     deleteTx: "Delete transaction", confirmDelete: "Confirm delete", deleted: "Deleted",
-    deleteWarn: "This record and its payments will be permanently removed.", saleDate: "Sale date", paymentDate: "Payment date",
+    deleteWarn: "This sale, its payments, and linked expense reimbursements will be permanently removed.", saleDate: "Sale date", paymentDate: "Payment date",
     notes2: "Notes", noTx: "No matching transactions.", lastPayment: "Last payment", payments: "Payments",
     colQty: "Qty", colUnit: "Unit price", colTotal: "Total", colPaid: "Paid", colDue: "Due",
     colStatus: "Status", colNotes: "Notes", actions: "Actions", welcomeBack: "Welcome back",
@@ -1573,10 +1617,10 @@ function applyAppUpdate(onMsg) {
 }
 
 const emptyFarm = () => ({
-  version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
+  version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
   profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
 });
-const PROTECTED_ENTRIES = new Set(["sale", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit"]);
+const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit"]);
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
@@ -1591,15 +1635,32 @@ function migrate(farm) {
   f.animals = (f.animals || []).map((a) => ({ ...a, species: a.species || "cow" }));
   f.entries = (f.entries || []).map((e) => (e.cowId && !e.animalId ? { ...e, animalId: e.cowId } : e));
   if (f.settings && f.settings.eggPrice === undefined) f.settings = { ...f.settings, eggPrice: 0 };
-  f.settings = { logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" }, ...f.settings };
+  f.settings = { logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" }, ...f.settings };
+  if (!Array.isArray(f.settings.saleReimburseTypes)) f.settings.saleReimburseTypes = [];
   f.settings.docTpl = { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow", ...(f.settings.docTpl || {}) };
   if (!Array.isArray(f.obligations)) f.obligations = [];
   if (!Array.isArray(f.suppliers)) f.suppliers = [];
-  /* older records used separate types for feed and livestock purchases */
+  /* Older records used separate types for feed and livestock purchases.
+     Normalize new expense fields without changing their historic paid meaning. */
   f.entries = (f.entries || []).map((e) => {
-    if (e.type === "feed") return { ...e, type: "expense", category: "feed", amount: e.amount ?? e.cost };
-    if (e.type === "purchase") return { ...e, type: "expense", category: "livestock", amount: e.amount ?? e.cost };
-    return e;
+    let row = e;
+    if (e.type === "feed") row = { ...e, type: "expense", category: "feed", amount: e.amount ?? e.cost };
+    else if (e.type === "purchase") row = { ...e, type: "expense", category: "livestock", amount: e.amount ?? e.cost };
+    if (row.type !== "expense") return row;
+    const amount = fromCents(toCents(row.amount ?? row.cost));
+    const rawPaidC = row.paidAmount === undefined
+      ? (row.payStatus === "unpaid" || row.payStatus === "partial" ? 0 : toCents(amount))
+      : Math.max(0, Math.min(toCents(amount), toCents(row.paidAmount)));
+    const status = ["paid", "partial", "unpaid"].includes(row.payStatus)
+      ? row.payStatus : moneyStatus(toCents(amount), rawPaidC);
+    const paidAmount = status === "paid" ? amount : status === "unpaid" ? 0 : fromCents(rawPaidC);
+    const category = row.category || "other";
+    return {
+      ...row, amount, category, payStatus: status, paidAmount,
+      dueDate: row.dueDate || (status === "paid" ? "" : dayKey(row.at || Date.now())),
+      vendor: row.vendor || row.supplier || "", obligationId: row.obligationId || null,
+      group: row.group || expGroupOf(category),
+    };
   });
   return f;
 }
@@ -1967,31 +2028,67 @@ function CashParts({ parts }) {
 function buildLedger(entries, customers) {
   const sales = entries.filter((e) => e.type === "sale").slice().sort((a, b) => new Date(a.at) - new Date(b.at));
   const pays = entries.filter((e) => e.type === "payment");
-  const rec = {}; sales.forEach((s) => { rec[s.id] = 0; });
-  pays.filter((p) => p.saleId && p.saleId in rec).forEach((p) => { rec[p.saleId] += p.amount; });
-  const pool = {};
-  pays.filter((p) => !p.saleId || !(p.saleId in rec)).forEach((p) => { pool[p.customerId] = (pool[p.customerId] || 0) + p.amount; });
+  const saleIds = new Set(sales.map((s) => s.id));
+  const reimbursements = entries.filter((e) => e.type === "saleReimburse" && saleIds.has(e.saleId)
+    && toCents(e.amount) > 0).slice().sort((a, b) => new Date(a.at) - new Date(b.at));
+  const reimbBySale = {};
+  reimbursements.forEach((r) => {
+    if (!reimbBySale[r.saleId]) reimbBySale[r.saleId] = [];
+    reimbBySale[r.saleId].push(r);
+  });
+  const netBySaleC = {};
+  sales.forEach((s) => {
+    const reimbC = (reimbBySale[s.id] || []).reduce((sum, r) => sum + toCents(r.amount), 0);
+    netBySaleC[s.id] = Math.max(0, toCents(s.amount) - reimbC);
+  });
+  const recC = {}; sales.forEach((s) => { recC[s.id] = 0; });
+  const poolC = {};
+  pays.filter((p) => p.saleId && p.saleId in recC).forEach((p) => {
+    const paidC = Math.max(0, toCents(p.amount));
+    const roomC = Math.max(0, netBySaleC[p.saleId] - recC[p.saleId]);
+    const appliedC = Math.min(roomC, paidC);
+    recC[p.saleId] += appliedC;
+    if (paidC > appliedC) poolC[p.customerId] = (poolC[p.customerId] || 0) + paidC - appliedC;
+  });
+  pays.filter((p) => !p.saleId || !(p.saleId in recC)).forEach((p) => {
+    poolC[p.customerId] = (poolC[p.customerId] || 0) + Math.max(0, toCents(p.amount));
+  });
   const list = sales.map((s, i) => {
-    const remaining = Math.max(0, s.amount - rec[s.id]);
-    const take = Math.min(remaining, pool[s.customerId] || 0);
-    if (take > 0) { rec[s.id] += take; pool[s.customerId] -= take; }
-    const paidAmount = +Math.min(s.amount, rec[s.id]).toFixed(2);
-    const due = +Math.max(0, s.amount - paidAmount).toFixed(2);
-    return { ...s, paidAmount, due, no: `INV-${String(i + 1).padStart(4, "0")}`,
+    const grossC = toCents(s.amount);
+    const reimbRows = reimbBySale[s.id] || [];
+    const reimbC = reimbRows.reduce((sum, r) => sum + toCents(r.amount), 0);
+    const netC = Math.max(0, grossC - reimbC);
+    const remainingC = Math.max(0, netC - recC[s.id]);
+    const takeC = Math.min(remainingC, poolC[s.customerId] || 0);
+    if (takeC > 0) { recC[s.id] += takeC; poolC[s.customerId] -= takeC; }
+    const paidC = Math.min(netC, recC[s.id]);
+    const dueC = Math.max(0, netC - paidC);
+    const paidAmount = fromCents(paidC);
+    const due = fromCents(dueC);
+    return { ...s, grossAmount: fromCents(grossC), reimbAmount: fromCents(reimbC),
+      netAmount: fromCents(netC), reimbRows, paidAmount, due, no: `INV-${String(i + 1).padStart(4, "0")}`,
       status: due <= 0.009 ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
       lateDays: Math.floor((Date.now() - new Date(s.at)) / 864e5) };
   });
   const byCustomer = {};
-  const blank = () => ({ sold: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
+  const blank = () => ({ gross: 0, net: 0, sold: 0, reimbursed: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
   (customers || []).forEach((c) => { byCustomer[c.id] = blank(); });
   list.forEach((s) => {
     const b = byCustomer[s.customerId] || (byCustomer[s.customerId] = blank());
-    b.sold += s.amount; b.paid += s.paidAmount; b.due += s.due; b.count += 1;
+    b.gross = fromCents(toCents(b.gross) + toCents(s.grossAmount));
+    b.reimbursed = fromCents(toCents(b.reimbursed) + toCents(s.reimbAmount));
+    b.net = fromCents(toCents(b.net) + toCents(s.netAmount));
+    b.sold = b.net;
+    b.paid = fromCents(toCents(b.paid) + toCents(s.paidAmount));
+    b.due = fromCents(toCents(b.due) + toCents(s.due));
+    b.count += 1;
     if (s.due > 0) b.oldest = Math.max(b.oldest, s.lateDays);
   });
-  Object.keys(pool).forEach((cid) => { if (byCustomer[cid] && pool[cid] > 0.009) byCustomer[cid].credit = +pool[cid].toFixed(2); });
-  Object.values(byCustomer).forEach((b) => { b.sold = +b.sold.toFixed(2); b.paid = +b.paid.toFixed(2); b.due = +b.due.toFixed(2); });
-  return { list, byCustomer, pays };
+  Object.keys(poolC).forEach((cid) => {
+    if (!byCustomer[cid]) byCustomer[cid] = blank();
+    if (poolC[cid] > 0) byCustomer[cid].credit = fromCents(poolC[cid]);
+  });
+  return { list, byCustomer, pays, reimbursements };
 }
 function buildSupplierLedger(entries, suppliers) {
   const src = withImpliedSupplierPays(entries);
@@ -2058,7 +2155,7 @@ function buildSupplierLedger(entries, suppliers) {
   return { list, bySupplier, pays: pays.filter((p) => !p.implied), allPays: pays,
     byBill: Object.fromEntries(list.map((b) => [b.id, b])) };
 }
-function computeSums(list, S, workers, days) {
+function computeSums(list, S, workers, days, includePayroll = true) {
   const milk = milkTotals(list), eggs = prodTotals(list, "eggs");
   const sales = list.filter((e) => e.type === "sale");
   const invoiced = sales.reduce((a, b) => a + b.amount, 0);
@@ -2081,7 +2178,7 @@ function computeSums(list, S, workers, days) {
   list.filter((e) => e.type === "attend").forEach((e) => { const k = `${dayKey(e.at)}|${e.workerId}`; if (!(k in att)) att[k] = e; });
   const shifts = Object.values(att).filter((e) => e.present).length;
   const monthly = (workers || []).filter((w) => w.type === "monthly").reduce((a, b) => a + (b.salary || 0), 0);
-  const laborPayroll = shifts * (S.wage || 0) + (monthly * days) / 30;
+  const laborPayroll = includePayroll ? shifts * (S.wage || 0) + (monthly * days) / 30 : 0;
   add("labour", laborPayroll);                       // wages join the same ledger
   const laborCost = byCategory.labour || 0;
   const feedCost = (byCategory.feed || 0) + (byCategory.hay || 0);
@@ -2277,24 +2374,26 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
       isFlock(a) ? "" : ageText(a, lang), headCount(a), a.weight || "", a.expected || "", a.parity || 0,
       a.source === "bought" ? t("bought") : t("born"), a.medicine || "", a.notes || ""])] });
 
-  sheets.push({ name: t("shSales"), cols: [12, 8, 20, 12, 10, 16, 20, 20, 20, 13, 16],
-    rows: [[t("colDate"), t("colTime"), t("customerName"), t("product"), t("qty"), t("unitPrice"), t("amount"),
-      t("amountPaid"), t("due"), t("payStatus"), t("colUser")],
+  sheets.push({ name: t("shSales"), cols: [12, 8, 20, 12, 10, 16, 20, 20, 20, 20, 20, 13, 16],
+    rows: [[t("colDate"), t("colTime"), t("customerName"), t("product"), t("qty"), t("unitPrice"), t("grossSubtotal"),
+      t("reimbursementTotal"), t("netInvoiceTotal"), t("amountPaid"), t("due"), t("payStatus"), t("colUser")],
     ...(scopedSales || []).map((iv) => {
       const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
       return [dmy(iv.at), hhmm(iv.at), (cOf(iv.customerId) || {}).name || "—", lang === "ar" ? pr[2] : pr[3],
-        `${iv.qty} ${saleQtyUnit(iv, lang, t)}`, money(iv.price), money(iv.amount), money(iv.paidAmount), money(iv.due),
+        `${iv.qty} ${saleQtyUnit(iv, lang, t)}`, money(iv.price), money(iv.grossAmount), money(iv.reimbAmount),
+        money(iv.netAmount), money(iv.paidAmount), money(iv.due),
         iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid"), iv.byName];
     })] });
 
-  sheets.push({ name: t("shCustomers"), cols: [22, 16, 18, 12, 10, 18, 18, 18, 11, 12],
+  sheets.push({ name: t("shCustomers"), cols: [22, 16, 18, 12, 10, 18, 18, 18, 18, 18, 11, 12],
     rows: [[t("customerName"), t("phone"), t("customerPrice"), t("dailyQty"), t("invoice"), t("totalSold"),
-      t("collected"), t("due"), t("daysLate"), t("payStatus")],
+      t("grossSubtotal"), t("reimbursementTotal"), t("collected"), t("due"), t("daysLate"), t("payStatus")],
     ...(customers || []).map((c) => {
       const b = (ledger && ledger.byCustomer[c.id]) || { sold: 0, paid: 0, due: 0, oldest: 0, count: 0 };
-      return [c.name, c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold), money(b.paid), money(b.due),
+      return [c.name, c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold),
+        money(b.gross || b.sold), money(b.reimbursed), money(b.paid), money(b.due),
         b.due > 0 ? b.oldest : 0, b.due <= 0 ? t("paidS") : t("unpaid")];
-    }), [], [t("outstanding"), "", "", "", "", "", "", money(outstanding)]] });
+    }), [], [t("outstanding"), "", "", "", "", "", "", "", "", money(outstanding)]] });
 
   sheets.push({ name: t("shMed"), cols: [12, 8, 20, 14, 10, 16],
     rows: [[t("colDate"), t("colTime"), t("colName"), t("colType"), t("colCost"), t("colUser")],
@@ -2320,13 +2419,16 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     ...Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).map(([k, v]) => ["", "", catLabel(k, lang, S.categories), "", money(-v), "", ""])] });
 
   const label = { milk: t("milk"), eggs: t("eggs"), med: t("meds"), attend: t("workers"), feed: t("feed"),
-    sale: t("newSale"), payment: t("recordPayment"), purchase: t("purchases"), setting: t("settings"),
+    sale: t("newSale"), saleReimburse: t("reimbursement"), payment: t("recordPayment"), purchase: t("purchases"), setting: t("settings"),
     animalAdd: t("addAnimal"), animalEdit: t("editAnimal"), workerAdd: t("addWorker"), customerAdd: t("addCustomer"),
     profile: t("createProfile"), profileSecurity: t("security"), status: t("changeStatus"), due: t("dueDate"),
     loss: t("losses"), birth: t("births"), weight: t("weighIn") };
+  const scopedSaleIds = new Set((scopedSales || []).map((s) => s.id));
+  const auditRows = [...scoped, ...((ledger && ledger.reimbursements) || [])
+    .filter((r) => scopedSaleIds.has(r.saleId) && !scoped.some((e) => e.id === r.id))];
   sheets.push({ name: t("shLog"), cols: [12, 8, 16, 18, 22, 12],
     rows: [[t("colDate"), t("colTime"), t("colUser"), t("colType"), t("colNote"), t("colValue")],
-    ...scoped.map((e) => [d(e), h(e), e.byName, label[e.type] || e.type,
+    ...auditRows.map((e) => [d(e), h(e), e.byName, label[e.type] || e.type,
       e.animalId ? aLbl(e.animalId) : e.workerId ? ((workers.find((w) => w.id === e.workerId) || {}).name || "")
         : e.customerId ? ((cOf(e.customerId) || {}).name || "") : e.name || e.field || "",
       e.liters ?? e.count ?? e.cost ?? e.amount ?? e.kg ?? e.value ?? (e.present === undefined ? "" : (e.present ? t("present") : t("absent")))])] });
@@ -2340,6 +2442,9 @@ function exportExcel(opts) {
    sends to the person who owes them money. */
 function exportAccount({ customer, no, rows, pays, lang, t, S }) {
   const money = (v) => fmt(v, S.rate, lang);
+  const gross = fromCents(rows.reduce((sum, x) => sum + toCents(x.grossAmount), 0));
+  const reimbursed = fromCents(rows.reduce((sum, x) => sum + toCents(x.reimbAmount), 0));
+  const net = fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
   const sheets = [
     { name: t("account"), cols: [18, 26], rows: [
       [t("customerName"), customer.name],
@@ -2348,18 +2453,24 @@ function exportAccount({ customer, no, rows, pays, lang, t, S }) {
       [t("since"), dmy(customer.at)],
       [t("rate"), S.rate],
       [],
-      [t("totalSold"), money(rows.reduce((a, x) => a + x.amount, 0))],
-      [t("collected"), money(rows.reduce((a, x) => a + x.paidAmount, 0))],
-      [t("due"), money(rows.reduce((a, x) => a + x.due, 0))],
+      [t("grossSubtotal"), money(gross)],
+      [t("reimbursementTotal"), money(reimbursed)],
+      [t("netInvoiceTotal"), money(net)],
+      [t("collected"), money(fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0)))],
+      [t("due"), money(fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0)))],
     ] },
-    { name: t("transactions"), cols: [12, 12, 14, 10, 10, 12, 12, 12, 12, 24], rows: [
+    { name: t("transactions"), cols: [12, 12, 14, 10, 10, 12, 12, 12, 12, 12, 12, 24], rows: [
       [t("colDate"), t("invoiceNo"), t("product"), t("colQty"), t("colUnit"),
-       t("colTotal"), t("colPaid"), t("colDue"), t("colStatus"), t("colNotes")],
-      ...rows.map((x) => { const pr = PRODUCTS.find((p) => p[0] === x.product);
-        return [dmy(x.at), x.no, pr ? (lang === "ar" ? pr[2] : pr[3]) : x.product,
-          x.qty, money(x.price), money(x.amount), money(x.paidAmount), money(x.due),
+       t("grossSubtotal"), t("reimbursementTotal"), t("netInvoiceTotal"), t("colPaid"), t("colDue"), t("colStatus"), t("colNotes")],
+      ...rows.flatMap((x) => { const pr = PRODUCTS.find((p) => p[0] === x.product);
+        const saleRow = [dmy(x.at), x.no, pr ? (lang === "ar" ? pr[2] : pr[3]) : x.product,
+          x.qty, money(x.price), money(x.grossAmount), money(x.reimbAmount), money(x.netAmount), money(x.paidAmount), money(x.due),
           x.status === "paid" ? t("paidS") : x.status === "partial" ? t("partial") : t("unpaid"),
-          x.note || ""]; }),
+          x.note || ""];
+        const reimbRows = (x.reimbRows || []).map((r) => [dmy(r.at), x.no, `↩ ${t("reimbursement")}`,
+          "", "", "", money(r.amount), "", "", "", "", r.name || ""]);
+        return [saleRow, ...reimbRows];
+      }),
     ] },
     { name: t("payments"), cols: [12, 12, 14, 24], rows: [
       [t("colDate"), t("paymentAmount"), t("method"), t("colNote")],
@@ -4416,20 +4527,51 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
+  const [reimbRows, setReimbRows] = useState([{ id: uid(), name: "", amount: 0 }]);
+  const [err, setErr] = useState("");
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => { if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); } }, [cid]);
   useEffect(() => { setPrice(defPrice(product) || 0); }, [cid, product]);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const unit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   const stockUnit = milkUnitOf(S.milkUnit);
-  const amount = +(qty * price).toFixed(2);
+  const savedReimburseTypes = [];
+  const seenReimburseTypes = new Set();
+  [...(S.saleReimburseTypes || []), ...(entries || []).filter((e) => e.type === "saleReimburse").map((e) => e.name)]
+    .forEach((name) => {
+      const clean = String(name || "").trim();
+      const key = clean.toLocaleLowerCase();
+      if (clean && !seenReimburseTypes.has(key)) {
+        seenReimburseTypes.add(key);
+        savedReimburseTypes.push(clean);
+      }
+    });
+  const amount = fromCents(toCents(qty * price));
+  const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
+  const reimbAmount = fromCents(reimbC);
+  const netAmount = fromCents(Math.max(0, toCents(amount) - reimbC));
+  const reimburseOver = reimbC > toCents(amount);
   useEffect(() => {
     if (!paidTouched) return;
-    setPaidNow((p) => Math.min(p, amount));
-  }, [amount, paidTouched]);
-  const pay = payState(amount, paidNow);
+    setPaidNow((p) => fromCents(Math.min(toCents(p), toCents(netAmount))));
+  }, [netAmount, paidTouched]);
+  const pay = payState(netAmount, paidNow);
   const payNow = pay.paid;
   const setPaid = (v) => { setPaidTouched(true); setPaidNow(v); };
+  const updateReimb = (id, patch) => {
+    setErr("");
+    setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
+  };
+  const saveSale = () => {
+    if (!cid || amount <= 0) return;
+    const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
+      .map((r) => ({ name: r.name.trim(), amount: fromCents(toCents(r.amount)) }));
+    if (reimbursements.some((r) => !r.name)) return setErr(t("reimburseNameNeeded"));
+    if (reimburseOver) return setErr(t("reimburseOverGross"));
+    onSave({ customerId: cid, product, qty, price, amount, reimbursements, payNow,
+      unit: product === "milk" ? milkSaleUnit : undefined,
+      currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
+  };
   const milkAvail = milkStock(entries || [], date).available;
   const oversell = product === "milk" && milkSaleUnit === stockUnit && qty > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
@@ -4476,27 +4618,67 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t}
         step={product === "animal" ? 25 : 0.05} currency={cur} setCurrency={setCur} />
     </div>
-    <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14,
-      display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <span style={{ fontWeight: 700 }}>{t("total")}</span>
-      <span style={{ textAlign: "end" }}><Money usd={amount} rate={S.rate} lang={lang} size={28} tone="#fff" /></span>
+    <Step n="5" label={t("reimbursements")} />
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 500, margin: "-2px 0 8px", lineHeight: 1.4 }}>
+      {t("chooseOrAddExpenseType")}
     </div>
-    <Step n="5" label={`${t("saleDate")} — ${dmy(date)}`} />
+    <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+      <datalist id="sale-reimburse-types">
+        {savedReimburseTypes.map((name) => <option key={name.toLocaleLowerCase()} value={name} />)}
+      </datalist>
+      {reimbRows.map((r, i) => {
+        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : r.amount || "";
+        return <div key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.8fr) auto",
+          gap: 7, alignItems: "center" }}>
+          <input list="sale-reimburse-types" value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
+            placeholder={t("expenseName")} style={{ ...inp, padding: "10px 11px", fontSize: 14.5 }} />
+          <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
+            onChange={(e) => {
+              const raw = Math.max(0, +(e.target.value || 0));
+              const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
+              updateReimb(r.id, { amount: fromCents(toCents(usd)) });
+            }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
+            style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
+          {i === reimbRows.length - 1
+            ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, { id: uid(), name: "", amount: 0 }])}
+                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.field}`, background: C.paper,
+                  color: C.field, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
+            : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
+                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
+                  color: C.red, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
+        </div>;
+      })}
+    </div>
+    <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14,
+      display: "grid", gap: 7 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 600 }}>{t("grossSubtotal")}</span><Money usd={amount} rate={S.rate} lang={lang} size={18} tone="#fff" />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9 }}>
+        <span style={{ fontWeight: 600 }}>{t("reimbursementTotal")}</span><span>− <Money usd={reimbAmount} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
+      </div>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
+        justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
+      </div>
+    </div>
+    {reimburseOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
+      fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("reimburseOverGross")}</div>}
+    <Step n="6" label={`${t("saleDate")} — ${dmy(date)}`} />
     <input type="date" value={date} max={dayKey(Date.now())}
       onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
-    <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
+    <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    <Step n="7" label={t("amountPaid")} />
-    <PaySplit amount={amount} paid={paidNow} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
+    <Step n="8" label={t("amountPaid")} />
+    <PaySplit amount={netAmount} paid={paidNow} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {milkUnitLb(stockUnit, t)})</div>}
     {product === "milk" && milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4,
       padding: "10px 12px", marginBottom: 10, fontWeight: 600, color: "#7A5312", fontSize: 13 }}>
       ⚠️ {t("milkUnitMismatch")}</div>}
-    <button style={{ ...primaryBtn, opacity: cid && amount > 0 ? 1 : .45 }}
-      onClick={() => cid && amount > 0 && onSave({ customerId: cid, product, qty, price, amount, payNow,
-        unit: product === "milk" ? milkSaleUnit : undefined,
-        currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+    {err && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    <button style={{ ...primaryBtn, opacity: cid && amount > 0 && !reimburseOver ? 1 : .45 }}
+      onClick={saveSale}>✓ {t("save")}</button>
   </Sheet>;
 }
 
@@ -4703,7 +4885,10 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const [product, setProduct] = useState(sale.product || "milk");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(sale.unit));
   const [confirm, setConfirm] = useState(false);
-  const amount = +(qty * price).toFixed(2);
+  const amount = fromCents(toCents(qty * price));
+  const reimbAmount = fromCents((sale.reimbRows || []).reduce((sum, r) => sum + toCents(r.amount), 0));
+  const netAmount = fromCents(Math.max(0, toCents(amount) - toCents(reimbAmount)));
+  const reimburseOver = toCents(reimbAmount) > toCents(amount);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const qtyUnit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   return <Sheet title={`✏️ ${t("editTx")}`} sub={sale.no} onClose={onClose}>
@@ -4731,17 +4916,32 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
     <Step n="3" label={t("unitPrice")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} /></div>
+    {(sale.reimbRows || []).length > 0 && <div style={{ background: C.paper, border: `1px solid ${C.line}`,
+      borderRadius: 6, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{t("reimbursements")}</div>
+      <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 8 }}>{t("reimburseReadOnly")}</div>
+      {sale.reimbRows.map((r) => <div key={r.id} style={{ display: "flex", justifyContent: "space-between",
+        gap: 10, padding: "6px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 13.5 }}>
+        <span>{r.name}</span><span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>−{fmtC(r.amount, S.rate, lang)}</span>
+      </div>)}
+    </div>}
     <Step n="4" label={`${t("saleDate")} — ${dmy(date)}`} />
     <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
     <Step n="5" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     <div style={{ background: C.field, color: "#fff", borderRadius: 4, padding: 14, marginBottom: 14,
-      display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <span style={{ fontWeight: 600 }}>{t("total")}</span>
-      <Money usd={amount} rate={S.rate} lang={lang} size={24} tone="#fff" />
+      display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("grossSubtotal")}</span>
+        <Money usd={amount} rate={S.rate} lang={lang} size={18} tone="#fff" /></div>
+      {reimbAmount > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("reimbursementTotal")}</span>
+        <span>− <Money usd={reimbAmount} rate={S.rate} lang={lang} size={18} tone="#fff" /></span></div>}
+      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 7 }}>
+        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span>
+        <Money usd={netAmount} rate={S.rate} lang={lang} size={24} tone="#fff" /></div>
     </div>
-    <button style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({ qty, price, amount, product,
+    {reimburseOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("reimburseOverGross")}</div>}
+    <button style={{ ...primaryBtn, opacity: amount > 0 && !reimburseOver ? 1 : .45 }}
+      onClick={() => amount > 0 && !reimburseOver && onSave({ qty, price, amount, product,
         unit: product === "milk" ? milkSaleUnit : undefined,
         at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
     {!confirm
@@ -4807,9 +5007,9 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     .filter((x) => f.status === "all" || x.status === f.status)
     .filter((x) => !f.q || `${x.no} ${x.note || ""} ${n1(x.qty)}`.toLowerCase().includes(f.q.toLowerCase()))
     .sort(byDate);
-  const rSold = rows.reduce((a2, x) => a2 + x.amount, 0);
-  const rPaid = rows.reduce((a2, x) => a2 + x.paidAmount, 0);
-  const rDue = rows.reduce((a2, x) => a2 + x.due, 0);
+  const rSold = fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
+  const rPaid = fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
+  const rDue = fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
   const ranged = !!(f.from || f.to || f.status !== "all" || f.q);
   const filtActive = (f.from || f.to || f.status !== "all" ? 1 : 0) + (f.q ? 1 : 0);
   const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
@@ -4819,6 +5019,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
         <Kpi label={t("totalSold")} value={fmtC(b.sold, S.rate, lang)} />
+        {b.reimbursed > 0 && <Kpi label={t("reimbursementTotal")} value={fmtC(b.reimbursed, S.rate, lang)} tone={C.amber}
+          sub={`${t("grossSubtotal")} ${fmtC(b.gross, S.rate, lang)}`} />}
         <Kpi label={t("collected")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
         <Kpi label={t("due")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
         <Kpi label={t("txCount")} value={nf(all.length)} tone={C.inkSoft} />
@@ -4906,7 +5108,13 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   <Td>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
                   <Td align="end" mono>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</Td>
                   <Td align="end" mono tone={C.inkSoft}>{fmtC(iv.price, S.rate, lang)}</Td>
-                  <Td align="end" mono strong>{fmtC(iv.amount, S.rate, lang)}</Td>
+                  <Td align="end" mono strong>{fmtC(iv.netAmount, S.rate, lang)}
+                    {iv.reimbAmount > 0 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
+                      color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
+                      {t("reimbursementTotal")} −{fmtC(iv.reimbAmount, S.rate, lang)}
+                      {iv.reimbRows.length ? ` · ${iv.reimbRows.map((r) => r.name).join("، ")}` : ""}
+                    </span>}
+                  </Td>
                   <Td align="end" mono tone={C.green}>{iv.paidAmount ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
                   <Td align="end" mono strong tone={iv.due > 0 ? C.red : C.inkSoft}>{iv.due ? fmtC(iv.due, S.rate, lang) : "—"}</Td>
                   <Td><span style={{ display: "inline-block", border: `1.5px solid ${statusTone(iv.status)}`,
@@ -5213,6 +5421,7 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
     expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
     sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? c.name : "—"}`, fmtC(e.amount, rate, lang)],
+    saleReimburse: ["↩️", `${t("reimbursement")} · ${e.name || "—"} · ${c ? c.name : "—"}`, `−${fmtC(e.amount, rate, lang)}`],
     payment: ["💵", `${t("recordPayment")} · ${c ? c.name : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     loss: ["💀", `${t("losses")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)}`],
@@ -5730,6 +5939,7 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
   const groups = [["all", "🧾", t("allTypes")], ["prod", "🥛", t("production")], ["med", "💉", t("meds")],
     ["attend", "👷", t("workers")], ["sale", "🧾", t("sales")], ["payment", "💵", t("recordPayment")], ["herd", "🐄", t("animals")]];
   const belongs = (e) => logType === "all" || e.type === logType
+    || (logType === "sale" && e.type === "saleReimburse")
     || (logType === "prod" && ["milk", "eggs"].includes(e.type))
     || (logType === "herd" && ["animalAdd", "animalEdit", "status", "due", "loss", "birth", "weight", "workerAdd", "customerAdd", "profile"].includes(e.type));
   const list = scoped.filter(belongs);
@@ -5972,16 +6182,21 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     const c = customers.find((x) => x.id === doc.id);
     if (!c) return <div dir={T[dlang].dir} style={docWrap}><p>{tApp("noData")}</p></div>;
     const b = ledger.byCustomer[doc.id] || { sold: 0, paid: 0, due: 0 };
-    const rows = [...ledger.list.filter((x) => x.customerId === doc.id).map((x) => {
+    const rows = [...ledger.list.filter((x) => x.customerId === doc.id).flatMap((x) => {
       const pr = PRODUCTS.find((p) => p[0] === x.product) || PROD_OTHER;
       const pn = both ? `${pr[2]} / ${pr[3]}` : (dlang === "ar" ? pr[2] : pr[3]);
       const xu = (x.product || "milk") === "milk" ? milkUnitLb(x.unit, t)
         : both ? `${pr[4]} / ${pr[5]}` : (dlang === "ar" ? pr[4] : pr[5]);
-      return { at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} ${xu} × ${money(x.price)}`, d: x.amount, c: 0 };
+      return [{ at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} ${xu} × ${money(x.price)}`,
+        d: x.grossAmount, c: 0 }, ...(x.reimbRows || []).map((r) => ({ at: r.at || x.at, k: "r",
+        label: `${x.no} · ${t("reimbursement")} · ${r.name}`, d: 0, c: r.amount }))];
     }), ...ledger.pays.filter((p) => p.customerId === doc.id).map((p) => ({ at: p.at, k: "p",
       label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount }))]
       .sort((a, b2) => new Date(a.at) - new Date(b2.at));
-    let run = 0;
+    const totalDebit = fromCents(rows.reduce((sum, r) => sum + toCents(r.d), 0));
+    const totalCredit = fromCents(rows.reduce((sum, r) => sum + toCents(r.c), 0));
+    const finalBalance = fromCents(toCents(totalDebit) - toCents(totalCredit));
+    let runC = 0;
     return <div dir={T[dlang].dir} style={docWrap}>
       <DocHead lang={dlang} both={both} {...farm} title={t("statement")}
         docNo={accNo(customers, c.id)}
@@ -5992,28 +6207,29 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         <tr>
           <td style={docTh}>{t("colDate")}</td><td style={docTh}>{t("colItem")}</td>
           <td style={{ ...docTh, textAlign: "end" }}>{t("invoice")}{showUsd && showLbp ? "" : showLbp ? ` (${L2("ل.ل", "LBP")})` : " (USD)"}</td>
-          <td style={{ ...docTh, textAlign: "end" }}>{t("collected")}</td>
+          <td style={{ ...docTh, textAlign: "end" }}>{t("creditsCollected")}</td>
           <td style={{ ...docTh, textAlign: "end" }}>{t("balance")}</td>
         </tr>
-        {rows.map((r, i) => { run += r.d - r.c; return <tr key={i} style={{ background: i % 2 ? "#FAFAF8" : "#fff" }}>
+        {rows.map((r, i) => { runC += toCents(r.d) - toCents(r.c); return <tr key={i} style={{ background: i % 2 ? "#FAFAF8" : "#fff" }}>
           <td style={docTd}>{dmy(r.at)}<span style={{ color: "#888", marginInlineStart: 6, fontSize: 10 }}>{hhmm(r.at)}</span></td>
-          <td style={docTd}>{r.k === "s" ? r.label : `${t("receipt")} · ${r.label}`}</td>
+          <td style={docTd}>{r.k === "s" ? r.label : r.k === "r" ? r.label : `${t("receipt")} · ${r.label}`}</td>
           <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.d ? cellAmt(r.d) : ""}</td>
           <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.c ? cellAmt(r.c) : ""}</td>
-          <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{cellAmt(run)}</td>
+          <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{cellAmt(fromCents(runC))}</td>
         </tr>; })}
         <tr>
           <td style={docThSum} colSpan={2}>{t("balance")}</td>
-          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(b.sold)}</td>
-          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(b.paid)}</td>
-          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)", color: b.due > 0 ? C.red : C.green }}>{cellAmt(b.due)}</td>
+          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totalDebit)}</td>
+          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totalCredit)}</td>
+          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)", color: finalBalance > 0 ? C.red : C.green }}>{cellAmt(finalBalance)}</td>
         </tr>
       </tbody></table>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-        <div style={{ minWidth: 220, border: `2px solid ${b.due > 0 ? C.red : C.green}`, borderRadius: 4, padding: "12px 16px",
-          background: b.due > 0 ? "#FBEFEF" : "#E8F2EC", textAlign: "end" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>{t("due")}</div>
-          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4, color: b.due > 0 ? C.red : C.green }}>{money(b.due)}</div>
+        <div style={{ minWidth: 220, border: `2px solid ${finalBalance > 0 ? C.red : C.green}`, borderRadius: 4, padding: "12px 16px",
+          background: finalBalance > 0 ? "#FBEFEF" : "#E8F2EC", textAlign: "end" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>{finalBalance >= 0 ? t("due") : t("credit")}</div>
+          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4,
+            color: finalBalance > 0 ? C.red : C.green }}>{money(Math.abs(finalBalance))}</div>
         </div>
       </div>
       {mkFoot(t("signOwner"), t("signCustomer"))}
@@ -6047,19 +6263,36 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{nm(iv.amount)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: showUsd ? 400 : 700 }}>{nf(iv.amount * (iv.rateUsed || S.rate))}</td>}
       </tr>
+      {(iv.reimbRows || []).map((r) => <tr key={r.id} style={{ background: "#F4F8F6" }}>
+        <td style={{ ...docTd, color: C.field, fontWeight: 700 }}>↩ {t("reimbursement")} · {r.name}</td>
+        <td style={{ ...docTd, textAlign: "center" }}>—</td><td style={{ ...docTd, textAlign: "end" }}>—</td>
+        {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nm(r.amount)}</td>}
+        {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>
+          −{nf(r.amount * (r.rateUsed || iv.rateUsed || S.rate))}</td>}
+      </tr>)}
       <tr>
-        <td style={{ ...docThSum, textAlign: "end" }} colSpan={3}>{t("total")}</td>
-        {showUsd && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(iv.amount)}</td>}
-        {showLbp && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(iv.amount * (iv.rateUsed || S.rate))}</td>}
+        <td style={{ ...docThSum, textAlign: "end" }} colSpan={3}>{t("grossSubtotal")}</td>
+        {showUsd && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(iv.grossAmount)}</td>}
+        {showLbp && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(iv.grossAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>
       <tr>
-        <td style={docTd} colSpan={3}>{t("amountPaid")}</td>
+        <td style={{ ...docTd, textAlign: "end" }} colSpan={3}>{t("reimbursementTotal")}</td>
+        {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nm(iv.reimbAmount)}</td>}
+        {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nf(iv.reimbAmount * (iv.rateUsed || S.rate))}</td>}
+      </tr>
+      <tr>
+        <td style={{ ...docThSum, textAlign: "end" }} colSpan={3}>{t("netInvoiceTotal")}</td>
+        {showUsd && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(iv.netAmount)}</td>}
+        {showLbp && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(iv.netAmount * (iv.rateUsed || S.rate))}</td>}
+      </tr>
+      <tr>
+        <td style={docTd} colSpan={3}>{t("actualPaid")}</td>
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(iv.paidAmount)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(iv.paidAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>
       <tr>
         <td style={{ ...docTd, fontWeight: 800, background: iv.due > 0 ? "#FFECEC" : "#E0EFED" }} colSpan={3}>
-          {iv.due > 0 ? t("due") : t("paidS")}</td>
+          {t("outstanding")}</td>
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
           background: iv.due > 0 ? "#FFECEC" : "#E0EFED", color: iv.due > 0 ? C.red : C.green }}>{nm(iv.due)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
@@ -6201,7 +6434,6 @@ function FarmApp() {
   const [expRange, setExpRange] = useState("today");
   const [expFrom, setExpFrom] = useState(""); const [expTo, setExpTo] = useState("");
   const [expQ, setExpQ] = useState("");
-  const [expFocus, setExpFocus] = useState("all");
   const [cashRange, setCashRange] = useState("today");
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
@@ -6264,9 +6496,10 @@ function FarmApp() {
   const [route, setRoute] = useState("dashboard");
   const [routeHist, setRouteHist] = useState([]);
   const navigate = useCallback((r, { clearSheet = true } = {}) => {
-    if (!r || r === route) { if (clearSheet) setSheet(null); return; }
+    const target = r === "obligations" ? "expenses" : r;
+    if (!target || target === route) { if (clearSheet) setSheet(null); return; }
     setRouteHist((h) => [...h.slice(-14), route]);
-    setRoute(r);
+    setRoute(target);
     if (clearSheet) setSheet(null);
   }, [route]);
   const goBackRoute = useCallback(() => {
@@ -6302,6 +6535,7 @@ function FarmApp() {
   const [milkLogFiltOpen, setMilkLogFiltOpen] = useState(false);
   const [milkLogFilt, setMilkLogFilt] = useState({ sess: "all", from: "", to: "", sort: "newest" });
   const dataRef = useRef(null);
+  const obligationPayLocks = useRef(new Set());
   const toastTimer = useRef(null);
   dataRef.current = data;
   cashTableRef.current = cashTable;
@@ -6731,6 +6965,46 @@ function FarmApp() {
 
   const ledger = useMemo(() => buildLedger(entries, customers), [entries, customers]);
   const supplierLedger = useMemo(() => buildSupplierLedger(entries, suppliers), [entries, suppliers]);
+  const paidExpenseEntries = useMemo(() => {
+    const billOf = supplierLedger.byBill || {};
+    const direct = entries.flatMap((e) => {
+      if (e.type === "med" && (e.cost || 0) > 0) return [e];
+      if (e.type !== "expense" || e.supplierId) return [];
+      const paid = expenseCounted(e);
+      return paid > 0 ? [{ ...e, amount: paid, paidAmount: paid, payStatus: "paid",
+        sourceExpenseId: e.id, paidSource: "expense" }] : [];
+    });
+    const supplierPays = (supplierLedger.allPays || supplierLedger.pays || []).flatMap((p) => {
+      if (!(p.amount > 0)) return [];
+      const bill = p.expenseId ? billOf[p.expenseId] : null;
+      const supplier = suppliers.find((s) => s.id === p.supplierId);
+      return [{
+        ...p, type: "expense", category: bill?.category || "vendorPay",
+        amount: p.amount, paidAmount: p.amount, payStatus: "paid",
+        vendor: p.vendor || supplier?.name || bill?.vendor || "",
+        note: p.note || bill?.note || "", receipt: bill?.receipt || "",
+        sourceExpenseId: bill?.id || p.expenseId || null, sourcePaymentId: p.id,
+        paidSource: "supplierPay",
+      }];
+    });
+    return [...direct, ...supplierPays];
+  }, [entries, supplierLedger, suppliers]);
+  const scopedPaidExpenses = useMemo(() => paidExpenseEntries.filter(inRange), [paidExpenseEntries, inRange]);
+  const prevPaidExpenses = useMemo(() => {
+    let start;
+    if (range === "custom" && from && to) start = new Date(from);
+    else { start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1)); }
+    const ps = new Date(start.getTime() - days * 864e5);
+    return paidExpenseEntries.filter((e) => { const d = new Date(e.at); return d >= ps && d < start; });
+  }, [paidExpenseEntries, range, from, to, days]);
+  const financialScoped = useMemo(() => [
+    ...scoped.filter((e) => e.type !== "expense" && e.type !== "supplierPay" && e.type !== "med"),
+    ...scopedPaidExpenses,
+  ], [scoped, scopedPaidExpenses]);
+  const prevFinancialScoped = useMemo(() => [
+    ...prevScoped.filter((e) => e.type !== "expense" && e.type !== "supplierPay" && e.type !== "med"),
+    ...prevPaidExpenses,
+  ], [prevScoped, prevPaidExpenses]);
   const supplierDash = useMemo(() => {
     const month = dayKey(Date.now()).slice(0, 7);
     const activeIds = new Set(activeSuppliers.map((s) => s.id));
@@ -6749,8 +7023,8 @@ function FarmApp() {
   const outstanding = useMemo(() => activeCustomers.reduce((a, c) => a + ((ledger.byCustomer[c.id] || {}).due || 0), 0), [activeCustomers, ledger]);
   const scopedSales = useMemo(() => ledger.list.filter(inRange).map((iv) => ({ ...iv,
     customerName: (customers.find((c) => c.id === iv.customerId) || {}).name || "—" })), [ledger, inRange, customers]);
-  const sums = useMemo(() => computeSums(scoped, S, workers, days), [scoped, S, workers, days]);
-  const prevSums = useMemo(() => computeSums(prevScoped, S, workers, days), [prevScoped, S, workers, days]);
+  const sums = useMemo(() => computeSums(financialScoped, S, workers, days), [financialScoped, S, workers, days]);
+  const prevSums = useMemo(() => computeSums(prevFinancialScoped, S, workers, days), [prevFinancialScoped, S, workers, days]);
 
   const periodBounds = (kind, fromV, toV) => {
     const now = new Date();
@@ -6815,27 +7089,37 @@ function FarmApp() {
       .sort((a, b) => (a.dir === b.dir ? b.amount - a.amount : a.dir === "in" ? -1 : 1));
   }, [cashBox, entries, lang, t, S.categories]);
 
-  const expScoped = useMemo(() => entries.filter((e) => {
-    if (e.type !== "expense" && !(e.type === "med" && (e.cost || 0) > 0)) return false;
+  const expScoped = useMemo(() => paidExpenseEntries.filter((e) => {
     const k = dayKey(e.at);
     return k >= expBounds.from && k <= expBounds.to;
-  }), [entries, expBounds]);
+  }), [paidExpenseEntries, expBounds]);
 
   const expPrevScoped = useMemo(() => {
     const start = new Date(expBounds.from); start.setHours(0, 0, 0, 0);
     const ps = new Date(start.getTime() - expBounds.days * 864e5);
     const pe = new Date(start.getTime() - 864e5);
-    return entries.filter((e) => {
-      if (e.type !== "expense" && !(e.type === "med" && (e.cost || 0) > 0)) return false;
+    return paidExpenseEntries.filter((e) => {
       const d = new Date(e.at);
       return d >= ps && d <= pe;
     });
-  }, [entries, expBounds]);
+  }, [paidExpenseEntries, expBounds]);
 
-  const expMoneySums = useMemo(() => computeSums(expScoped, S, workers, expBounds.days), [expScoped, S, workers, expBounds]);
-  const expPrevMoney = useMemo(() => computeSums(expPrevScoped, S, workers, expBounds.days), [expPrevScoped, S, workers, expBounds]);
+  const expMoneySums = useMemo(() => computeSums(expScoped, S, workers, expBounds.days, false), [expScoped, S, workers, expBounds]);
+  const expPrevMoney = useMemo(() => computeSums(expPrevScoped, S, workers, expBounds.days, false), [expPrevScoped, S, workers, expBounds]);
 
   const billsDueList = useMemo(() => obligations.filter((o) => o.active && obligationAlert(o, lang, t)), [obligations, lang, t]);
+  const directOpenExpenses = useMemo(() => entries
+    .filter((e) => e.type === "expense" && !e.supplierId)
+    .map((e) => {
+      const due = fromCents(Math.max(0, toCents(e.amount) - toCents(expenseCounted(e))));
+      return { ...e, due };
+    })
+    .filter((e) => e.due > 0.009)
+    .sort((a, b) => new Date(a.dueDate || a.at) - new Date(b.dueDate || b.at)), [entries]);
+  const directDueList = useMemo(() => directOpenExpenses.filter((e) => {
+    const dueAt = new Date(e.dueDate || e.at);
+    return Math.ceil((dueAt - Date.now()) / 864e5) <= 7;
+  }), [directOpenExpenses]);
 
   const todayProd = (a) => {
     const k = dayKey(Date.now());
@@ -6902,7 +7186,7 @@ function FarmApp() {
     return () => { alive = false; clearTimeout(timer); };
   }, [printing, doc]);
   const exportArgs = () => ({ lang, t, sums, S, days, period: periodLabel, me, animals, workers, customers,
-    scoped, scopedSales, ledger, outstanding, summaryLines });
+    scoped: financialScoped, scopedSales, ledger, outstanding, summaryLines });
   const doAccountExcel = (c) => {
     const rows = ledger.list.filter((x) => x.customerId === c.id);
     const pays = entries.filter((e) => e.type === "payment" && e.customerId === c.id);
@@ -7074,23 +7358,61 @@ function FarmApp() {
     customers: activeCustomers.length > 0 };
   const showSetup = !(setup.identity && setup.animals && setup.prices);
 
-  const payBill = (o) => {
-    const cat = o.type === "rent" ? "rent" : o.type === "bill" ? "vendorPay" : "other";
-    const nd = o.frequency === "once" ? o.nextDue : advanceDue(o.nextDue, o.frequency);
-    const oblNext = obligations.map((x) => (x.id === o.id
-      ? { ...x, nextDue: nd, active: o.frequency === "once" ? false : x.active } : x));
-    commit([{
-      type: "expense", category: cat, amount: o.amount || 0, note: o.title,
-      vendor: o.party || "", payStatus: "paid", paidAmount: o.amount || 0,
-      obligationId: o.id, group: expGroupOf(cat),
-      at: dayStamp(dayKey(Date.now())), currency: "usd", rateUsed: S.rate, receipt: "",
-    }, { type: "obligationEdit", title: o.title }], { obligations: oblNext });
-    ping(t("saved"));
+  const payBill = async (o) => {
+    const cycle = o.nextDue || dayKey(Date.now());
+    const lockKey = `${o.id}|${cycle}`;
+    if (obligationPayLocks.current.has(lockKey)) return;
+    obligationPayLocks.current.add(lockKey);
+    setBusy(true);
+    try {
+      const base = await readSharedFarm(dataRef.current || emptyFarm());
+      const live = (base.obligations || []).find((x) => x.id === o.id);
+      const duplicate = (base.entries || []).some((e) =>
+        e.type === "expense" && e.obligationId === o.id && e.obligationDue === cycle);
+      /* A changed due date means another click/device already advanced this cycle. */
+      if (duplicate || !live || live.nextDue !== cycle) {
+        setData(base);
+        ping(t("paymentAlreadyRecorded"));
+        return;
+      }
+      const cat = live.type === "rent" ? "rent" : live.type === "bill" ? "vendorPay" : "other";
+      const now = iso(Date.now());
+      const nd = live.frequency === "once" ? live.nextDue : advanceDue(live.nextDue, live.frequency);
+      const expense = {
+        id: `obligation-${live.id}-${cycle}`, type: "expense", category: cat,
+        amount: live.amount || 0, note: live.title, vendor: live.party || "",
+        payStatus: "paid", paidAmount: live.amount || 0, dueDate: "",
+        obligationId: live.id, obligationDue: cycle, group: expGroupOf(cat),
+        at: dayStamp(dayKey(Date.now())), loggedAt: now, currency: "usd", rateUsed: S.rate, receipt: "",
+        byId: me?.id || null, byName: me ? me.name : "—",
+      };
+      const audit = {
+        id: uid(), type: "obligationEdit", title: live.title, obligationId: live.id,
+        obligationDue: cycle, at: now, loggedAt: now,
+        byId: me?.id || null, byName: me ? me.name : "—",
+      };
+      const obligationsNext = (base.obligations || []).map((x) => (x.id === live.id
+        ? { ...x, nextDue: nd, active: live.frequency === "once" ? false : x.active } : x));
+      const merged = { ...base, obligations: obligationsNext,
+        entries: trimEntries([expense, audit, ...(base.entries || [])]) };
+      await store.set(SHARED_KEY, JSON.stringify(merged), true);
+      setData(merged);
+      setFailed(null);
+      ping(t("saved"));
+    } catch (e) {
+      setFailed({ entries: [], patch: null, profile: me });
+    } finally {
+      obligationPayLocks.current.delete(lockKey);
+      setBusy(false);
+    }
   };
 
-  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expFocus !== "all" ? 1 : 0) + (expQ.trim() ? 1 : 0);
+  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expQ.trim() ? 1 : 0);
   const activeObligations = obligations.filter((o) => o.active);
-  const urgentBillsTotal = billsDueList.reduce((sum, row) => sum + (row.amount || 0), 0);
+  const billPanelCount = activeObligations.length + directOpenExpenses.length;
+  const urgentBillsCount = billsDueList.length + directDueList.length;
+  const urgentBillsTotal = fromCents(billsDueList.reduce((sum, row) => sum + toCents(row.amount), 0)
+    + directDueList.reduce((sum, row) => sum + toCents(row.due), 0));
   const expTopCategory = Object.entries(expMoneySums.byCategory || {}).sort((a, b) => b[1] - a[1])[0];
   const expPeriodLabel = expRange === "today" ? t("today") : expRange === "yesterday" ? t("yesterday")
     : expRange === "week" ? t("thisWeek") : expRange === "lastMonth" ? t("lastMonth")
@@ -7110,8 +7432,6 @@ function FarmApp() {
           <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} style={{ ...inp, width: 160 }} />
         </div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <SortControl value={expFocus} onChange={setExpFocus}
-            options={[["open", t("openBills")], ["all", t("allExpenses")]]} />
           <input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
             style={{ ...inp, flex: 1, minWidth: 180, padding: "8px 10px", fontSize: 13.5 }} />
         </div>
@@ -7126,7 +7446,7 @@ function FarmApp() {
           </div>
           {[
             ["🤝", t("supplierOutstanding"), fmtC(supplierDash.owed, S.rate, lang), supplierDash.owed > 0 ? C.red : C.green],
-            ["📅", t("billsDue"), nf(billsDueList.length), billsDueList.length ? C.amber : C.green],
+            ["📅", t("billsDue"), nf(urgentBillsCount), urgentBillsCount ? C.amber : C.green],
             ["📊", t("topCategory"), expTopCategory ? catLabel(expTopCategory[0], lang, S.categories) : "—", C.field],
           ].map(([ic, lb, val, tone]) => <div key={lb} style={{ padding: "15px 16px", borderInlineStart: `1px solid ${C.line}`,
             display: "grid", alignContent: "center", minHeight: 82 }}>
@@ -7134,11 +7454,11 @@ function FarmApp() {
             <div style={{ color: tone, fontFamily: "var(--mono)", fontSize: 17, fontWeight: 800, marginTop: 7 }}>{val}</div>
           </div>)}
         </div>
-        {billsDueList.length > 0 && <button type="button" onClick={() => setExpBillsOpen(true)}
+        {urgentBillsCount > 0 && <button type="button" onClick={() => setExpBillsOpen(true)}
           style={{ width: "100%", border: "none", borderTop: `1px solid ${C.line}`, background: "#FFF8E8",
             color: "#7A5312", padding: "10px 16px", textAlign: "start", cursor: "pointer", fontFamily: "var(--body)",
             fontSize: 12.5, fontWeight: 700 }}>
-          ⚠️ {nf(billsDueList.length)} {t("billsDue")} · {fmtC(urgentBillsTotal, S.rate, lang)} <span style={{ float: "inline-end" }}>›</span>
+          ⚠️ {nf(urgentBillsCount)} {t("billsDue")} · {fmtC(urgentBillsTotal, S.rate, lang)} <span style={{ float: "inline-end" }}>›</span>
         </button>}
       </DeskCard>
 
@@ -7146,8 +7466,8 @@ function FarmApp() {
         <button type="button" className="dk-pill" onClick={() => setExpInsightsOpen((open) => !open)}>
           📊 {t(expInsightsOpen ? "hideInsights" : "showInsights")} {expInsightsOpen ? "▴" : "▾"}</button>
         <button type="button" className="dk-pill" onClick={() => setExpBillsOpen((open) => !open)}
-          style={billsDueList.length ? { borderColor: C.amber, color: "#7A5312" } : undefined}>
-          📅 {t(expBillsOpen ? "hideDueBills" : "showDueBills")} · {activeObligations.length} {expBillsOpen ? "▴" : "▾"}</button>
+          style={urgentBillsCount ? { borderColor: C.amber, color: "#7A5312" } : undefined}>
+          📅 {t(expBillsOpen ? "hideDueBills" : "showDueBills")} · {billPanelCount} {expBillsOpen ? "▴" : "▾"}</button>
         <button type="button" className="dk-pill" onClick={() => setSheet({ k: "addObligation" })}>＋ {t("addObligation")}</button>
         <button type="button" className="dk-pill" style={{ marginInlineStart: "auto" }}
           onClick={() => { setCashDir("out"); setRoute("dashboard"); }}>💵 {t("cashBox")} ›</button>
@@ -7182,7 +7502,7 @@ function FarmApp() {
             <button type="button" className="dk-pill" onClick={() => setExpBillsOpen(false)}>− {t("hideDueBills")}</button>
             <button type="button" className="dk-pill" onClick={() => setSheet({ k: "addObligation" })}>＋ {t("addObligation")}</button>
           </div>}>
-          {activeObligations.length === 0
+          {billPanelCount === 0
             ? <Empty icon="📋" title={t("noObligations")} sub={t("noObligationsSub")}
               cta={`＋ ${t("addObligation")}`} onCta={() => setSheet({ k: "addObligation" })} />
             : <div style={{ display: "grid", gap: 8 }}>
@@ -7210,60 +7530,71 @@ function FarmApp() {
                   </div>
                 </div>;
               })}
+              {directOpenExpenses.length > 0 && <>
+                <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 700, marginTop: 4 }}>
+                  💸 {t("openBills")}</div>
+                {directOpenExpenses.slice(0, 8).map((e) => {
+                  const dueAt = e.dueDate || dayKey(e.at);
+                  const dLeft = Math.ceil((new Date(dueAt) - Date.now()) / 864e5);
+                  const tone = dLeft < 0 ? C.red : dLeft <= 7 ? C.amber : C.green;
+                  return <div key={e.id} style={{ border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone}`,
+                    borderRadius: 4, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 18 }}>{catIcon(e.category || "other", S.categories)}</span>
+                      <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>
+                        {catLabel(e.category || "other", lang, S.categories)}
+                        {e.vendor ? <span style={{ display: "block", color: C.inkSoft, fontSize: 11.5 }}>{e.vendor}</span> : null}
+                      </span>
+                      <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>
+                        {fmtC(e.due, S.rate, lang)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: tone, fontWeight: 600, marginTop: 4 }}>
+                      📅 {dmy(dueAt)} · {t("remainder")}
+                    </div>
+                    <button type="button" style={{ ...secondaryBtn, width: "100%", padding: "7px", fontSize: 12.5, marginTop: 8 }}
+                      onClick={() => setSheet({ k: "editExpense", id: e.id })}>✏️ {t("edit")}</button>
+                  </div>;
+                })}
+              </>}
             </div>}
         </DeskCard> : null}
       </div>
 
       <DeskCard style={{ order: 2 }} pad={0} title={`🧾 ${t("expenseRegister")}`}
-        right={<div style={{ display: "flex", gap: 5 }}>
-          {[["all", t("allExpenses")], ["open", t("openBills")]].map(([k, lb]) => <button key={k} type="button"
-            className="dk-pill" onClick={() => setExpFocus(k)}
-            style={expFocus === k ? { background: C.field, color: "#fff", borderColor: C.field } : undefined}>{lb}</button>)}
-        </div>}>
+        right={<span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ {t("paidExpensesOnly")}</span>}>
         {(() => {
-          const billOf = supplierLedger.byBill || {};
           const rows = [...expScoped].filter((e) => {
-            const isMed = e.type === "med";
-            if (expFocus === "open" && isMed) return false;
-            if (expFocus === "open" && !isMed) {
-              const bill = e.supplierId ? billOf[e.id] : null;
-              const st = bill ? bill.status : (e.payStatus || "paid");
-              if (st === "paid") return false;
-            }
             if (!expQ.trim()) return true;
             const q = expQ.toLowerCase();
             const label = e.type === "med" ? t("medicine") : catLabel(e.category, lang, S.categories);
             return `${label} ${e.note || ""} ${e.vendor || ""} ${e.amount || e.cost || ""} ${e.supplier || ""}`.toLowerCase().includes(q);
           }).sort((a, b) => new Date(b.at) - new Date(a.at));
           if (rows.length === 0) return <div style={{ padding: 24 }}>
-            <Empty icon="💸" title={t("noExpensesYet")} sub={t("noExpensesYetSub")}
+            <Empty icon="💸" title={t("noPaidExpenses")} sub={t("noPaidExpensesSub")}
               cta={`＋ ${t("logExpense")}`} onCta={() => setSheet({ k: "expense" })} /></div>;
-          const statusTone = (st) => (st === "paid" || !st ? C.green : st === "partial" ? C.amber : C.red);
-          const statusLb = (st) => (st === "partial" ? t("expPartial") : st === "unpaid" ? t("expUnpaid") : t("expPaid"));
           return <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <Th>{t("colDate")}</Th><Th>{t("category")}</Th><Th>{t("vendor")}</Th>
-                <Th align="end">{t("amount")}</Th><Th align="end">{t("weOwe")}</Th>
-                <Th>{t("colStatus")}</Th><Th align="center">{t("actions")}</Th>
+                <Th align="end">{t("amount")}</Th><Th align="center">{t("actions")}</Th>
               </tr></thead>
               <tbody>
                 {rows.map((e) => {
                   const isMed = e.type === "med";
                   const cat = isMed ? "medicine" : (e.category || "other");
-                  const bill = !isMed && e.supplierId ? billOf[e.id] : null;
-                  const st = isMed ? "paid" : (bill ? bill.status : (e.payStatus || "paid"));
                   const amt = isMed ? (e.cost || 0) : (e.amount || 0);
-                  const due = isMed ? 0 : (bill ? bill.due
-                    : (st === "unpaid" ? amt : st === "partial" ? Math.max(0, amt - (e.paidAmount || 0)) : 0));
-                  const editSheet = e.supplierId
-                    ? { k: "supplierBill", sid: e.supplierId, id: e.id }
-                    : { k: "editExpense", id: e.id };
-                  return <tr key={e.id} style={{ cursor: isMed ? "default" : "pointer" }}
-                    onClick={() => !isMed && setSheet(editSheet)}
+                  const openSource = isMed ? null : e.supplierId
+                    ? () => {
+                      if (e.sourceExpenseId) setSheet({ k: "supplierBill", sid: e.supplierId, id: e.sourceExpenseId });
+                      else { setRoute("suppliers"); openSupplier(e.supplierId); }
+                    }
+                    : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
+                  const receiptId = e.sourceExpenseId || e.id;
+                  return <tr key={e.id} style={{ cursor: openSource ? "pointer" : "default" }}
+                    onClick={() => openSource && openSource()}
                     onContextMenu={(ev) => openCtx(ev, [
-                      !isMed && { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet(editSheet) },
-                      e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), run: () => setSheet({ k: "receipt", id: e.id, back: null }) },
+                      openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
+                      e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
                     ].filter(Boolean))}>
                     <Td mono>{dmy(e.at)}</Td>
                     <Td><span style={{ color: catColor(cat, S.categories) }}>{catIcon(cat, S.categories)}</span> {catLabel(cat, lang, S.categories)}
@@ -7272,16 +7603,13 @@ function FarmApp() {
                       {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
                     <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
                     <Td align="end" mono strong tone={C.red}>{fmtC(amt, S.rate, lang)}</Td>
-                    <Td align="end" mono strong tone={moneyColor("due", due)}>{due > 0.009 ? fmtC(due, S.rate, lang) : "—"}</Td>
-                    <Td><span style={{ border: `1.5px solid ${statusTone(st)}`, color: statusTone(st), borderRadius: 2,
-                      padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusLb(st)}</span>
-                      {e.receipt && <button type="button" onClick={(ev) => { ev.stopPropagation();
-                        setSheet({ k: "receipt", id: e.id, back: null }); }}
-                        style={{ background: "none", border: "none", cursor: "pointer", marginInlineStart: 6 }}>📎</button>}
-                    </Td>
                     <Td align="center">
-                      {!isMed && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
-                        setSheet(editSheet); }}>✏️</button>}
+                      <span style={{ display: "inline-flex", gap: 5 }}>
+                        {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
+                          onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "receipt", id: receiptId, back: null }); }}>📎</button>}
+                        {openSource && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
+                          openSource(); }}>↗</button>}
+                      </span>
                     </Td>
                   </tr>;
                 })}
@@ -8524,7 +8852,8 @@ function FarmApp() {
               onNewSale={() => setSheet({ k: "newSale", cid: selCustomer.id })}
               onPayment={() => setSheet({ k: "payment", cid: selCustomer.id })}
               onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: selCustomer.id })}
-              onDoc={(iv) => setSheet({ k: "docgen", id: iv.id, cid: selCustomer.id, kinds: iv.due > 0 ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
+              onDoc={(iv) => setSheet({ k: "docgen", id: iv.id, cid: selCustomer.id,
+                kinds: iv.due > 0 || iv.paidAmount <= 0 ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
               onManage={() => setSheet({ k: "customerManage", cid: selCustomer.id })} />
           </DeskCard>
         : <DeskCard pad={0} title={`🤝 ${t("customers")} · ${activeCustomers.length}`}
@@ -8723,9 +9052,9 @@ function FarmApp() {
             </>}
           </div>
         </FilterTray>
-        <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped, animals, workers, customers,
+        <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped: report === "log" ? scoped : financialScoped, animals, workers, customers,
           summaryLines, series, outstanding, scopedSales, ledger,
-          onReceipt: (x) => setSheet({ k: "receipt", id: x.id }) }} />
+          onReceipt: (x) => setSheet({ k: "receipt", id: x.sourceExpenseId || x.id }) }} />
       </div>
     </div>
   );
@@ -9235,11 +9564,26 @@ function FarmApp() {
           entries={entries}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, payNow, unit, currency, rateUsed, at, note }) => {
+          onSave={({ customerId, product, qty, price, amount, reimbursements, payNow, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
             const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, currency, rateUsed, at, note }];
+            (reimbursements || []).forEach((r) => es.push({ id: `reimb-${uid()}`, type: "saleReimburse",
+              saleId, customerId, name: r.name, amount: fromCents(toCents(r.amount)),
+              currency, rateUsed, at }));
             if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at });
-            commit(es); returnToAccount(customerId); }} />}
+            const savedTypes = [], seenTypes = new Set();
+            [...(S.saleReimburseTypes || []), ...(reimbursements || []).map((r) => r.name)].forEach((name) => {
+              const clean = String(name || "").trim();
+              const key = clean.toLocaleLowerCase();
+              if (clean && !seenTypes.has(key) && savedTypes.length < 100) {
+                seenTypes.add(key);
+                savedTypes.push(clean);
+              }
+            });
+            const typesChanged = savedTypes.length !== (S.saleReimburseTypes || []).length
+              || savedTypes.some((name, i) => name !== S.saleReimburseTypes[i]);
+            commit(es, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
+            returnToAccount(customerId); }} />}
 
         {sheet?.k === "round" && <DailyRoundSheet lang={lang} t={t} S={S} customers={activeCustomers} ledger={ledger}
           milkLeft={milkStock(entries).available}
@@ -9279,7 +9623,7 @@ function FarmApp() {
         {sheet?.k === "reportPreview" && <DocPreviewSheet lang={lang} t={t} title={`📄 ${t("reports")}`}
           onClose={() => setSheet(null)}
           onPrint={() => { setSheet(null); doPrint(null); }}>
-          <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped,
+          <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped: financialScoped,
             scopedSales, summaryLines, series, periodLabel, outstanding }} />
         </DocPreviewSheet>}
 
@@ -9364,7 +9708,7 @@ function FarmApp() {
           <nav style={{ padding: "6px 8px 10px", overflowY: "auto" }}>
             {navBtn("dashboard", "💵", t("cashBox"), route === "dashboard", go("dashboard"))}
             <NavGroup title={t("farmWork")} open={navFarmOpen} onToggle={() => setNavFarmOpen((o) => !o)} dir={dir}>
-              {farmNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k || (k === "expenses" && route === "obligations"), go(k)))}
+              {farmNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k, go(k)))}
             </NavGroup>
             <NavGroup title={t("officeWork")} open={navOfficeOpen} onToggle={() => setNavOfficeOpen((o) => !o)} dir={dir}>
               {officeNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k, go(k)))}
@@ -9397,7 +9741,7 @@ function FarmApp() {
               <button type="button" className="dk-pill" onClick={() => (sheet?.back ? sheetBack() : goBackRoute())}
                 title={t("backBtn")} style={{ fontSize: 16, padding: "7px 11px" }}>‹</button>)}
             <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19, marginInlineEnd: 4 }}>
-              {navLabel(route === "obligations" ? "expenses" : route)}</div>
+              {navLabel(route)}</div>
             <button type="button" onClick={() => setPalette(true)} className="dk-search" style={{ flex: 1, maxWidth: 420 }}>
               <span>⌘</span><span style={{ flex: 1, textAlign: "start" }}>{t("palHint")}</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: C.inkSoft }}>Ctrl K</span></button>
@@ -9449,7 +9793,7 @@ function FarmApp() {
             {route === "entry" && DeskEntry}
             {route === "sales" && DeskSales}
             {route === "suppliers" && DeskSuppliers}
-            {(route === "expenses" || route === "obligations") && DeskExpenses}
+            {route === "expenses" && DeskExpenses}
             {route === "reports" && DeskReports}
             {route === "settings" && <div className="dk-settings">{Settings}</div>}
           </div>
@@ -9464,7 +9808,7 @@ function FarmApp() {
 
       <div className={printing ? "print-sheet show" : "print-sheet"}>
         {doc ? <PrintDoc {...{ doc, lang, t, S, me, customers, ledger, suppliers, supplierLedger }} />
-          : <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped,
+          : <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped: financialScoped,
             scopedSales, summaryLines, series, periodLabel, outstanding }} />}
       </div>
     </div>
