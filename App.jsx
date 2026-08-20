@@ -4,6 +4,7 @@ import {
   companySignUp, companySignIn, companySignOut, createCompany, joinCompany,
   companyPullFarm, companyPushFarm, companySyncActive,
 } from "./firebaseCloud.js";
+import { StatusPill, DataList, DataCard, statusToneOf, statusRowClass, payStatusKind } from "./statusPill.jsx";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -12,9 +13,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.8.6", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.7", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.7": {
+    ar: [
+      "شارات الحالة أصبحت حبوبًا هادئة بألوان واضحة دون تعبئة صلبة",
+      "الجداول تتحول إلى بطاقات على الشاشات الضيقة والمطوية وتبقى جداول على الأجهزة اللوحية",
+    ],
+    en: [
+      "Status badges are now soft, scannable pills without harsh solid fills",
+      "Orders and ledgers stack as cards on narrow/folded screens and stay tabular on tablets",
+    ],
+  },
   "2.8.6": {
     ar: [
       "تعويضات مصاريف الزبون أصبحت بنودًا مستقلة تُخصم من صافي الفاتورة من دون حركة نقدية",
@@ -295,12 +306,12 @@ function sanitizeCashTablePrefs(raw) {
 /* Soft forest themes — grey-tinted light for eye comfort, plus dark mode. */
 const THEMES = {
   light: {
-    ink: "#1A2420", inkSoft: "#5E6E67", line: "#C2CDC8", rule: "#A4B5AC",
-    field: "#1B6B5A", fieldDeep: "#0C3A31", tag: "#C9A227",
-    bg: "#D0D8D3", card: "#E4EBE7", paper: "#DAE2DD",
-    green: "#1F8F72", amber: "#C4842D", red: "#B53A4A", blue: "#2A5F6E",
-    glow: "rgba(27,107,90,.10)", glowGold: "rgba(201,162,39,.08)",
-    shadow: "rgba(21,42,36,.06)", overlay: "rgba(18,28,24,.45)",
+    ink: "#1A2420", inkSoft: "#475569", line: "#E2E8F0", rule: "#CBD5E1",
+    field: "#1B6B5A", fieldDeep: "#0C3A31", tag: "#C4842D",
+    bg: "#F8FAFC", card: "#FFFFFF", paper: "#F1F5F9",
+    green: "#047857", amber: "#B45309", red: "#BE123C", blue: "#0369A1",
+    glow: "rgba(27,107,90,.08)", glowGold: "rgba(201,162,39,.06)",
+    shadow: "rgba(15,23,42,.06)", overlay: "rgba(15,23,42,.45)",
   },
   dark: {
     ink: "#E6F0EB", inkSoft: "#9AADA4", line: "#2C3F38", rule: "#3A5249",
@@ -2522,10 +2533,10 @@ function refreshUiTokens() {
     transition: "border-color .15s ease, box-shadow .15s ease" };
   primaryBtn = { background: `linear-gradient(180deg, ${C.field} 0%, ${C.fieldDeep} 100%)`, color: "#fff", border: "none",
     borderRadius: 10, padding: "15px 18px", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)",
-    width: "100%", letterSpacing: ".01em", boxShadow: `0 6px 16px ${C.field}33` };
+    width: "100%", minHeight: 44, letterSpacing: ".01em", boxShadow: `0 6px 16px ${C.field}33` };
   secondaryBtn = { background: C.paper, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 10,
     padding: "14px 18px", fontSize: 15.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--body)", width: "100%",
-    boxShadow: `0 1px 2px ${C.shadow}` };
+    minHeight: 44, boxShadow: `0 1px 2px ${C.shadow}` };
   rowBtn = { display: "flex", alignItems: "center", gap: 13, background: C.card, border: `1px solid ${C.line}`,
     borderInlineStart: `4px solid ${C.field}`, borderRadius: 12, padding: 14, cursor: "pointer",
     textAlign: "start", fontFamily: "var(--body)", width: "100%", color: C.ink,
@@ -2610,9 +2621,9 @@ function Row({ k, v, tone }) {
 }
 function Kpi({ label, value, tone, sub }) {
   return <div className="kpi-card" style={{ background: C.card, borderRadius: 14, padding: "14px 15px", boxShadow: sh1,
-    borderTop: `3px solid ${tone || C.field}` }}>
+    border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone || C.field}` }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, letterSpacing: ".02em" }}>{label}</div>
-    <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 23, color: tone || C.ink,
+    <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 23, color: C.ink,
       letterSpacing: "-.03em", marginTop: 4 }}>{value}</div>
     {sub && <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600, marginTop: 2 }}>{sub}</div>}
   </div>;
@@ -2621,10 +2632,11 @@ function Scroller({ children, style }) {
   return <div className="hscroll" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 10, ...style }}>{children}</div>;
 }
 function Chip({ active, onClick, children, color = C.field }) {
-  return <button type="button" onClick={onClick} className={`chip${active ? " on" : ""}`} style={{ border: `1.5px solid ${active ? color : C.line}`,
+  return <button type="button" onClick={onClick} className={`chip touch-target${active ? " on" : ""}`} style={{ border: `1.5px solid ${active ? color : C.line}`,
     background: active ? color : C.card, color: active ? "#fff" : C.ink, borderRadius: 999,
-    padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-    fontFamily: "var(--body)", flexShrink: 0, transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
+    padding: "10px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+    fontFamily: "var(--body)", flexShrink: 0, minHeight: 44, minWidth: 44,
+    transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
 }
 /* Two options → toggle; three or more → dropdown. */
 function SortControl({ value, onChange, options, label }) {
@@ -2893,23 +2905,34 @@ function PhotoPicker({ photo, onPick, onClear, t }) {
 
 /* ---------------------------- animal cards ---------------------------- */
 function Stamp({ status, lang }) {
-  const c = statusColor(status);
-  return <span style={{ display: "inline-block", border: `1.5px solid ${c}`, color: c, borderRadius: 2,
-    padding: "2px 7px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
-    boxShadow: `0 0 0 2.5px #fff, 0 0 0 3.5px ${c}33` }}>{statusLabel(status, lang)}</span>;
+  return <StatusPill status={status}>{statusLabel(status, lang)}</StatusPill>;
+}
+function StatusChoice({ value, options, onChange, lang }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {options.map((k) => (
+        <button key={k} type="button" className={`status-choice touch-target${value === k ? " on" : ""}`}
+          data-tone={statusToneOf(k)} onClick={() => onChange(k)}>
+          <span className="status-dot" aria-hidden="true" />
+          {statusLabel(k, lang)}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function AnimalCard({ a, lang, t, today, last, onClick }) {
   const sp = spOf(a), flock = isFlock(a);
   const unit = producesEggs(a) ? t("eggsUnit") : t("L");
   return (
-    <button onClick={onClick} style={{ width: "100%", textAlign: "start", cursor: "pointer",
-      background: C.card, border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${sp.color}`,
-      borderRadius: 4, padding: 0, overflow: "hidden", fontFamily: "var(--body)", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px",
-        background: `${sp.color}12`, borderBottom: `1px solid ${C.line}` }}>
+    <button onClick={onClick} className={`data-card data-card--${statusToneOf(a.status)}`} style={{ width: "100%", textAlign: "start", cursor: "pointer",
+      background: C.card, border: `1px solid ${C.line}`,
+      borderRadius: 12, padding: 0, overflow: "hidden", fontFamily: "var(--body)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px",
+        background: C.paper, borderBottom: `1px solid ${C.line}` }}>
         <span style={{ fontSize: 14 }}>{sp.icon}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: sp.color, letterSpacing: ".05em" }}>{spName(a.species, lang)}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft, letterSpacing: ".05em", flex: 1 }}>{spName(a.species, lang)}</span>
+        <Stamp status={a.status} lang={lang} />
       </div>
       <div style={{ padding: "11px 12px 12px" }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -2928,7 +2951,7 @@ function AnimalCard({ a, lang, t, today, last, onClick }) {
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 11 }}>
-          <Stamp status={a.status} lang={lang} />
+          <span style={{ fontSize: 12, color: C.inkSoft }}>{t("today")}</span>
           <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 16 }}>
             {today > 0 ? `${n1(today)} ${unit}` : "—"}
           </span>
@@ -3114,10 +3137,8 @@ function AnimalForm({ lang, t, animals, initial, onSave, onClose, onBack, backLa
       {breed === "other" && <input value={breedName} onChange={(e) => setBreedName(e.target.value)}
         placeholder={t("breedOther")} style={{ ...inp, marginBottom: 14 }} />}
       <Step n="3" label={t("status")} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-        {sp.statuses.map((k) => <button key={k} type="button" onClick={() => setStatus(k)} style={{ background: status === k ? statusColor(k) : "#fff",
-          color: status === k ? "#fff" : C.ink, border: `1.5px solid ${status === k ? statusColor(k) : C.line}`,
-          borderRadius: 5, padding: "11px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{statusLabel(k, lang)}</button>)}
+      <div style={{ marginBottom: 14 }}>
+        <StatusChoice value={status} options={sp.statuses} onChange={setStatus} lang={lang} />
       </div>
       <Step n="4" label={`${t("expected")} (${unitLabel})`} />
       <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 6, boxShadow: sh1 }}>
@@ -4336,49 +4357,75 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   const openBills = allBills.filter((x) => x.due > 0.009);
   const pays = (ledger.pays || entries.filter((e) => e.type === "supplierPay" && !e.implied))
     .filter((e) => e.supplierId === supplier.id && !e.implied).slice().sort(byDate);
-  const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
-  const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : t("unpaid"));
+  const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
   const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
   const activeTab = ["open", "payments", "all"].includes(tab) ? tab : (tab === "activity" ? "all" : "open");
+  const billKind = (bill) => payStatusKind(bill);
   const billTable = (rows, emptyMsg, { showPay } = {}) => (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, overflowX: "auto" }}>
-      {rows.length === 0
-        ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div>
-        : <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead><tr>
-            <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
-            <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
-            <Th>{t("colStatus")}</Th>
-            {showPay || onDoc ? <Th align="center">{t("actions")}</Th> : null}
-          </tr></thead>
-          <tbody>
-            {rows.map((bill) => (
-              <tr key={bill.id} style={{ cursor: onEditBill ? "pointer" : "default" }}
-                onClick={() => onEditBill && onEditBill(bill.id)}>
-                <Td mono>{dmy(bill.at)}</Td>
-                <Td mono tone={C.field}>{bill.no}</Td>
-                <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
-                  {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
-                    {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
-                  {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}
-                  {bill.overdue ? <span style={{ display: "block", fontSize: 11.5, color: C.red, fontWeight: 700 }}>{t("overdue")}</span> : null}
-                </Td>
-                <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
-                <Td align="end" mono tone={C.green}>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
-                <Td align="end" mono strong tone={bill.due > 0 ? C.red : C.inkSoft}>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
-                <Td><span style={{ border: `1.5px solid ${statusTone(bill.status)}`, color: statusTone(bill.status),
-                  borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{statusText(bill.status)}</span></Td>
-                {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                  {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
-                    onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
-                  {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
-                    onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
-                </div></Td> : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>}
-    </div>
+    <DataList
+      empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
+      cards={rows.map((bill) => {
+        const kind = billKind(bill);
+        return (
+          <DataCard key={bill.id} kind={kind}
+            status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
+            title={bill.no}
+            subtitle={`${dmy(bill.at)} · ${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`}
+            meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
+            onClick={onEditBill ? () => onEditBill(bill.id) : undefined}
+            actions={(showPay && bill.due > 0.009) || onDoc ? (
+              <>
+                {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                  onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                  onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+              </>
+            ) : null}
+          >
+            {bill.note ? <div className="data-card-sub">{bill.note}</div> : null}
+          </DataCard>
+        );
+      })}
+      table={
+        <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
+              <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
+              <Th>{t("colStatus")}</Th>
+              {showPay || onDoc ? <Th align="center">{t("actions")}</Th> : null}
+            </tr></thead>
+            <tbody>
+              {rows.map((bill) => {
+                const kind = billKind(bill);
+                return (
+                  <tr key={bill.id} className={statusRowClass(kind)} style={{ cursor: onEditBill ? "pointer" : "default" }}
+                    onClick={() => onEditBill && onEditBill(bill.id)}>
+                    <Td mono>{dmy(bill.at)}</Td>
+                    <Td mono tone={C.field}>{bill.no}</Td>
+                    <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                      {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                        {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
+                      {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}
+                    </Td>
+                    <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
+                    <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
+                    <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
+                    <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
+                    {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                      {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                        onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                      {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                        onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+                    </div></Td> : null}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      }
+    />
   );
   const Pays = (
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
@@ -4422,16 +4469,17 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
           {no}{(supplier.tags || []).length ? ` · ${(supplier.tags || []).map(tagLb).join(" · ")}` : ""}
           {supplier.phone ? ` · ${supplier.phone}` : ""}
         </div>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: b.due > 0 ? C.red : C.green, marginTop: 4 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginTop: 4 }}>
           {b.due > 0 ? t("supplierLeadOwe") : t("supplierLeadClear")}
         </div>
       </div>
-      <div style={{ textAlign: "end", background: b.due > 0 ? "#FBEFEF" : "#E8F2EC", borderRadius: 8,
-        padding: "10px 14px", border: `1px solid ${b.due > 0 ? "#EFD5D5" : "#CFE5D8"}` }}>
-        <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 700 }}>{t("weOwe")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 22, color: moneyColor("due", b.due) }}>
+      <div className="account-balance">
+        <StatusPill status={b.due > 0 ? ((b.overdueDue || 0) > 0.009 ? "overdue" : "owing") : "clear"}>
+          {b.due > 0 ? ((b.overdueDue || 0) > 0.009 ? t("overdue") : t("weOwe")) : t("statusClear")}
+        </StatusPill>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 22, color: C.ink }}>
           {fmtC(b.due, S.rate, lang)}</div>
-        {b.credit > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginTop: 2 }}>
+        {b.credit > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginTop: 2 }}>
           ＋ {t("supplierCredit")} {fmtC(b.credit, S.rate, lang)}</div>}
       </div>
     </div>
@@ -4443,7 +4491,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
       {onManage && <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "10px 14px", color: C.inkSoft }}
         onClick={onManage}>⚙️ {t("manageSupplier")}</button>}
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
+    <div className="adapt-grid" style={{ marginBottom: 0 }}>
       <Kpi label={t("totalBought")} value={fmtC(b.bought, S.rate, lang)} />
       <Kpi label={t("paidToSupplier")} value={fmtC(b.paid, S.rate, lang)} tone={C.green} />
       <Kpi label={t("supplierOpenBills")} value={nf(b.openCount || openBills.length)} tone={C.amber} />
@@ -4980,12 +5028,13 @@ function AccountHead({ customer, no, b, lang, t, S }) {
       <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19 }}>{customer.name}</div>
       <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600, marginTop: 3 }}>{bits.join(" \u00b7 ")}</div>
     </div>
-    <div style={{ textAlign: "end", borderRadius: 4, padding: "8px 13px",
-      background: owing ? "#FBEFEF" : "#E8F2EC", border: `1px solid ${owing ? "#EFD5D5" : "#CFE5D8"}` }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: owing ? "#9A5252" : "#2C6A4C" }}>
-        {owing ? t("outstanding") : t("paidS")}</div>
-      <Money usd={b.due} rate={S.rate} lang={lang} size={26} tone={owing ? C.red : C.green} />
-      {b.due > 0 && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginTop: 2 }}>
+    <div style={{ textAlign: "end", borderRadius: 12, padding: "10px 14px",
+      background: C.paper, border: `1px solid ${C.line}`, display: "flex", flexDirection: "column",
+      alignItems: "flex-end", gap: 8, minWidth: 140 }} className="account-balance">
+      <StatusPill status={owing ? (b.oldest > 30 ? "overdue" : "owing") : "paid"}>
+        {owing ? t("outstanding") : t("paidS")}</StatusPill>
+      <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
+      {b.due > 0 && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
         {b.oldest} {t("daysLate")}</div>}
     </div>
   </div>;
@@ -5012,12 +5061,12 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const rDue = fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
   const ranged = !!(f.from || f.to || f.status !== "all" || f.q);
   const filtActive = (f.from || f.to || f.status !== "all" ? 1 : 0) + (f.q ? 1 : 0);
-  const statusTone = (st) => (st === "paid" ? C.green : st === "partial" ? C.amber : C.red);
-  const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : t("unpaid"));
+  const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
+  const chipTone = (k) => (k === "all" ? C.field : k === "paid" ? C.green : k === "partial" ? C.amber : C.red);
 
   const Overview = (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
+      <div className="adapt-grid">
         <Kpi label={t("totalSold")} value={fmtC(b.sold, S.rate, lang)} />
         {b.reimbursed > 0 && <Kpi label={t("reimbursementTotal")} value={fmtC(b.reimbursed, S.rate, lang)} tone={C.amber}
           sub={`${t("grossSubtotal")} ${fmtC(b.gross, S.rate, lang)}`} />}
@@ -5025,8 +5074,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         <Kpi label={t("due")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
         <Kpi label={t("txCount")} value={nf(all.length)} tone={C.inkSoft} />
       </div>
-      {b.credit > 0 && <div style={{ background: "#E0EFED", borderRadius: 4, padding: 11, fontWeight: 700, color: C.green }}>
-        ＋ {t("credit")}: {fmtC(b.credit, S.rate, lang)}</div>}
+      {b.credit > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
+        border: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <StatusPill status="paid">{t("credit")}</StatusPill>
+        {fmtC(b.credit, S.rate, lang)}</div>}
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
         {customer.phone && <Row k={t("phone")} v={customer.phone} />}
         <Row k={t("product")} v={(() => { const p = PRODUCTS.find((x) => x[0] === (customer.product || "milk"));
@@ -5063,7 +5114,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
           {[["all", t("statusAll")], ["paid", t("paidS")], ["partial", t("partial")], ["unpaid", t("unpaid")]].map(([k, lb]) => (
             <Chip key={k} active={f.status === k} onClick={() => setFilters({ ...f, status: k })}
-              color={k === "all" ? C.field : statusTone(k)}>{lb}</Chip>))}
+              color={chipTone(k)}>{lb}</Chip>))}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
@@ -5075,16 +5126,37 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         </div>
       </FilterTray>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 9 }}>
+      <div className="adapt-grid">
         <Kpi label={`${t("totalSold")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rSold, S.rate, lang)} />
         <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.green} />
         <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtC(rDue, S.rate, lang)} tone={rDue > 0 ? C.red : C.green} />
         <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.inkSoft} />
       </div>
 
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, overflowX: "auto" }}>
+      <DataList
+        empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div> : null}
+        cards={rows.map((iv) => {
+          const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
+          const kind = payStatusKind(iv);
+          return (
+            <DataCard key={iv.id} kind={kind}
+              status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
+              title={iv.no}
+              subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
+              meta={`${t("colTotal")} ${fmtC(iv.netAmount, S.rate, lang)} · ${t("colDue")} ${iv.due ? fmtC(iv.due, S.rate, lang) : "—"}`}
+              actions={
+                <>
+                  <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
+                  <button type="button" className="dk-pill dk-icon-btn" onClick={() => onDoc(iv)} title={t("docGen")}>🖨️</button>
+                </>
+              }
+            />
+          );
+        })}
+        table={
+      <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
         {rows.length === 0
-          ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
+          ? null
           : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 720 }}>
             <thead><tr>
               <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
@@ -5096,8 +5168,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             <tbody>
               {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
                 const paidOn = pays.filter((p2) => p2.saleId === iv.id).sort((a2, c2) => new Date(c2.at) - new Date(a2.at))[0];
-                const veryLate = iv.due > 0 && iv.lateDays > 30;
-                return <tr key={iv.id} style={veryLate ? { background: "#FCF4F4" } : undefined}
+                const kind = payStatusKind(iv);
+                return <tr key={iv.id} className={statusRowClass(kind)}
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                     { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
@@ -5115,23 +5187,19 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                       {iv.reimbRows.length ? ` · ${iv.reimbRows.map((r) => r.name).join("، ")}` : ""}
                     </span>}
                   </Td>
-                  <Td align="end" mono tone={C.green}>{iv.paidAmount ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong tone={iv.due > 0 ? C.red : C.inkSoft}>{iv.due ? fmtC(iv.due, S.rate, lang) : "—"}</Td>
-                  <Td><span style={{ display: "inline-block", border: `1.5px solid ${statusTone(iv.status)}`,
-                    color: statusTone(iv.status), borderRadius: 2, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>
-                    {statusText(iv.status)}</span>
+                  <Td align="end" mono>{iv.paidAmount ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong>{iv.due ? fmtC(iv.due, S.rate, lang) : "—"}</Td>
+                  <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill>
                     {iv.status !== "unpaid" && paidOn && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 3,
                       fontFamily: "var(--mono)" }}>{dmy(paidOn.at)}</div>}
-                    {iv.due > 0 && iv.lateDays > 0 && <div style={{ fontSize: 10.5, color: iv.lateDays > 30 ? C.red : C.inkSoft, marginTop: 2 }}>
+                    {iv.due > 0 && iv.lateDays > 0 && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>
                       {iv.lateDays} {t("daysLate")}</div>}
                   </Td>
                   <Td tone={C.inkSoft}>{iv.note || "—"}</Td>
                   <Td align="center">
                     <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-                      <button onClick={() => onEdit(iv)} title={t("editTx")} style={{ background: C.paper,
-                        border: `1px solid ${C.line}`, borderRadius: 3, padding: "4px 7px", cursor: "pointer", fontSize: 13 }}>✏️</button>
-                      <button onClick={() => onDoc(iv)} title={t("docGen")} style={{ background: C.paper,
-                        border: `1px solid ${C.line}`, borderRadius: 3, padding: "4px 7px", cursor: "pointer", fontSize: 13 }}>🖨️</button>
+                      <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
+                      <button type="button" className="dk-pill dk-icon-btn" onClick={() => onDoc(iv)} title={t("docGen")}>🖨️</button>
                     </span>
                   </Td>
                 </tr>; })}
@@ -5145,6 +5213,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             </tr></tfoot>
           </table>}
       </div>
+      }
+    />
 
       {pays.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>💵 {t("payments")}</div>
@@ -6065,11 +6135,8 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
   const mkFoot = (left, right) => <DocFoot thanks={thanksTxt} note={footNote} footer={foot} showSigns={tpl.showSigns !== false}
     signLeft={left} signRight={right} />;
   const payBadge = (st) => {
-    const map = { paid: [L2("مدفوع", "Paid"), "#E0EFED", C.green], partial: [L2("متبقي", "Remainder"), "#F6EFDD", C.amber],
-      unpaid: [L2("غير مدفوع", "Unpaid"), "#F5E2E4", C.red] };
-    const [lb, bg, col] = map[st] || map.unpaid;
-    return <span style={{ display: "inline-block", background: bg, color: col, fontWeight: 700, fontSize: 11,
-      padding: "4px 10px", borderRadius: 3, border: `1px solid ${col}44` }}>{lb}</span>;
+    const map = { paid: L2("مدفوع", "Paid"), partial: L2("متبقي", "Remainder"), unpaid: L2("غير مدفوع", "Unpaid") };
+    return <StatusPill status={st}>{map[st] || map.unpaid}</StatusPill>;
   };
 
   if (doc.scope === "supplier") {
@@ -6116,11 +6183,11 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
           </tr>
         </tbody></table>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-          <div style={{ minWidth: 220, border: `2px solid ${b.due > 0 ? C.red : C.green}`, borderRadius: 4, padding: "12px 16px",
-            background: b.due > 0 ? "#FBEFEF" : "#E8F2EC", textAlign: "end" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>{b.credit > 0 ? t("supplierCredit") : t("weOwe")}</div>
-            <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4,
-              color: b.due > 0 ? C.red : C.green }}>{money(b.credit > 0 ? b.credit : b.due)}</div>
+          <div className="account-balance" style={{ minWidth: 220, textAlign: "end" }}>
+            <StatusPill status={b.due > 0 ? "owing" : "clear"}>
+              {b.credit > 0 ? t("supplierCredit") : t("weOwe")}</StatusPill>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4, color: C.ink }}>
+              {money(b.credit > 0 ? b.credit : b.due)}</div>
           </div>
         </div>
         {mkFoot(t("signOwner"), t("signSupplier"))}
@@ -6225,11 +6292,11 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         </tr>
       </tbody></table>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-        <div style={{ minWidth: 220, border: `2px solid ${finalBalance > 0 ? C.red : C.green}`, borderRadius: 4, padding: "12px 16px",
-          background: finalBalance > 0 ? "#FBEFEF" : "#E8F2EC", textAlign: "end" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>{finalBalance >= 0 ? t("due") : t("credit")}</div>
-          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4,
-            color: finalBalance > 0 ? C.red : C.green }}>{money(Math.abs(finalBalance))}</div>
+        <div className="account-balance" style={{ minWidth: 220, textAlign: "end" }}>
+          <StatusPill status={finalBalance > 0 ? "owing" : "paid"}>
+            {finalBalance >= 0 ? t("due") : t("credit")}</StatusPill>
+          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4, color: C.ink }}>
+            {money(Math.abs(finalBalance))}</div>
         </div>
       </div>
       {mkFoot(t("signOwner"), t("signCustomer"))}
@@ -6621,6 +6688,12 @@ function FarmApp() {
     })();
     return () => clearTimeout(fb);
   }, []);
+
+  useEffect(() => {
+    if (!prefsReady || typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 639px)");
+    if (mq.matches) setSideHidden(true);
+  }, [prefsReady]);
 
   const applyRemoteFarm = useCallback((raw) => {
     try {
@@ -7438,11 +7511,11 @@ function FarmApp() {
       </FilterTray>
 
       <DeskCard style={{ order: 1 }} pad={0} title={`✦ ${t("expenseOverview")}`}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))" }}>
-          <div style={{ background: C.field, color: "#fff", padding: "18px 20px", minHeight: 82 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, opacity: .8 }}>{t("moneySpentPeriod")}</div>
-            <div style={{ marginTop: 6 }}><Money usd={expMoneySums.costs} rate={S.rate} lang={lang} size={27} tone="#fff" /></div>
-            <div style={{ fontSize: 11.5, opacity: .75, marginTop: 5 }}>{expPeriodLabel}</div>
+        <div className="adapt-grid" style={{ gap: 0 }}>
+          <div className="hero-stat">
+            <span>{t("moneySpentPeriod")}</span>
+            <div style={{ marginTop: 6 }}><Money usd={expMoneySums.costs} rate={S.rate} lang={lang} size={27} /></div>
+            <small>{expPeriodLabel}</small>
           </div>
           {[
             ["🤝", t("supplierOutstanding"), fmtC(supplierDash.owed, S.rate, lang), supplierDash.owed > 0 ? C.red : C.green],
@@ -7455,10 +7528,12 @@ function FarmApp() {
           </div>)}
         </div>
         {urgentBillsCount > 0 && <button type="button" onClick={() => setExpBillsOpen(true)}
-          style={{ width: "100%", border: "none", borderTop: `1px solid ${C.line}`, background: "#FFF8E8",
-            color: "#7A5312", padding: "10px 16px", textAlign: "start", cursor: "pointer", fontFamily: "var(--body)",
-            fontSize: 12.5, fontWeight: 700 }}>
-          ⚠️ {nf(urgentBillsCount)} {t("billsDue")} · {fmtC(urgentBillsTotal, S.rate, lang)} <span style={{ float: "inline-end" }}>›</span>
+          style={{ width: "100%", border: "none", borderTop: `1px solid ${C.line}`, background: C.paper,
+            color: C.ink, padding: "10px 16px", textAlign: "start", cursor: "pointer", fontFamily: "var(--body)",
+            fontSize: 12.5, fontWeight: 700, minHeight: 44, display: "flex", alignItems: "center", gap: 8,
+            borderInlineStart: "4px solid #F59E0B" }}>
+          <StatusPill status="due">{t("billsDue")}</StatusPill>
+          {nf(urgentBillsCount)} · {fmtC(urgentBillsTotal, S.rate, lang)} <span style={{ marginInlineStart: "auto" }}>›</span>
         </button>}
       </DeskCard>
 
@@ -7509,18 +7584,19 @@ function FarmApp() {
               {[...activeObligations].sort((a, b) => new Date(a.nextDue || 0) - new Date(b.nextDue || 0)).slice(0, 8).map((o) => {
                 const typ = OBL_TYPES.find((x) => x[0] === o.type) || OBL_TYPES[1];
                 const dLeft = o.nextDue ? Math.ceil((new Date(o.nextDue) - Date.now()) / 864e5) : null;
-                const tone = dLeft !== null && dLeft < 0 ? C.red : dLeft !== null && dLeft <= 7 ? C.amber : C.green;
-                return <div key={o.id} style={{ border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone}`,
-                  borderRadius: 4, padding: "10px 12px" }}>
+                const kind = dLeft !== null && dLeft < 0 ? "overdue" : dLeft !== null && dLeft <= 7 ? "due" : "active";
+                const kindLb = kind === "overdue" ? t("overdue") : kind === "due" ? t("due") : t("statusClear");
+                return <div key={o.id} className={statusRowClass(kind)} style={{ border: `1px solid ${C.line}`,
+                  borderRadius: 8, padding: "10px 12px", background: C.card }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 18 }}>{typ[1]}</span>
                     <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{o.title}</span>
-                    <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: moneyColor("due", o.amount) }}>
-                      {fmtC(o.amount || 0, S.rate, lang)}</span>
+                    <StatusPill status={kind}>{kindLb}</StatusPill>
                   </div>
-                  <div style={{ fontSize: 12, color: tone, fontWeight: 600, marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600, marginTop: 4 }}>
                     📅 {o.nextDue ? dmy(o.nextDue) : "—"}
                     {dLeft !== null && ` · ${dLeft < 0 ? `${t("overdueBy")} ${Math.abs(dLeft)}` : dLeft === 0 ? t("dueToday") : `${t("dueInDays")} ${dLeft}`}`}
+                    {` · ${fmtC(o.amount || 0, S.rate, lang)}`}
                   </div>
                   <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                     <button type="button" style={{ ...secondaryBtn, flex: 1, padding: "7px", fontSize: 12.5 }}
@@ -7536,20 +7612,19 @@ function FarmApp() {
                 {directOpenExpenses.slice(0, 8).map((e) => {
                   const dueAt = e.dueDate || dayKey(e.at);
                   const dLeft = Math.ceil((new Date(dueAt) - Date.now()) / 864e5);
-                  const tone = dLeft < 0 ? C.red : dLeft <= 7 ? C.amber : C.green;
-                  return <div key={e.id} style={{ border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone}`,
-                    borderRadius: 4, padding: "10px 12px" }}>
+                  const kind = dLeft < 0 ? "overdue" : dLeft <= 7 ? "due" : "unpaid";
+                  return <div key={e.id} className={statusRowClass(kind)} style={{ border: `1px solid ${C.line}`,
+                    borderRadius: 8, padding: "10px 12px", background: C.card }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: 18 }}>{catIcon(e.category || "other", S.categories)}</span>
                       <span style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>
                         {catLabel(e.category || "other", lang, S.categories)}
                         {e.vendor ? <span style={{ display: "block", color: C.inkSoft, fontSize: 11.5 }}>{e.vendor}</span> : null}
                       </span>
-                      <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>
-                        {fmtC(e.due, S.rate, lang)}</span>
+                      <StatusPill status={kind}>{kind === "overdue" ? t("overdue") : t("remainder")}</StatusPill>
                     </div>
-                    <div style={{ fontSize: 12, color: tone, fontWeight: 600, marginTop: 4 }}>
-                      📅 {dmy(dueAt)} · {t("remainder")}
+                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600, marginTop: 4 }}>
+                      📅 {dmy(dueAt)} · {fmtC(e.due, S.rate, lang)}
                     </div>
                     <button type="button" style={{ ...secondaryBtn, width: "100%", padding: "7px", fontSize: 12.5, marginTop: 8 }}
                       onClick={() => setSheet({ k: "editExpense", id: e.id })}>✏️ {t("edit")}</button>
@@ -7561,7 +7636,7 @@ function FarmApp() {
       </div>
 
       <DeskCard style={{ order: 2 }} pad={0} title={`🧾 ${t("expenseRegister")}`}
-        right={<span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ {t("paidExpensesOnly")}</span>}>
+        right={<StatusPill status="paid">{t("paidExpensesOnly")}</StatusPill>}>
         {(() => {
           const rows = [...expScoped].filter((e) => {
             if (!expQ.trim()) return true;
@@ -7572,11 +7647,42 @@ function FarmApp() {
           if (rows.length === 0) return <div style={{ padding: 24 }}>
             <Empty icon="💸" title={t("noPaidExpenses")} sub={t("noPaidExpensesSub")}
               cta={`＋ ${t("logExpense")}`} onCta={() => setSheet({ k: "expense" })} /></div>;
-          return <div style={{ overflowX: "auto" }}>
+          return <DataList
+            cards={rows.map((e) => {
+              const isMed = e.type === "med";
+              const cat = isMed ? "medicine" : (e.category || "other");
+              const amt = isMed ? (e.cost || 0) : (e.amount || 0);
+              const openSource = isMed ? null : e.supplierId
+                ? () => {
+                  if (e.sourceExpenseId) setSheet({ k: "supplierBill", sid: e.supplierId, id: e.sourceExpenseId });
+                  else { setRoute("suppliers"); openSupplier(e.supplierId); }
+                }
+                : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
+              const receiptId = e.sourceExpenseId || e.id;
+              return (
+                <DataCard key={e.id} kind="paid"
+                  status={<StatusPill status="paid">{t("paidS")}</StatusPill>}
+                  title={`${catIcon(cat, S.categories)} ${catLabel(cat, lang, S.categories)}`}
+                  subtitle={`${dmy(e.at)} · ${e.vendor || e.supplier || "—"}`}
+                  meta={fmtC(amt, S.rate, lang)}
+                  onClick={openSource || undefined}
+                  actions={
+                    <>
+                      {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
+                        onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "receipt", id: receiptId, back: null }); }}>📎</button>}
+                      {openSource && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
+                        openSource(); }}>↗</button>}
+                    </>
+                  }
+                />
+              );
+            })}
+            table={
+          <div className="overflow-x-auto">
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <Th>{t("colDate")}</Th><Th>{t("category")}</Th><Th>{t("vendor")}</Th>
-                <Th align="end">{t("amount")}</Th><Th align="center">{t("actions")}</Th>
+                <Th align="end">{t("amount")}</Th><Th>{t("colStatus")}</Th><Th align="center">{t("actions")}</Th>
               </tr></thead>
               <tbody>
                 {rows.map((e) => {
@@ -7590,7 +7696,7 @@ function FarmApp() {
                     }
                     : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
                   const receiptId = e.sourceExpenseId || e.id;
-                  return <tr key={e.id} style={{ cursor: openSource ? "pointer" : "default" }}
+                  return <tr key={e.id} className={statusRowClass("paid")} style={{ cursor: openSource ? "pointer" : "default" }}
                     onClick={() => openSource && openSource()}
                     onContextMenu={(ev) => openCtx(ev, [
                       openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
@@ -7602,7 +7708,8 @@ function FarmApp() {
                         {e.feedType ? `${t(e.feedType)} · ` : ""}{expenseQtyLabel(e, t)}</span> : null}
                       {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
                     <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
-                    <Td align="end" mono strong tone={C.red}>{fmtC(amt, S.rate, lang)}</Td>
+                    <Td align="end" mono strong>{fmtC(amt, S.rate, lang)}</Td>
+                    <Td><StatusPill status="paid">{t("paidS")}</StatusPill></Td>
                     <Td align="center">
                       <span style={{ display: "inline-flex", gap: 5 }}>
                         {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
@@ -7615,7 +7722,8 @@ function FarmApp() {
                 })}
               </tbody>
             </table>
-          </div>;
+          </div>}
+          />;
         })()}
       </DeskCard>
     </div>
@@ -8282,7 +8390,7 @@ function FarmApp() {
         <div className="cash-overview">
           <div className="cash-closing">
             <span>{t("cashClosing")}</span>
-            <Money usd={cashBox.closing} rate={S.rate} lang={lang} size={30} tone="#fff" />
+            <Money usd={cashBox.closing} rate={S.rate} lang={lang} size={30} />
             <small>{cashPeriodLabel}</small>
           </div>
           {[
@@ -8374,7 +8482,20 @@ function FarmApp() {
             })}
           </div>
         </div>}
-        <div style={{ overflowX: "auto" }}>
+        <DataList
+          empty={null}
+          cards={cashView.rows.map((r) => (
+            <DataCard key={r.id} kind={r.dir === "out" ? "out" : "in"}
+              status={<StatusPill status={r.dir === "out" ? "out" : "in"}>
+                {r.dir === "out" ? t("cashFilterOut") : t("cashFilterIn")}</StatusPill>}
+              title={r.day}
+              subtitle={<CashParts parts={r.parts} />}
+              meta={`${r.debit ? `+${fmtC(r.debit, S.rate, lang)}` : ""}${r.credit ? `${r.debit ? " · " : ""}−${fmtC(r.credit, S.rate, lang)}` : ""}`}
+              onClick={() => openCashSource(r)}
+            />
+          ))}
+          table={
+        <div className="overflow-x-auto">
           <table className={`cash-table cash-density-${cashTable.density}`}
             style={{ width: `max(100%, ${cashTableWidth}px)`, minWidth: cashTableWidth, borderCollapse: "collapse",
               tableLayout: "fixed", "--cash-cell-y": cashDensityPad }}>
@@ -8428,6 +8549,7 @@ function FarmApp() {
                 </td></tr>
               ) : cashView.rows.map((r) => (
                 <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
+                  className={statusRowClass(r.dir === "out" ? "out" : "in")}
                   style={{ cursor: "pointer" }}>
                   {cashVisibleKeys.map((key) => renderCashRowCell(key, r))}
                 </tr>
@@ -8440,6 +8562,8 @@ function FarmApp() {
             </tfoot>
           </table>
         </div>
+          }
+        />
       </DeskCard>
 
       <div className="cash-secondary-actions">
@@ -8520,11 +8644,11 @@ function FarmApp() {
       </FilterTray>
 
       <DeskCard pad={0} title={`✦ ${t("herdOverview")}`}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))" }}>
-          <div style={{ background: C.field, color: "#fff", padding: "18px 20px", minHeight: 78 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, opacity: .82 }}>{t("totalHeads")}</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 29, fontWeight: 800, marginTop: 5 }}>{nf(totalHeads)}</div>
-            <div style={{ fontSize: 11.5, opacity: .76, marginTop: 4 }}>{nf(animals.length)} {t("rows")}</div>
+        <div className="adapt-grid" style={{ gap: 0 }}>
+          <div className="hero-stat">
+            <span>{t("totalHeads")}</span>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 29, fontWeight: 800, marginTop: 5, color: C.ink }}>{nf(totalHeads)}</div>
+            <small>{nf(animals.length)} {t("rows")}</small>
           </div>
           {[
             ["🐾", t("perSpecies"), speciesSummary || "—", C.field],
@@ -8538,7 +8662,7 @@ function FarmApp() {
         </div>
       </DeskCard>
 
-      <div style={{ display: "grid", gridTemplateColumns: selAnimal ? "minmax(0,1fr) 310px" : "1fr", gap: 14, alignItems: "start" }}>
+      <div className="desk-split" style={{ display: "grid", gridTemplateColumns: selAnimal ? "minmax(0,1fr) 310px" : "1fr", gap: 14, alignItems: "start" }}>
         <DeskCard pad={0} title={`🐾 ${t("animalDirectory")} · ${herdRows.length}${herdRows.length !== animals.length ? ` / ${animals.length}` : ""}`}>
           {animals.length === 0 ? <div style={{ padding: 24 }}>
             <Empty icon="🐄" title={t("noAnimals")} sub={t("noAnimalsSub")} cta={`＋ ${t("addAnimal")}`}
@@ -8546,7 +8670,14 @@ function FarmApp() {
             : herdRows.length === 0 ? <div style={{ padding: 24 }}>
               <Empty icon="🔎" title={t("noAnimalsMatch")} sub={t("noAnimalsMatchSub")}
                 cta={t("clearFilters")} onCta={clearHerdFilters} /></div>
-              : <div style={{ overflowX: "auto" }}>
+              : <DataList
+                  cards={herdRows.map((a) => (
+                    <AnimalCard key={a.id} a={a} lang={lang} t={t} today={todayProd(a)}
+                      last={entries.find((e) => e.animalId === a.id)}
+                      onClick={() => setSel(a.id)} />
+                  ))}
+                  table={
+                <div className="overflow-x-auto">
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>
                     {head("tag", t("colName"))}{head("sp", t("species"))}{head("st", t("status"))}
@@ -8554,6 +8685,7 @@ function FarmApp() {
                   </tr></thead>
                   <tbody>
                     {herdRows.map((a) => <tr key={a.id} onClick={() => setSel(a.id)}
+                      className={statusRowClass(a.status)}
                       onContextMenu={(e) => openCtx(e, [
                         { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
                         { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editAnimal", id: a.id, back: null }) },
@@ -8568,6 +8700,8 @@ function FarmApp() {
                   </tbody>
                 </table>
               </div>}
+                />
+              }
         </DeskCard>
 
         {selAnimal && <DeskCard title={`${spOf(selAnimal).icon} ${animalLabel(selAnimal)}`}
@@ -8579,7 +8713,7 @@ function FarmApp() {
           </div>
           <div style={{ fontSize: 12, fontWeight: 800, color: C.inkSoft, marginBottom: 5 }}>{t("basicDetails")}</div>
           <Row k={t("species")} v={spName(selAnimal.species, lang, true)} />
-          <Row k={t("status")} v={statusLabel(selAnimal.status, lang)} tone={statusColor(selAnimal.status)} />
+          <Row k={t("status")} v={<Stamp status={selAnimal.status} lang={lang} />} />
           <Row k={t("breed")} v={breedLabel(selAnimal, lang)} />
           {isFlock(selAnimal)
             ? <><Row k={t("birds")} v={nf(selAnimal.birds)} />{selAnimal.coop && <Row k={t("coop")} v={selAnimal.coop} />}</>
@@ -8764,17 +8898,36 @@ function FarmApp() {
           </FilterTray>
         </div>
 
-        <div style={{ padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 9,
-          borderBottom: `1px solid ${C.line}`, background: C.paper }}>
+        <div style={{ padding: "12px 14px" }} className="adapt-grid">
           <Kpi label={t("milkLogPreview")} value={`${n1(milkLogView.totalQty)} ${milkU}`} tone={C.field} />
           <Kpi label={t("morningMilk")} value={`${n1(milkLogView.amQty)} ${milkU}`} />
           <Kpi label={t("eveningMilk")} value={`${n1(milkLogView.pmQty)} ${milkU}`} />
           <Kpi label={t("txCount")} value={nf(milkLogView.rows.length)} tone={C.inkSoft} />
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <DataList
+          empty={milkLogView.rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("milkLogEmpty")}</div> : null}
+          cards={milkLogView.rows.map((r) => {
+            const sess = r.session === "pm" ? "pm" : r.session === "day" ? "day" : "am";
+            const sessLb = sess === "pm" ? `🌙 ${t("eveningMilk")}` : sess === "day" ? t("dayMilkTotal") : `🌅 ${t("morningMilk")}`;
+            return (
+              <DataCard key={r.id || r.key} kind={sess}
+                status={<StatusPill status={sess}>{sessLb}</StatusPill>}
+                title={dmy(r.at)}
+                subtitle={`${hhmm(new Date(r.at))} · ${r.byName || "—"}`}
+                meta={`${n1(r.liters)} ${milkUnitLb(r.unit || milkUnit, t)}`}
+                onClick={() => {
+                  setEntryDate(dayKey(r.at));
+                  if (sess === "am" || sess === "pm") setMilkSess(sess);
+                  setBatch({});
+                }}
+              />
+            );
+          })}
+          table={
+        <div className="overflow-x-auto">
           {milkLogView.rows.length === 0
-            ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("milkLogEmpty")}</div>
+            ? null
             : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
               <thead><tr>
                 <Th>{t("colDate")}</Th>
@@ -8788,7 +8941,7 @@ function FarmApp() {
                 {milkLogView.rows.map((r) => {
                   const sess = r.session === "pm" ? "pm" : r.session === "day" ? "day" : "am";
                   const sessLb = sess === "pm" ? `🌙 ${t("eveningMilk")}` : sess === "day" ? t("dayMilkTotal") : `🌅 ${t("morningMilk")}`;
-                  return <tr key={r.id || r.key} style={{ cursor: "pointer" }}
+                  return <tr key={r.id || r.key} className={statusRowClass(sess)} style={{ cursor: "pointer" }}
                     onClick={() => {
                       setEntryDate(dayKey(r.at));
                       if (sess === "am" || sess === "pm") setMilkSess(sess);
@@ -8796,7 +8949,7 @@ function FarmApp() {
                     }}>
                     <Td mono>{dmy(r.at)}</Td>
                     <Td mono tone={C.inkSoft}>{hhmm(new Date(r.at))}</Td>
-                    <Td>{sessLb}</Td>
+                    <Td><StatusPill status={sess}>{sessLb}</StatusPill></Td>
                     <Td align="end" mono strong>{n1(r.liters)}</Td>
                     <Td tone={C.inkSoft}>{milkUnitLb(r.unit || milkUnit, t)}</Td>
                     <Td tone={C.inkSoft}>{r.byName || "—"}</Td>
@@ -8813,6 +8966,8 @@ function FarmApp() {
               </tfoot>
             </table>}
         </div>
+          }
+        />
       </DeskCard>
     </div>
   );
@@ -8870,7 +9025,25 @@ function FarmApp() {
                   display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <SortControl value={custSort} onChange={setCustSort} label={t("sortBy")} options={custSortOpts} />
                 </div>
-                <div style={{ overflowX: "auto" }}>
+                <DataList
+                  cards={sortedCustomers.map((c) => {
+                    const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
+                    const due = (ledger.byCustomer[c.id] || {}).due || 0;
+                    const kind = due > 0.009 ? "owing" : "clear";
+                    return (
+                      <DataCard key={c.id} kind={kind}
+                        status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("statusClear")}</StatusPill>}
+                        title={c.name}
+                        subtitle={`${accNo(customers, c.id)}${c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
+                        meta={c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined}
+                        onClick={() => openAccount(c.id)}
+                        actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}>
+                          {t("openAccount")} ›</button>}
+                      />
+                    );
+                  })}
+                  table={
+                <div className="overflow-x-auto">
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>
                       <Th w={100}>{t("accountNo")}</Th>
@@ -8883,7 +9056,9 @@ function FarmApp() {
                     <tbody>
                       {sortedCustomers.map((c) => {
                         const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
+                        const due = (ledger.byCustomer[c.id] || {}).due || 0;
                         return <tr key={c.id} onClick={() => openAccount(c.id)}
+                          className={statusRowClass(due > 0.009 ? "owing" : "clear")}
                           onContextMenu={(e) => openCtx(e, [
                             { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
                             { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
@@ -8898,13 +9073,14 @@ function FarmApp() {
                           <Td tone={C.inkSoft}>{c.phone || t("noPhone")}</Td>
                           <Td tone={C.inkSoft}>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
                           <Td align="end" mono tone={C.inkSoft}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
-                          <Td align="center"><button onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}
+                          <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}
                             className="dk-pill">{t("openAccount")} ›</button></Td>
                         </tr>;
                       })}
                     </tbody>
                   </table>
-                </div>
+                </div>}
+                />
               </>}
           </DeskCard>}
     </div>
@@ -8967,8 +9143,7 @@ function FarmApp() {
               ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noSuppliers")} sub={t("noSuppliersSub")}
                   cta={`＋ ${t("addSupplier")}`} onCta={() => setSheet({ k: "addSupplier" })} /></div>
               : <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9,
-                  padding: "12px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
+                <div className="adapt-grid" style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
                   <Kpi label={t("supplierOutstanding")} value={fmtC(supplierDash.owed, S.rate, lang)}
                     tone={moneyColor("due", supplierDash.owed)} />
                   <Kpi label={t("supplierOverdueKpi")} value={fmtC(supplierDash.overdue, S.rate, lang)}
@@ -8979,7 +9154,25 @@ function FarmApp() {
                   <input value={suppQ} onChange={(e) => setSuppQ(e.target.value)} placeholder={t("searchSuppliers")}
                     style={{ ...inp, padding: "8px 10px", fontSize: 14 }} />
                 </div>
-                <div style={{ overflowX: "auto" }}>
+                <DataList
+                  cards={filteredSuppliers.map((s) => {
+                    const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
+                    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+                    const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
+                    return (
+                      <DataCard key={s.id} kind={st}
+                        status={<StatusPill status={st}>{stLb}</StatusPill>}
+                        title={s.name}
+                        subtitle={`${supplierNo(suppliers, s.id)}${s.phone ? ` · ${s.phone}` : ""}`}
+                        meta={`${t("weOwe")} ${fmtC(bal.due, S.rate, lang)} · ${t("lastActivity")} ${bal.lastAt ? dmy(bal.lastAt) : "—"}`}
+                        onClick={() => openSupplier(s.id)}
+                        actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}>
+                          {t("openSupplier")} ›</button>}
+                      />
+                    );
+                  })}
+                  table={
+                <div className="overflow-x-auto">
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>
                       <Th w={90}>{t("accountNo")}</Th>
@@ -8994,15 +9187,13 @@ function FarmApp() {
                       {filteredSuppliers.map((s) => {
                         const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
                         const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
-                        const stTone = st === "overdue" ? C.red : st === "owing" ? C.amber : C.green;
                         const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
-                        return <tr key={s.id} onClick={() => openSupplier(s.id)} style={{ cursor: "pointer" }}>
+                        return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}>
                           <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
                           <Td strong>{s.name}
                             {s.phone ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft, fontWeight: 500 }}>{s.phone}</span> : null}
                           </Td>
-                          <Td><span style={{ border: `1.5px solid ${stTone}`, color: stTone, borderRadius: 2,
-                            padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{stLb}</span></Td>
+                          <Td><StatusPill status={st}>{stLb}</StatusPill></Td>
                           <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
                           <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
                           <Td mono tone={C.inkSoft}>{bal.lastAt ? dmy(bal.lastAt) : "—"}</Td>
@@ -9017,14 +9208,15 @@ function FarmApp() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </div>}
+                />
               </>}
           </DeskCard>}
     </div>
   );
 
   const DeskReports = (
-    <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 14, alignItems: "start" }}>
+    <div className="desk-report-split" style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 14, alignItems: "start" }}>
       <DeskCard pad={8}>
         <div style={{ display: "grid", gap: 4 }}>
           {[["summary", "📋"], ["charts", "📊"], ["pl", "💵"], ["expenses", "💸"], ["log", "🧾"]].map(([k, ic]) => (
@@ -9083,7 +9275,7 @@ function FarmApp() {
                 placeItems: "center", fontSize: 44, overflow: "hidden", flexShrink: 0 }}>
                 {animal.photo ? <img src={animal.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : sp.icon}</div>
               <div style={{ flex: 1, display: "grid", gap: 3, alignContent: "center" }}>
-                <Row k={t("status")} v={statusLabel(animal.status, lang)} tone={statusColor(animal.status)} />
+                <Row k={t("status")} v={<Stamp status={animal.status} lang={lang} />} />
                 <Row k={t("breed")} v={breedLabel(animal, lang)} />
                 {flock ? <Row k={t("birds")} v={nf(animal.birds)} /> : <Row k={t("age")} v={ageText(animal, lang)} />}
                 <Row k={t("today")} v={`${n1(todayProd(animal))} ${producesEggs(animal) ? t("eggsUnit") : t("L")}`} />
@@ -9113,12 +9305,10 @@ function FarmApp() {
                 {(() => { const r = repro(animal); return r ? ` · ${r.daysIn} ${t("days")}` : ""; })()}</button>}
             </div>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("changeStatus")}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-              {sp.statuses.map((k) => <button key={k} onClick={() => commit([{ type: "status", animalId: animal.id, status: k }],
-                { animals: animals.map((x) => (x.id === animal.id ? { ...x, status: k } : x)) })}
-                style={{ background: animal.status === k ? statusColor(k) : "#fff", color: animal.status === k ? "#fff" : C.ink,
-                  border: `1.5px solid ${animal.status === k ? statusColor(k) : C.line}`, borderRadius: 5,
-                  padding: "11px 6px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{statusLabel(k, lang)}</button>)}
+            <div style={{ marginBottom: 14 }}>
+              <StatusChoice value={animal.status} options={sp.statuses} lang={lang}
+                onChange={(k) => commit([{ type: "status", animalId: animal.id, status: k }],
+                  { animals: animals.map((x) => (x.id === animal.id ? { ...x, status: k } : x)) })} />
             </div>
             {animal.status === "pregnant" && <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>
@@ -9688,6 +9878,8 @@ function FarmApp() {
     <div dir={dir} className={`app dk theme-${theme}`}>
       <style key={theme}>{makeCss()}</style>
       <div className={`dk-wrap${sideHidden ? " side-off" : ""}`}>
+        <button type="button" className="dk-side-backdrop" aria-label={t("hideSidebar")}
+          onClick={toggleSidebar} tabIndex={sideHidden ? -1 : 0} />
         <aside className="dk-side" aria-hidden={sideHidden}>
           <div className="dk-brand">
             <div className="dk-brand-logo">
@@ -10084,14 +10276,16 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   padding:8px 14px;min-width:230px;cursor:pointer;font-family:var(--body);font-size:13.5px;color:${C.inkSoft};
   box-shadow:0 1px 2px rgba(21,42,36,.04);transition:border-color .15s ease,box-shadow .15s ease}
 .dk-search:hover{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}18}
-.dk-pill{background:${C.card};border:1px solid ${C.line};border-radius:999px;padding:7px 12px;cursor:pointer;
-  font-family:var(--body);font-size:12.5px;font-weight:600;color:${C.ink};transition:all .14s var(--ease)}
+.dk-pill{background:${C.card};border:1px solid ${C.line};border-radius:999px;padding:10px 14px;cursor:pointer;
+  font-family:var(--body);font-size:12.5px;font-weight:600;color:${C.ink};transition:all .14s var(--ease);
+  min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center}
 .dk-pill:hover{border-color:${C.field};transform:translateY(-1px)}
 .dk-pill.on{background:${C.field};border-color:${C.field};color:#fff;box-shadow:0 4px 12px ${C.field}33}
 .cash-overview{display:grid;grid-template-columns:minmax(230px,1.35fr) repeat(4,minmax(120px,1fr))}
-.cash-closing{background:${C.field};color:#fff;padding:18px 20px;display:grid;align-content:center;gap:5px;min-height:104px}
-.cash-closing>span{font-size:12px;font-weight:700;opacity:.8}
-.cash-closing>small{font-size:11.5px;opacity:.72}
+.cash-closing{background:${C.card};color:${C.ink};padding:18px 20px;display:grid;align-content:center;gap:5px;min-height:104px;
+  border-inline-start:4px solid ${C.field}}
+.cash-closing>span{font-size:12px;font-weight:700;color:${C.inkSoft}}
+.cash-closing>small{font-size:11.5px;color:${C.inkSoft}}
 .cash-overview-stat{padding:16px;border-inline-start:1px solid ${C.line};display:grid;align-content:center;gap:7px;min-height:82px}
 .cash-overview-stat span{color:${C.inkSoft};font-size:11.5px;font-weight:700}
 .cash-overview-stat b{font-family:var(--mono);font-size:15px;line-height:1.35}
@@ -10238,6 +10432,109 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 @media (prefers-reduced-motion:reduce){
   *,.chart-bar,.kpi-val,.kpi-card,.stat-tile,.desk-card{transition:none!important;animation:none!important;opacity:1!important;transform:none!important}
 }
+
+/* Status pills, adaptive grids, foldable/tablet data displays */
+.inline-flex{display:inline-flex}
+.items-center{align-items:center}
+.gap-1\\.5{gap:.375rem}
+.px-2\\.5{padding-inline:.625rem}
+.py-1{padding-block:.25rem}
+.rounded-full{border-radius:999px}
+.text-xs{font-size:.75rem;line-height:1.2}
+.font-medium{font-weight:500}
+.border{border-width:1px;border-style:solid}
+.shrink-0{flex-shrink:0}
+.overflow-x-auto{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.border-l-4{border-inline-start-width:4px;border-inline-start-style:solid}
+.grid{display:grid}
+.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
+.gap-4{gap:1rem}
+.bg-emerald-50{background:#ECFDF5}.text-emerald-700{color:#047857}.border-emerald-200{border-color:#A7F3D0}.bg-emerald-500{background:#10B981}
+.bg-amber-50{background:#FFFBEB}.text-amber-700{color:#B45309}.border-amber-200{border-color:#FDE68A}.bg-amber-500{background:#F59E0B}
+.bg-rose-50{background:#FFF1F2}.text-rose-700{color:#BE123C}.border-rose-200{border-color:#FECDD3}.bg-rose-500{background:#F43F5E}
+.bg-sky-50{background:#F0F9FF}.text-sky-700{color:#0369A1}.border-sky-200{border-color:#BAE6FD}.bg-sky-500{background:#0EA5E9}
+.bg-slate-100{background:#F1F5F9}.text-slate-600{color:#475569}.border-slate-200{border-color:#E2E8F0}.bg-slate-400{background:#94A3B8}
+.status-pill{position:relative;line-height:1.2;white-space:nowrap;max-width:100}
+.status-pill::after{content:"";position:absolute;inset:50%;width:44px;height:44px;transform:translate(-50%,-50%);pointer-events:none}
+.status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block}
+.data-display-cards{display:grid}
+.data-display-table{display:none}
+.data-card{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px;min-height:44px;color:${C.ink};
+  box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.data-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.data-card-copy{min-width:0;flex:1}
+.data-card-title{font-weight:700;font-size:15px;line-height:1.3}
+.data-card-sub{font-size:12.5px;color:${C.inkSoft};margin-top:3px;font-weight:500}
+.data-card-meta{font-size:12.5px;color:${C.inkSoft};margin-top:8px;font-family:var(--mono)}
+.data-card-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.data-card-actions .dk-pill,.data-card-actions button{min-height:44px;min-width:44px}
+.status-row{border-inline-start-width:4px;border-inline-start-style:solid}
+.status-row--success,.data-card--success{border-inline-start-color:#10B981}
+.status-row--warning,.data-card--warning{border-inline-start-color:#F59E0B}
+.status-row--danger,.data-card--danger{border-inline-start-color:#F43F5E}
+.status-row--info,.data-card--info{border-inline-start-color:#0EA5E9}
+.status-row--neutral,.data-card--neutral{border-inline-start-color:#94A3B8}
+.adapt-grid{display:grid;grid-template-columns:1fr;gap:1rem}
+.touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog{
+  min-height:44px;min-width:44px}
+.dk-pill,.filter-tog,.sort-tog,.dk-quick-btn{display:inline-flex;align-items:center;justify-content:center}
+.dk-icon-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.status-choice{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;width:100%;
+  padding:10px 12px;border-radius:999px;border:1.5px solid ${C.line};background:${C.card};color:${C.ink};
+  font-family:var(--body);font-weight:600;font-size:13.5px;cursor:pointer}
+.status-choice .status-dot{background:#94A3B8}
+.status-choice[data-tone=success] .status-dot{background:#10B981}
+.status-choice[data-tone=warning] .status-dot{background:#F59E0B}
+.status-choice[data-tone=danger] .status-dot{background:#F43F5E}
+.status-choice[data-tone=info] .status-dot{background:#0EA5E9}
+.status-choice.on[data-tone=success]{background:#ECFDF5;color:#047857;border-color:#A7F3D0}
+.status-choice.on[data-tone=warning]{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+.status-choice.on[data-tone=danger]{background:#FFF1F2;color:#BE123C;border-color:#FECDD3}
+.status-choice.on[data-tone=info]{background:#F0F9FF;color:#0369A1;border-color:#BAE6FD}
+.status-choice.on[data-tone=neutral]{background:#F1F5F9;color:#475569;border-color:#E2E8F0}
+.hero-stat{background:${C.card};color:${C.ink};padding:18px 20px;display:grid;align-content:center;gap:5px;min-height:104px;
+  border-inline-start:4px solid ${C.field}}
+.hero-stat>span{font-size:12px;font-weight:700;color:${C.inkSoft}}
+.hero-stat>small{font-size:11.5px;color:${C.inkSoft}}
+.account-balance{background:${C.paper};border:1px solid ${C.line};border-radius:12px;padding:10px 14px;
+  display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:140px}
+.dk-side-backdrop{display:none;border:0;padding:0;background:rgba(15,23,42,.4);cursor:pointer}
+@media(min-width:640px){
+  .data-display-cards{display:none}
+  .data-display-table{display:block}
+  .sm\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .adapt-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:1024px){
+  .lg\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .adapt-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(min-width:1280px){
+  .xl\\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .adapt-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:639px){
+  .dk-side{position:fixed;inset-block:0;inset-inline-start:0;z-index:30;width:min(248px,86vw)!important;
+    height:100vh;height:100dvh;opacity:1}
+  .dk-wrap.side-off .dk-side{width:0!important;min-width:0;opacity:0;pointer-events:none}
+  .dk-wrap:not(.side-off) .dk-side-backdrop{display:block;position:fixed;inset:0;z-index:25}
+  .dk-body{padding:12px 12px 40px}
+  .dk-top{padding:10px 12px}
+  .dk-quick{padding:8px 12px}
+  .desk-split,.desk-report-split{grid-template-columns:1fr!important}
+}
+.app.theme-dark .bg-emerald-50{background:rgba(16,185,129,.14)}.app.theme-dark .text-emerald-700{color:#6EE7B7}.app.theme-dark .border-emerald-200{border-color:rgba(110,231,183,.35)}
+.app.theme-dark .bg-amber-50{background:rgba(245,158,11,.14)}.app.theme-dark .text-amber-700{color:#FBBF24}.app.theme-dark .border-amber-200{border-color:rgba(251,191,36,.35)}
+.app.theme-dark .bg-rose-50{background:rgba(244,63,94,.14)}.app.theme-dark .text-rose-700{color:#FDA4AF}.app.theme-dark .border-rose-200{border-color:rgba(253,164,175,.35)}
+.app.theme-dark .bg-sky-50{background:rgba(14,165,233,.14)}.app.theme-dark .text-sky-700{color:#7DD3FC}.app.theme-dark .border-sky-200{border-color:rgba(125,211,252,.35)}
+.app.theme-dark .bg-slate-100{background:rgba(148,163,184,.16)}.app.theme-dark .text-slate-600{color:#CBD5E1}.app.theme-dark .border-slate-200{border-color:rgba(203,213,225,.28)}
+.app.theme-dark .data-card,.app.theme-dark .account-balance,.app.theme-dark .hero-stat{background:${C.card};color:${C.ink}}
+.app.theme-dark .status-choice{background:${C.card};color:${C.ink};border-color:${C.line}}
+@media print{
+  .data-display-cards{display:none!important}
+  .data-display-table{display:block!important}
+  .status-pill::after{content:none}
+}
 `;
 
 /* =====================================================================
@@ -10262,12 +10559,12 @@ function DeskCard({ children, style, title, right, pad = 16 }) {
 }
 function StatTile({ label, value, sub, tone, icon, onClick }) {
   return <div className="stat-tile" onClick={onClick} role={onClick ? "button" : undefined}
-    style={{ background: C.card, border: `1px solid ${C.line}`, borderTop: `3px solid ${tone || C.field}`,
-    borderRadius: 14, padding: "13px 15px", boxShadow: "0 1px 2px rgba(21,42,36,.04)",
-    cursor: onClick ? "pointer" : undefined }}>
+    style={{ background: C.card, border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone || C.field}`,
+    borderRadius: 14, padding: "13px 15px", boxShadow: "0 1px 2px rgba(15,23,42,.04)",
+    cursor: onClick ? "pointer" : undefined, minHeight: 44 }}>
     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 600,
       color: C.inkSoft, letterSpacing: ".04em" }}>{icon && <span>{icon}</span>}{label}</div>
-    <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 25, color: tone || C.ink,
+    <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 25, color: C.ink,
       letterSpacing: "-.03em", marginTop: 4 }}>{value}</div>
     {sub && <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 500, marginTop: 2 }}>{sub}</div>}
   </div>;

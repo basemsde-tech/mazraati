@@ -35,7 +35,7 @@ const html = `<!doctype html>
     <link rel="icon" href="./icon-192.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <style>
-html,body,#root{height:100%}body{margin:0;background:#C9D3CE;color:#1A2420;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}input,select,textarea{font-size:16px}@media (prefers-color-scheme: dark){body{background:#0F1613;color:#E6F0EB}}
+html,body,#root{height:100%}body{margin:0;background:#F8FAFC;color:#1A2420;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}input,select,textarea{font-size:16px}@media (prefers-color-scheme: dark){body{background:#0F1613;color:#E6F0EB}}
     </style>
   </head>
   <body>
