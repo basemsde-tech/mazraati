@@ -7320,19 +7320,17 @@ function FarmApp() {
   const [cashQ, setCashQ] = useState("");
   const [cashRefOpen, setCashRefOpen] = useState(false);
   const [cashFlowOpen, setCashFlowOpen] = useState(false);
-  const [cashFiltOpen, setCashFiltOpen] = useState(false);
   const [cashCustomizeOpen, setCashCustomizeOpen] = useState(false);
   const [cashDragKey, setCashDragKey] = useState(null);
   const [cashTable, setCashTable] = useState(() => sanitizeCashTablePrefs(null));
   const cashTableRef = useRef(cashTable);
-  const [expFiltOpen, setExpFiltOpen] = useState(false);
+  const [expCat, setExpCat] = useState("all");
+  const [expSort, setExpSort] = useState("newest");
   const [expBillsOpen, setExpBillsOpen] = useState(false);
   const [expInsightsOpen, setExpInsightsOpen] = useState(false);
-  const [reportFiltOpen, setReportFiltOpen] = useState(false);
   const [report, setReport] = useState("summary");
   const [spFilter, setSpFilter] = useState("all");
   const [herdStatusFilter, setHerdStatusFilter] = useState("all");
-  const [herdFiltOpen, setHerdFiltOpen] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [doc, setDoc] = useState(null);
   const [draftS, setDraftS] = useState(null);
@@ -7402,6 +7400,7 @@ function FarmApp() {
   const [entryDate, setEntryDate] = useState(dayKey(Date.now()));
   const [sortBy, setSortBy] = useState({ k: "tag", d: "asc" });
   const [custSort, setCustSort] = useState("nameAsc");
+  const [custQ, setCustQ] = useState("");
   const [openAcc, setOpenAcc] = useState([]);          // customers kept open as tabs
   const [accTab, setAccTab] = useState("overview");
   const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "", sort: "newest" });
@@ -7409,9 +7408,10 @@ function FarmApp() {
   const [openSupp, setOpenSupp] = useState([]);
   const [suppTab, setSuppTab] = useState("open");
   const [suppQ, setSuppQ] = useState("");
+  const [suppSt, setSuppSt] = useState("all");
+  const [suppSort, setSuppSort] = useState("alphaAsc");
   const [milkUnitDraft, setMilkUnitDraft] = useState(null);
   const [eggOpen, setEggOpen] = useState(false);
-  const [milkLogFiltOpen, setMilkLogFiltOpen] = useState(false);
   const [milkLogFilt, setMilkLogFilt] = useState({ sess: "all", from: "", to: "", sort: "newest" });
   const dataRef = useRef(null);
   const obligationPayLocks = useRef(new Set());
@@ -7985,6 +7985,14 @@ function FarmApp() {
 
   const expMoneySums = useMemo(() => computeSums(expScoped, S, workers, expBounds.days, false), [expScoped, S, workers, expBounds]);
   const expPrevMoney = useMemo(() => computeSums(expPrevScoped, S, workers, expBounds.days, false), [expPrevScoped, S, workers, expBounds]);
+  const expCatOpts = useMemo(() => {
+    const seen = new Map();
+    expScoped.forEach((e) => {
+      const k = e.type === "med" ? "medicine" : (e.category || "other");
+      if (!seen.has(k)) seen.set(k, { key: k, icon: catIcon(k, S.categories), label: catLabel(k, lang, S.categories) });
+    });
+    return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, lang === "ar" ? "ar" : "en"));
+  }, [expScoped, lang, S.categories]);
 
   const billsDueList = useMemo(() => obligations.filter((o) => o.active && obligationAlert(o, lang, t)), [obligations, lang, t]);
   const directOpenExpenses = useMemo(() => entries
@@ -8036,7 +8044,11 @@ function FarmApp() {
       const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
       return lang === "ar" ? pr[2] : pr[3];
     };
-    const list = [...activeCustomers];
+    const needle = (custQ || "").trim().toLowerCase();
+    const list = [...activeCustomers].filter((c) => {
+      if (!needle) return true;
+      return `${c.name} ${c.phone || ""} ${accNo(customers, c.id)}`.toLowerCase().includes(needle);
+    });
     const cmpStr = (a, b) => a.localeCompare(b, lang === "ar" ? "ar" : "en", { sensitivity: "base" });
     switch (custSort) {
       case "nameDesc": return list.sort((a, b) => cmpStr(b.name, a.name));
@@ -8046,7 +8058,7 @@ function FarmApp() {
       case "oldest": return list.sort((a, b) => cmpTx(a, b, "oldest"));
       default: return list.sort((a, b) => cmpStr(a.name, b.name));
     }
-  }, [activeCustomers, customers, custSort, lang]);
+  }, [activeCustomers, customers, custSort, custQ, lang]);
 
   const custSortOpts = [["nameAsc", t("sortNameAsc")], ["nameDesc", t("sortNameDesc")], ["account", t("sortAccount")],
     ["product", t("sortProduct")], ["newest", t("sortNewest")], ["oldest", t("sortOldest")]];
@@ -8252,14 +8264,13 @@ function FarmApp() {
 
   const milkLogView = useMemo(() => {
     const f = milkLogFilt;
-    const newest = f.sort !== "oldest";
     const rows = groupMilkDayRows(milkLogAll).filter((r) => {
       if (f.sess === "am" && (r.am || 0) < 0.0001) return false;
       if (f.sess === "pm" && (r.pm || 0) < 0.0001) return false;
       if (f.from && r.day < f.from) return false;
       if (f.to && r.day > f.to) return false;
       return (r.total || 0) > 0.0001;
-    }).slice().sort((a, b) => cmpTx(a, b, newest ? "newest" : "oldest"));
+    }).slice().sort((a, b) => cmpBySort(a, b, f.sort, (x) => x.total, (x) => x.day));
     const totalQty = +rows.reduce((s, r) => s + (r.total || 0), 0).toFixed(2);
     const amQty = +rows.reduce((s, r) => s + (r.am || 0), 0).toFixed(2);
     const pmQty = +rows.reduce((s, r) => s + (r.pm || 0), 0).toFixed(2);
@@ -8334,7 +8345,6 @@ function FarmApp() {
     }
   };
 
-  const expFiltActive = (expRange !== "today" ? 1 : 0) + (expQ.trim() ? 1 : 0);
   const activeObligations = obligations.filter((o) => o.active);
   const billPanelCount = activeObligations.length + directOpenExpenses.length;
   const urgentBillsCount = billsDueList.length + directDueList.length;
@@ -8349,10 +8359,13 @@ function FarmApp() {
       <SearchFilterBar t={t} q={expQ} onQ={setExpQ} qPlaceholder={t("searchExpenses")}
         extra={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px", fontSize: 14, minHeight: 44 }}
           onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>}
-        activeCount={(expRange !== "today" ? 1 : 0)}
-        onReset={() => { setExpRange("today"); setExpFrom(""); setExpTo(""); }}
+        activeCount={(expRange !== "today" ? 1 : 0) + (expCat !== "all" ? 1 : 0) + ((expSort || "newest") !== "newest" ? 1 : 0)}
+        onReset={() => { setExpRange("today"); setExpFrom(""); setExpTo(""); setExpCat("all"); setExpSort("newest"); }}
         chips={[
           expRange !== "today" ? { key: "range", label: expPeriodLabel, onRemove: () => { setExpRange("today"); setExpFrom(""); setExpTo(""); } } : null,
+          expCat !== "all" ? { key: "cat", label: (expCatOpts.find((o) => o.key === expCat) || {}).label || expCat,
+            onRemove: () => setExpCat("all") } : null,
+          (expSort || "newest") !== "newest" ? { key: "sort", label: sortChipLabel(t, expSort), onRemove: () => setExpSort("newest") } : null,
         ].filter(Boolean)}>
         <FilterGroup label={t("customRange")}>
           {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
@@ -8363,6 +8376,16 @@ function FarmApp() {
           <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
           <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
         </FilterGroup>}
+        {expCatOpts.length > 0 && <FilterGroup label={t("category")}>
+          <select className="sf-select" value={expCat} aria-label={t("category")}
+            onChange={(e) => setExpCat(e.target.value)}>
+            <option value="all">{t("statusAll")}</option>
+            {expCatOpts.map((o) => <option key={o.key} value={o.key}>{o.icon} {o.label}</option>)}
+          </select>
+        </FilterGroup>}
+        <FilterGroup label={t("sortBy")}>
+          <SortPair t={t} sort={expSort} onChange={setExpSort} />
+        </FilterGroup>
       </SearchFilterBar>
 
       <DeskCard style={{ order: 1 }} pad={0} title={`✦ ${t("expenseOverview")}`}>
@@ -8494,11 +8517,15 @@ function FarmApp() {
         right={<StatusPill status="paid">{t("paidExpensesOnly")}</StatusPill>}>
         {(() => {
           const rows = [...expScoped].filter((e) => {
+            const cat = e.type === "med" ? "medicine" : (e.category || "other");
+            if (expCat !== "all" && cat !== expCat) return false;
             if (!expQ.trim()) return true;
             const q = expQ.toLowerCase();
             const label = e.type === "med" ? t("medicine") : catLabel(e.category, lang, S.categories);
             return `${label} ${e.note || ""} ${e.vendor || ""} ${e.amount || e.cost || ""} ${e.supplier || ""}`.toLowerCase().includes(q);
-          }).sort((a, b) => cmpTx(a, b, "newest"));
+          }).sort((a, b) => cmpBySort(a, b, expSort,
+            (x) => x.type === "med" ? (x.cost || 0) : (x.amount || 0),
+            (x) => x.type === "med" ? t("medicine") : catLabel(x.category, lang, S.categories)));
           if (rows.length === 0) return <div style={{ padding: 24 }}>
             <Empty icon="💸" title={t("noPaidExpenses")} sub={t("noPaidExpensesSub")}
               cta={`＋ ${t("logExpense")}`} onCta={() => setSheet({ k: "expense" })} /></div>;
@@ -9194,7 +9221,6 @@ function FarmApp() {
         : { k: "editExpense", id: e.id });
     }
   };
-  const cashFiltActive = (cashRange !== "today" ? 1 : 0) + (cashRange === "custom" && (cashFrom || cashTo) ? 1 : 0);
   const cashPeriodLabel = cashRange === "today" ? t("today") : cashRange === "yesterday" ? t("yesterday")
     : cashRange === "week" ? t("thisWeek") : cashRange === "lastMonth" ? t("lastMonth")
       : cashRange === "custom" ? `${dmy(cashBounds.from)} — ${dmy(cashBounds.to)}` : t("thisMonth");
@@ -9484,17 +9510,20 @@ function FarmApp() {
     return count > 0 ? `${SPECIES[k].icon} ${nf(count)}` : null;
   }).filter(Boolean).join(" · ");
 
-  const clearHerdFilters = () => { setQ(""); setSpFilter("all"); setHerdStatusFilter("all"); };
+  const herdSort = joinSort(sortBy.k === "age" ? "date" : "alpha", sortBy.d);
+  const herdSortOn = sortBy.k !== "tag" || sortBy.d !== "asc";
+  const clearHerdFilters = () => { setQ(""); setSpFilter("all"); setHerdStatusFilter("all"); setSortBy({ k: "tag", d: "asc" }); };
   const DeskAnimals = (
     <div style={{ display: "grid", gap: 14 }}>
       <SearchFilterBar t={t} q={q} onQ={setQ} qPlaceholder={t("searchAnimals")}
         extra={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px", fontSize: 14, minHeight: 44 }}
           onClick={() => setSheet({ k: "addAnimal" })}>＋ {t("addAnimal")}</button>}
-        activeCount={(spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0)}
+        activeCount={(spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0) + (herdSortOn ? 1 : 0)}
         onReset={clearHerdFilters}
         chips={[
           spFilter !== "all" ? { key: "sp", label: spName(spFilter, lang, true), onRemove: () => setSpFilter("all") } : null,
           herdStatusFilter !== "all" ? { key: "st", label: statusLabel(herdStatusFilter, lang), onRemove: () => setHerdStatusFilter("all") } : null,
+          herdSortOn ? { key: "sort", label: sortChipLabel(t, herdSort), onRemove: () => setSortBy({ k: "tag", d: "asc" }) } : null,
         ].filter(Boolean)}>
         <FilterGroup label={t("species")}>
           <Chip active={spFilter === "all"} onClick={() => setSpFilter("all")}>{t("all")}</Chip>
@@ -9505,6 +9534,10 @@ function FarmApp() {
           <Chip active={herdStatusFilter === "all"} onClick={() => setHerdStatusFilter("all")}>{t("statusAll")}</Chip>
           {herdStatusKeys.map((k) => <Chip key={k} active={herdStatusFilter === k}
             onClick={() => setHerdStatusFilter(k)} color={statusColor(k)}>{statusLabel(k, lang)}</Chip>)}
+        </FilterGroup>
+        <FilterGroup label={t("sortBy")}>
+          <SortPair t={t} sort={herdSort} fields={[["date", t("sortDate")], ["alpha", t("sortAlpha")]]}
+            onChange={(s) => { const p = parseSort(s); setSortBy({ k: p.field === "date" ? "age" : "tag", d: p.dir }); }} />
         </FilterGroup>
       </SearchFilterBar>
 
@@ -9742,11 +9775,9 @@ function FarmApp() {
             chips={[
               milkLogFilt.sess !== "all" ? { key: "sess", label: milkLogFilt.sess === "pm" ? t("eveningMilk") : t("morningMilk"),
                 onRemove: () => setMilkLogFilt((p) => ({ ...p, sess: "all" })) } : null,
-              milkLogFilt.from ? { key: "from", label: `${t("fromDate")} ${dmy(milkLogFilt.from)}`,
-                onRemove: () => setMilkLogFilt((p) => ({ ...p, from: "" })) } : null,
-              milkLogFilt.to ? { key: "to", label: `${t("toDate")} ${dmy(milkLogFilt.to)}`,
-                onRemove: () => setMilkLogFilt((p) => ({ ...p, to: "" })) } : null,
-              (milkLogFilt.sort || "newest") !== "newest" ? { key: "sort", label: t("sortOldest"),
+              milkLogFilt.from || milkLogFilt.to ? { key: "range", label: `${milkLogFilt.from ? dmy(milkLogFilt.from) : "…"} → ${milkLogFilt.to ? dmy(milkLogFilt.to) : "…"}`,
+                onRemove: () => setMilkLogFilt((p) => ({ ...p, from: "", to: "" })) } : null,
+              (milkLogFilt.sort || "newest") !== "newest" ? { key: "sort", label: sortChipLabel(t, milkLogFilt.sort),
                 onRemove: () => setMilkLogFilt((p) => ({ ...p, sort: "newest" })) } : null,
             ].filter(Boolean)}>
             <FilterGroup label={t("milkSession")}>
@@ -9759,10 +9790,8 @@ function FarmApp() {
                 onChange={(from, to) => setMilkLogFilt((p) => ({ ...p, from, to }))} />
             </FilterGroup>
             <FilterGroup label={t("sortBy")}>
-              <Chip active={(milkLogFilt.sort || "newest") === "newest"}
-                onClick={() => setMilkLogFilt((p) => ({ ...p, sort: "newest" }))}>{t("sortNewest")}</Chip>
-              <Chip active={milkLogFilt.sort === "oldest"}
-                onClick={() => setMilkLogFilt((p) => ({ ...p, sort: "oldest" }))}>{t("sortOldest")}</Chip>
+              <SortPair t={t} sort={milkLogFilt.sort || "newest"}
+                onChange={(sort) => setMilkLogFilt((p) => ({ ...p, sort }))} />
             </FilterGroup>
           </SearchFilterBar>
         </div>
@@ -9885,9 +9914,9 @@ function FarmApp() {
                   cta={`＋ ${t("addCustomer")}`} onCta={() => setSheet({ k: "addCustomer" })} /></div>
               : <>
                 <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
-                  <SearchFilterBar t={t}
+                  <SearchFilterBar t={t} q={custQ} onQ={setCustQ} qPlaceholder={t("searchCustomers")}
                     activeCount={custSort !== "nameAsc" ? 1 : 0}
-                    onReset={() => setCustSort("nameAsc")}
+                    onReset={() => { setCustQ(""); setCustSort("nameAsc"); }}
                     chips={custSort !== "nameAsc" ? [{ key: "sort", label: (custSortOpts.find((o) => o[0] === custSort) || [])[1] || custSort,
                       onRemove: () => setCustSort("nameAsc") }] : []}>
                     <FilterGroup label={t("sortBy")}>
@@ -9958,10 +9987,22 @@ function FarmApp() {
   );
 
   const filteredSuppliers = activeSuppliers.filter((s) => {
+    const bal = supplierLedger.bySupplier[s.id] || { due: 0, overdueDue: 0 };
+    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+    if (suppSt !== "all" && st !== suppSt) return false;
     if (!suppQ.trim()) return true;
     const q = suppQ.toLowerCase();
     return `${s.name} ${s.phone || ""} ${(s.tags || []).join(" ")}`.toLowerCase().includes(q);
-  }).slice().sort((a, b) => a.name.localeCompare(b.name, lang === "ar" ? "ar" : "en", { sensitivity: "base" }));
+  }).slice().sort((a, b) => {
+    const locale = lang === "ar" ? "ar" : "en";
+    if (suppSort === "amountDesc" || suppSort === "amountAsc") {
+      const da = (supplierLedger.bySupplier[a.id] || {}).due || 0;
+      const db = (supplierLedger.bySupplier[b.id] || {}).due || 0;
+      return (toCents(da) - toCents(db)) * (suppSort === "amountAsc" ? 1 : -1) || a.name.localeCompare(b.name, locale, { sensitivity: "base" });
+    }
+    const d = a.name.localeCompare(b.name, locale, { sensitivity: "base" });
+    return parseSort(suppSort).dir === "desc" ? -d : d;
+  });
 
   const DeskSuppliers = (
     <div style={{ display: "grid", gap: 14 }}>
@@ -10023,7 +10064,23 @@ function FarmApp() {
                   <Kpi label={t("supplierPaidMonth")} value={fmtC(supplierDash.paidMonth, S.rate, lang)} tone={C.green} />
                 </div>
                 <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
-                  <SearchFilterBar t={t} q={suppQ} onQ={setSuppQ} qPlaceholder={t("searchSuppliers")} />
+                  <SearchFilterBar t={t} q={suppQ} onQ={setSuppQ} qPlaceholder={t("searchSuppliers")}
+                    activeCount={(suppSt !== "all" ? 1 : 0) + (suppSort !== "alphaAsc" ? 1 : 0)}
+                    onReset={() => { setSuppSt("all"); setSuppSort("alphaAsc"); }}
+                    chips={[
+                      suppSt !== "all" ? { key: "st", label: suppSt === "overdue" ? t("statusOverdue") : suppSt === "owing" ? t("statusOwing") : t("statusClear"),
+                        onRemove: () => setSuppSt("all") } : null,
+                      suppSort !== "alphaAsc" ? { key: "sort", label: sortChipLabel(t, suppSort), onRemove: () => setSuppSort("alphaAsc") } : null,
+                    ].filter(Boolean)}>
+                    <FilterGroup label={t("colStatus")}>
+                      {[["all", t("statusAll")], ["owing", t("statusOwing")], ["overdue", t("statusOverdue")], ["clear", t("statusClear")]].map(([k, lb]) => (
+                        <Chip key={k} active={suppSt === k} onClick={() => setSuppSt(k)}>{lb}</Chip>))}
+                    </FilterGroup>
+                    <FilterGroup label={t("sortBy")}>
+                      <SortPair t={t} sort={suppSort} onChange={setSuppSort}
+                        fields={[["amount", t("sortAmount")], ["alpha", t("sortAlpha")]]} />
+                    </FilterGroup>
+                  </SearchFilterBar>
                 </div>
                 <DataList
                   cards={filteredSuppliers.map((s) => {
@@ -11327,6 +11384,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
 .sf-search:focus-within{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}22}
 .sf-ico{display:inline-flex;color:${C.inkSoft};flex-shrink:0}
+.sf-svg{display:block}
 .sf-search input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-family:var(--body);
   font-size:15px;color:${C.ink};height:44px;padding:0}
 .sf-search input::placeholder{color:${C.inkSoft};opacity:.85}
@@ -11417,57 +11475,6 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sort-dd select:focus{outline:none;border-color:${C.field}}
 .sort-lbl{font-size:12px;font-weight:700;color:${C.inkSoft}}
 [dir=rtl] .sort-dd select{padding:7px 12px 7px 28px;background-position:10px 55%,15px 55%}
-.sf-wrap{position:relative;display:grid;gap:8px}
-.sf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.sf-search{flex:1;min-width:140px;display:flex;align-items:center;gap:6px;background:#F1F5F9;
-  border:1px solid ${C.line};border-radius:999px;padding:0 4px 0 12px;min-height:44px}
-.sf-search input{flex:1;border:none;background:transparent;min-width:0;padding:10px 4px;font-size:15px;
-  font-family:var(--body);color:${C.ink};outline:none;box-shadow:none}
-.sf-search input:focus{border:none!important;box-shadow:none!important}
-.sf-ico{display:grid;place-items:center;color:#334155;flex-shrink:0}
-.sf-svg{display:block}
-.sf-clear,.sf-gear{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:999px;cursor:pointer;
-  display:inline-grid;place-items:center;flex-shrink:0}
-.sf-clear{border:none;background:transparent;color:#334155;font-size:16px}
-.sf-gear{border:1px solid ${C.line};background:${C.card};color:#334155;position:relative}
-.sf-gear.on,.sf-gear.hot{border-color:${C.field};color:${C.field};background:${C.paper}}
-.sf-gear.hot{border-color:${C.amber};color:${C.amber}}
-.sf-badge{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;
-  border-radius:99px;background:${C.amber};color:#fff;font-size:10px;font-weight:800;
-  display:inline-grid;place-items:center;font-family:var(--mono);line-height:1}
-.sf-scrim{display:none}
-.sf-pop{position:absolute;top:calc(100% + 8px);inset-inline-end:0;z-index:60;width:min(420px,calc(100vw - 32px));
-  background:${C.card};border:1px solid ${C.line};border-radius:16px;padding:14px 14px 12px;
-  box-shadow:0 16px 40px rgba(28,25,23,.16);display:grid;gap:14px}
-.sf-pop-handle{display:none;width:44px;height:4px;border-radius:99px;background:${C.line};margin:4px auto 8px}
-.sf-group-lb{font-size:12px;font-weight:700;color:${C.inkSoft};margin-bottom:8px}
-.sf-group-body{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-input.sf-date{min-height:44px;min-width:140px;flex:1;padding:9px 10px;border:1px solid ${C.line};
-  border-radius:10px;background:${C.card};color:${C.ink};font-family:var(--body);font-size:15px}
-.sf-pop-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
-.sf-reset{background:none;border:none;cursor:pointer;font-family:var(--body);font-weight:700;font-size:13.5px;
-  color:${C.field};min-height:44px;padding:0 8px}
-.sf-apply{background:${C.field};color:#fff;border:none;border-radius:999px;padding:10px 18px;min-height:44px;
-  font-family:var(--body);font-weight:700;font-size:14px;cursor:pointer}
-.sf-chips{display:flex;gap:8px;flex-wrap:wrap}
-.sf-chip{display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;border:1px solid ${C.line};
-  border-radius:999px;padding:8px 12px;min-height:44px;font-family:var(--body);font-size:13px;font-weight:600;
-  color:#334155;cursor:pointer}
-.help-kit{position:relative}
-.help-kit-btn{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:999px;border:1.5px solid ${C.line};
-  background:${C.card};color:${C.ink};font-weight:800;font-size:18px;cursor:pointer}
-.help-kit-btn.inv{border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.16);color:#fff}
-.help-kit-pop{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:30;min-width:230px;max-width:280px;
-  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px;box-shadow:0 12px 28px rgba(28,25,23,.16)}
-.help-kit-act{display:flex;align-items:center;width:100%;min-height:44px;border:none;background:${C.paper};
-  border-radius:10px;padding:10px 12px;font-weight:700;font-family:var(--body);cursor:pointer;margin-bottom:6px;color:${C.ink}}
-.help-kit-txt{font-size:12.5px;color:${C.inkSoft};margin:8px 0 0;font-weight:600;line-height:1.45}
-@media(max-width:700px){
-  .sf-scrim{display:block;position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:80}
-  .sf-pop{position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;max-height:min(82vh,640px);
-    overflow:auto;border-radius:18px 18px 0 0;z-index:81;padding:10px 16px 20px}
-  .sf-pop-handle{display:block}
-}
 .dk-quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 22px;background:${C.card};
   border-bottom:1px solid ${C.line}}
 .dk-quick-btn{display:inline-flex;align-items:center;gap:5px;background:${C.paper};border:1px solid ${C.line};
@@ -11582,7 +11589,7 @@ input.sf-date{min-height:44px;min-width:140px;flex:1;padding:9px 10px;border:1px
 .status-row--neutral,.data-card--neutral{border-inline-start-color:#94A3B8}
 .adapt-grid{display:grid;grid-template-columns:1fr;gap:1rem}
 .touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog,
-.sf-gear,.sf-clear,.sf-chip,.sf-apply,.help-kit-btn,.help-kit-act{
+.sf-gear,.sf-clear,.sf-chip,.sf-apply,.sf-dir,.help-kit-btn,.help-kit-act{
   min-height:44px;min-width:44px}
 .dk-pill,.filter-tog,.sort-tog,.dk-quick-btn{display:inline-flex;align-items:center;justify-content:center}
 .dk-icon-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
