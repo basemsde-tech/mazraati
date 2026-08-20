@@ -17,9 +17,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.2", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.3": {
+    ar: [
+      "إصلاح تعطل شاشة حساب الزبون بعد شريط البحث والتصفية",
+    ],
+    en: [
+      "Fix customer-account crash after the unified search and filter bar",
+    ],
+  },
   "2.9.2": {
     ar: [
       "حفظ البيع يعمل عندما تكون الكمية والسعر صحيحين، ويعرض سبب المنع بدل التعطيل الصامت",
@@ -3127,7 +3135,8 @@ function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, o
       document.body.classList.remove("sf-open");
     };
   }, [open]);
-  const count = activeCount != null ? activeCount : (chips || []).length;
+  const chipList = (chips || []).filter(Boolean);
+  const count = activeCount != null ? activeCount : chipList.length;
   const hasPanel = children != null && children !== false;
   return <div className="sf-wrap" ref={wrapRef}>
     <div className="sf-bar" role="search">
@@ -3159,8 +3168,8 @@ function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, o
         </div>
       </div>
     </>}
-    {(chips || []).length > 0 && <div className="sf-chips">
-      {chips.map((c) => (
+    {chipList.length > 0 && <div className="sf-chips">
+      {chipList.map((c) => (
         <button key={c.key} type="button" className="sf-chip" onClick={c.onRemove}
           aria-label={`${t("clearFilters")}: ${c.label}`} title={c.label}>
           {c.label} <span aria-hidden="true"><IcoX /></span>
@@ -5785,8 +5794,9 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const b = ledger.byCustomer[customer.id] || { sold: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
-  const f = filters;
-  const byDate = (a, c) => cmpTx(a, c, (f.sort || "newest") === "oldest" ? "oldest" : "newest");
+  const f = filters || { q: "", status: "all", from: "", to: "", sort: "newest" };
+  const sortNewest = (f.sort || "newest") !== "oldest";
+  const byDate = (a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest");
   const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
     .slice().sort(byDate);
   const inR = (iso) => { const k = dayKey(iso); return (!f.from || k >= f.from) && (!f.to || k <= f.to); };
@@ -5922,7 +5932,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                     {iv.reimbAmount > 0 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
                       color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
                       {t("reimbursementTotal")} −{fmtC(iv.reimbAmount, S.rate, lang)}
-                      {iv.reimbRows.length ? ` · ${iv.reimbRows.map((r) => r.name).join("، ")}` : ""}
+                      {(iv.reimbRows || []).length ? ` · ${(iv.reimbRows || []).map((r) => r.name).join("، ")}` : ""}
                     </span>}
                     {(iv.discountAmount || 0) > 0.009 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
                       color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
