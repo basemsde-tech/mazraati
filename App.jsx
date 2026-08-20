@@ -17,23 +17,23 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.2", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
-  "2.9.1": {
+  "2.9.2": {
     ar: [
       "حفظ البيع يعمل عندما تكون الكمية والسعر صحيحين، ويعرض سبب المنع بدل التعطيل الصامت",
       "تبديل سعر الوحدة أو السعر الكامل في البيع والبيع السريع",
       "ترتيب الحركات حسب يوم المزرعة ثم وقت التسجيل دون خلط أوقات الجلسة",
       "استخدام المزرعة وأدلة الشاشة صارت داخل زر ؟",
-      "شريط بحث وتصفية موحّد للقوائم الرئيسية",
+      "شريط بحث وتصفية موحّد: بحث سريع مع قائمة تصفية وترتيب دون إرباك الشاشة",
     ],
     en: [
       "Sale save works when qty and price are valid, and shows why it is blocked instead of failing silently",
       "Toggle unit price or full price on Sale and Quick Sale",
       "Lists sort by farm day then time logged, without mixing session stamps",
       "Farm use and on-screen guides moved behind a ? toolkit",
-      "One compact search and filter bar on the main lists",
+      "One compact search and filter bar: keyword search plus a filter/sort sheet without crowding the screen",
     ],
   },
   "2.9.0": {
@@ -940,9 +940,9 @@ const T = {
     openAccount: "فتح الحساب", closeTab: "إغلاق", noOpenAccounts: "لا حسابات مفتوحة",
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
-    searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
+    searchTx: "ابحث في الحركات…", searchCustomers: "ابحث عن زبون…", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
-    applyFilters: "تم", filterAndSort: "تصفية وترتيب",
+    applyFilters: "تم", resetFilters: "إعادة التصفية", filterAndSort: "تصفية وترتيب",
     sortDate: "التاريخ", sortAmount: "المبلغ", sortAlpha: "أبجدي",
     sortAsc: "تصاعدي", sortDesc: "تنازلي",
     herdOverview: "نظرة على القطيع", searchAnimals: "ابحث بالاسم أو الرقم أو السلالة…",
@@ -1358,9 +1358,9 @@ const T = {
     openAccount: "Open account", closeTab: "Close", noOpenAccounts: "No open accounts",
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
-    searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
+    searchTx: "Search transactions…", searchCustomers: "Search customers…", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
-    applyFilters: "Done", filterAndSort: "Filter & sort",
+    applyFilters: "Done", resetFilters: "Reset filters", filterAndSort: "Filter & sort",
     sortDate: "Date", sortAmount: "Amount", sortAlpha: "A–Z",
     sortAsc: "Ascending", sortDesc: "Descending",
     herdOverview: "Herd at a glance", searchAnimals: "Search name, tag, or breed…",
@@ -1645,6 +1645,36 @@ const cmpTx = (a, b, dir = "newest") => {
   const ia = String(a.id || a.key || "");
   const ib = String(b.id || b.key || "");
   return dir === "newest" ? ib.localeCompare(ia) : ia.localeCompare(ib);
+};
+const parseSort = (sort) => {
+  if (sort === "oldest") return { field: "date", dir: "asc" };
+  if (sort === "amountAsc") return { field: "amount", dir: "asc" };
+  if (sort === "amountDesc") return { field: "amount", dir: "desc" };
+  if (sort === "alphaDesc" || sort === "nameDesc") return { field: "alpha", dir: "desc" };
+  if (sort === "alphaAsc" || sort === "nameAsc") return { field: "alpha", dir: "asc" };
+  return { field: "date", dir: "desc" };
+};
+const joinSort = (field, dir) => {
+  if (field === "date") return dir === "asc" ? "oldest" : "newest";
+  if (field === "amount") return dir === "asc" ? "amountAsc" : "amountDesc";
+  return dir === "desc" ? "alphaDesc" : "alphaAsc";
+};
+const sortChipLabel = (t, sort) => {
+  const { field, dir } = parseSort(sort);
+  const name = field === "amount" ? t("sortAmount") : field === "alpha" ? t("sortAlpha") : t("sortDate");
+  return `${name} ${dir === "asc" ? "↑" : "↓"}`;
+};
+const cmpBySort = (a, b, sort, amountOf, alphaOf) => {
+  const { field, dir } = parseSort(sort);
+  if (field === "amount") {
+    const d = (toCents(amountOf ? amountOf(a) : 0) - toCents(amountOf ? amountOf(b) : 0)) * (dir === "asc" ? 1 : -1);
+    return d || cmpTx(a, b, "newest");
+  }
+  if (field === "alpha") {
+    const d = String((alphaOf && alphaOf(a)) || "").localeCompare(String((alphaOf && alphaOf(b)) || ""), undefined, { sensitivity: "base" });
+    return (dir === "asc" ? d : -d) || cmpTx(a, b, "newest");
+  }
+  return cmpTx(a, b, dir === "asc" ? "oldest" : "newest");
 };
 function compareEntries(a, b, newestFirst = true) {
   return cmpTx(a, b, newestFirst ? "newest" : "oldest");
@@ -2976,7 +3006,7 @@ function Chip({ active, onClick, children, color = C.field }) {
 function PriceModeToggle({ t, mode, onChange }) {
   return <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
     <Chip active={mode === "unit"} onClick={() => onChange("unit")}>{t("pricePerUnit")}</Chip>
-    <Chip active={mode === "total"} onClick={() => onChange("total")}>{t("priceAsTotal")}</Chip>
+    <Chip active={mode === "total"} onClick={() => onChange("total")}>{t("priceFull")}</Chip>
   </div>;
 }
 function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
@@ -3032,45 +3062,6 @@ function DeleteConfirmBlock({ t, warn, onDelete }) {
     </div>
   </div>;
 }
-/* Two options → toggle; three or more → dropdown. */
-function SortControl({ value, onChange, options, label }) {
-  const opts = options || [];
-  if (opts.length < 2) return null;
-  if (opts.length === 2) {
-    const i = Math.max(0, opts.findIndex((o) => o[0] === value));
-    const cur = opts[i] || opts[0];
-    const next = opts[(i + 1) % 2][0];
-    const dateish = opts.every(([k]) => k === "newest" || k === "oldest");
-    return <button type="button" className="sort-tog" onClick={() => onChange(next)}
-      title={opts.find((o) => o[0] === next)?.[1] || ""}>
-      {label ? <span className="sort-lbl">{label}</span> : null}
-      <span>{cur[1]}</span>
-      {dateish ? <span className="sort-arrow">{cur[0] === "newest" ? "↓" : "↑"}</span> : null}
-      <span className="sort-knob"><i style={{ insetInlineStart: i === 0 ? 2 : 18 }} /></span>
-    </button>;
-  }
-  return <label className="sort-dd">
-    {label ? <span className="sort-lbl">{label}</span> : null}
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {opts.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
-    </select>
-  </label>;
-}
-/* Filters stay out of the way until needed. */
-function FilterTray({ open, onToggle, t, active = 0, children, end }) {
-  return <div className="filter-tray">
-    <div className="filter-tray-bar">
-      <button type="button" className={`filter-tog${open ? " on" : ""}${active > 0 ? " hot" : ""}`}
-        onClick={onToggle} title={open ? t("hideFilters") : t("showFilters")}>
-        <span aria-hidden>{open ? "▾" : "▸"}</span>
-        <span>{t("filters")}</span>
-        {active > 0 ? <span className="filter-badge">{active}</span> : null}
-      </button>
-      {end}
-    </div>
-    {open ? <div className="filter-body">{children}</div> : null}
-  </div>;
-}
 function FilterGroup({ label, children }) {
   return <div className="sf-group">
     {label ? <div className="sf-group-lb">{label}</div> : null}
@@ -3090,6 +3081,36 @@ function IcoSliders() {
     <circle cx="9" cy="17" r="2.25" fill="none" stroke="currentColor" strokeWidth="2" />
   </svg>;
 }
+function IcoX() {
+  return <svg className="sf-svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+function IcoArrowDownUp() {
+  return <svg className="sf-svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <path d="M8 5v14M8 5l-3 3M8 5l3 3M16 19V5M16 19l-3-3M16 19l3-3"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>;
+}
+function SortPair({ t, sort, onChange, fields }) {
+  const { field, dir } = parseSort(sort);
+  const opts = fields || [["date", t("sortDate")], ["amount", t("sortAmount")], ["alpha", t("sortAlpha")]];
+  const defaultDir = (k) => (k === "alpha" ? "asc" : "desc");
+  return <div className="sf-sort">
+    <div className="sf-seg" role="group" aria-label={t("sortBy")}>
+      {opts.map(([k, lb]) => (
+        <button type="button" key={k} className={`sf-seg-btn${field === k ? " on" : ""}`}
+          aria-pressed={field === k}
+          onClick={() => onChange(joinSort(k, k === field ? dir : defaultDir(k)))}>{lb}</button>
+      ))}
+    </div>
+    <button type="button" className="sf-dir" aria-label={dir === "asc" ? t("sortAsc") : t("sortDesc")}
+      title={dir === "asc" ? t("sortAsc") : t("sortDesc")}
+      onClick={() => onChange(joinSort(field, dir === "asc" ? "desc" : "asc"))}>
+      <IcoArrowDownUp />
+    </button>
+  </div>;
+}
 function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, onReset, children }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -3099,24 +3120,29 @@ function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, o
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", onDoc);
     window.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onDoc); window.removeEventListener("keydown", onKey); };
+    document.body.classList.add("sf-open");
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      document.body.classList.remove("sf-open");
+    };
   }, [open]);
   const count = activeCount != null ? activeCount : (chips || []).length;
   const hasPanel = children != null && children !== false;
   return <div className="sf-wrap" ref={wrapRef}>
-    <div className="sf-bar">
+    <div className="sf-bar" role="search">
       {onQ ? <label className="sf-search">
-        <span className="sf-ico"><IcoSearch /></span>
+        <span className="sf-ico" aria-hidden="true"><IcoSearch /></span>
         <input value={q || ""} onChange={(e) => onQ(e.target.value)}
           placeholder={qPlaceholder || t("search")} aria-label={qPlaceholder || t("search")} />
         {(q || "").trim()
           ? <button type="button" className="sf-clear" aria-label={t("clearFilters")} title={t("clearFilters")}
-              onClick={() => onQ("")}>✕</button>
+              onClick={() => onQ("")}><IcoX /></button>
           : null}
       </label> : null}
       {hasPanel ? <button type="button" className={`sf-gear${open ? " on" : ""}${count > 0 ? " hot" : ""}`}
         aria-label={t("filterAndSort")} title={t("filterAndSort")} aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}>
+        aria-haspopup="dialog" onClick={() => setOpen((o) => !o)}>
         <IcoSliders />
         {count > 0 ? <span className="sf-badge">{count > 9 ? "9+" : count}</span> : null}
       </button> : null}
@@ -3137,7 +3163,7 @@ function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, o
       {chips.map((c) => (
         <button key={c.key} type="button" className="sf-chip" onClick={c.onRemove}
           aria-label={`${t("clearFilters")}: ${c.label}`} title={c.label}>
-          {c.label} <span aria-hidden>✕</span>
+          {c.label} <span aria-hidden="true"><IcoX /></span>
         </button>
       ))}
     </div>}
@@ -3177,23 +3203,21 @@ function DateFilterPills({ t, from, to, onChange }) {
   const isWeek = from === week.from && to === week.to;
   const isMonth = from === month.from && to === month.to;
   const custom = !none && !isToday && !isWeek && !isMonth;
-  return <>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+  return <div className="sf-span">
+    <div className="sf-group-body">
       <Chip active={none} onClick={() => onChange("", "")}>{t("statusAll")}</Chip>
       <Chip active={isToday} onClick={() => onChange(today.from, today.to)}>{t("today")}</Chip>
       <Chip active={isWeek} onClick={() => onChange(week.from, week.to)}>{t("thisWeek")}</Chip>
       <Chip active={isMonth} onClick={() => onChange(month.from, month.to)}>{t("thisMonth")}</Chip>
       <Chip active={custom} onClick={() => onChange(from || today.from, to || today.to)}>{t("customRange")}</Chip>
     </div>
-    {(from || to || custom) && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
+    {(from || to || custom) && <div className="sf-dates">
       <input type="date" value={from || ""} onChange={(e) => onChange(e.target.value, to || "")}
-        style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
+        aria-label={t("fromDate")} className="sf-date" />
       <input type="date" value={to || ""} onChange={(e) => onChange(from || "", e.target.value)}
-        style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
+        aria-label={t("toDate")} className="sf-date" />
     </div>}
-  </>;
+  </div>;
 }
 function SalePriceToggle({ t, S, lang, priceMode, onMode, qty, unitPrice, amount, onUnit, onTotal, step, currency, setCurrency }) {
   return <>
@@ -4011,9 +4035,9 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
   const label = { fresh: t("milkFresh"), ok: t("milkOk"), aging: t("milkAging"), old: t("milkOld") };
   const s = stock || { available: 0, produced: 0, sold: 0, used: 0, lots: [] };
   const [showLots, setShowLots] = useState(false);
-  const kit = onUse ? <HelpKit t={t} tone={simple ? "inv" : undefined}
+  const kit = onUse ? <HelpKit t={t} tone="inv"
     actions={[{ key: "use", icon: "−", label: t("milkUse"), run: onUse }]}
-    items={[t("milkUseSub")]} /> : null;
+    items={[t("milkUseSub"), t("afterMilkHint"), t("milkLogHint")]} /> : null;
   if (simple) {
     return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
       background: C.field, color: "#fff", borderRadius: 8, padding: "14px 16px" }}>
@@ -5003,10 +5027,15 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   );
   const Activity = (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <SortControl value={sort} onChange={setSort} label={t("sortBy")}
-          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />
-      </div>
+      <SearchFilterBar t={t} activeCount={sort !== "newest" ? 1 : 0}
+        onReset={() => setSort("newest")}
+        chips={sort !== "newest" ? [{ key: "sort", label: sortChipLabel(t, sort), onRemove: () => setSort("newest") }] : []}
+      >
+        <FilterGroup label={t("sortBy")}>
+          <SortPair t={t} sort={sort} onChange={setSort}
+            fields={[["date", t("sortDate")]]} />
+        </FilterGroup>
+      </SearchFilterBar>
       {billTable(allBills, t("supplierNoBills"))}
       {pays.length > 0 && <>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft }}>💵 {t("supplierPays")}</div>
@@ -5161,14 +5190,14 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     });
   const amount = priceMode === "total"
     ? fromCents(toCents(total))
-    : fromCents(toCents(qty * price));
+    : qtyMoney(qty, price);
   const unitPrice = priceMode === "total"
-    ? (qty > 0.0001 ? fromCents(toCents(amount / qty)) : 0)
+    ? unitFromTotal(amount, qty)
     : price;
   const switchPriceMode = (next) => {
     if (next === priceMode) return;
-    if (next === "total") setTotal(fromCents(toCents(qty * price)));
-    else if (qty > 0.0001) setPrice(fromCents(toCents(total / qty)));
+    if (next === "total") setTotal(qtyMoney(qty, price));
+    else if (qty > 0.0001) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
   const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
@@ -5178,6 +5207,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const netAmount = fromCents(Math.max(0, afterReimbC - discC));
   const reimburseOver = reimbC > toCents(amount);
   const discountOver = toCents(discount) > afterReimbC;
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
   useEffect(() => {
     if (!paidTouched) return;
     setPaidNow((p) => fromCents(Math.min(toCents(p), toCents(netAmount))));
@@ -5190,15 +5220,11 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
   };
   const saveSale = () => {
-    if (!cid) return setErr(t("pickCustomer"));
-    if (!(qty > 0)) return setErr(t("needQty"));
-    if (!(amount > 0)) return setErr(t("needPrice"));
+    if (block) return setErr(block);
     const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
       .map((r) => ({ name: r.name.trim(), amount: fromCents(toCents(r.amount)) }));
     if (reimbursements.some((r) => !r.name)) return setErr(t("reimburseNameNeeded"));
-    if (reimburseOver) return setErr(t("reimburseOverGross"));
-    if (discountOver) return setErr(t("discountOverNet"));
-    onSave({ customerId: cid, product, qty, price: unitPrice, amount, reimbursements, payNow,
+    onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, reimbursements, payNow,
       discountAmount: fromCents(discC), discountNote: discountNote.trim(),
       unit: product === "milk" ? milkSaleUnit : undefined,
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
@@ -5372,7 +5398,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   if (customers.length === 0) return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
-  return <Sheet title={`⚡ ${t("quickSale")}`} sub={t("quickSaleHint")} onClose={onClose}>
+  return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
     <Scroller>
       {customers.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
       <Chip active={false} onClick={onAddCustomer}>➕</Chip>
@@ -5400,7 +5426,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>
-        {priceMode === "total" ? t("priceAsTotal") : t("unitPrice")}</div>
+        {priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</div>
       {priceMode === "unit"
         ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
         : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
@@ -5667,7 +5693,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
     <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit} /></div>
-    <Step n="3" label={priceMode === "total" ? t("priceAsTotal") : t("unitPrice")} />
+    <Step n="3" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       {priceMode === "unit"
@@ -5706,11 +5732,17 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
       style={{ ...inp, marginBottom: 12 }} />
     {reimburseOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("discountOverNet")}</div>}
-    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && qty > 0 && !reimburseOver && !discountOver ? 1 : .45 }}
-      onClick={() => amount > 0 && qty > 0 && !reimburseOver && !discountOver && onSave({ qty, price: unitPrice, amount, product,
-        discountAmount: fromCents(discC), discountNote: discountNote.trim(),
-        unit: product === "milk" ? milkSaleUnit : undefined,
-        at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+    {(() => {
+      const block = saleSaveReason(t, { cid: true, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
+      return <>
+        {block && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {block}</div>}
+        <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
+          onClick={() => !block && onSave({ qty, price: unitPrice, amount, product, priceMode,
+            discountAmount: fromCents(discC), discountNote: discountNote.trim(),
+            unit: product === "milk" ? milkSaleUnit : undefined,
+            at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+      </>;
+    })()}
     {onDelete && <DeleteConfirmBlock t={t} warn={t("deleteWarn")} onDelete={onDelete} />}
   </Sheet>;
 }
@@ -5754,21 +5786,18 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
   const f = filters;
-  const [filtOpen, setFiltOpen] = useState(false);
-  const sortNewest = (f.sort || "newest") !== "oldest";
-  const byDate = (a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest");
+  const byDate = (a, c) => cmpTx(a, c, (f.sort || "newest") === "oldest" ? "oldest" : "newest");
   const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
     .slice().sort(byDate);
   const inR = (iso) => { const k = dayKey(iso); return (!f.from || k >= f.from) && (!f.to || k <= f.to); };
   const rows = all.filter((x) => inR(x.at))
     .filter((x) => f.status === "all" || x.status === f.status)
     .filter((x) => !f.q || `${x.no} ${x.note || ""} ${n1(x.qty)}`.toLowerCase().includes(f.q.toLowerCase()))
-    .sort(byDate);
+    .sort((a, c) => cmpBySort(a, c, f.sort, (x) => x.netAmount, (x) => x.no));
   const rSold = fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
   const rPaid = fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
   const rDue = fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
   const ranged = !!(f.from || f.to || f.status !== "all" || f.q);
-  const filtActive = (f.from || f.to || f.status !== "all" ? 1 : 0) + (f.q ? 1 : 0);
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
   const chipTone = (k) => (k === "all" ? C.field : k === "paid" ? C.green : k === "partial" ? C.amber : C.red);
 
@@ -5810,29 +5839,29 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
   const Transactions = (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input value={f.q} onChange={(e) => setFilters({ ...f, q: e.target.value })} placeholder={t("searchTx")}
-          style={{ ...inp, flex: 1, minWidth: 160, padding: "9px 12px", fontSize: 14 }} />
-        <SortControl value={f.sort || "newest"} onChange={(v) => setFilters({ ...f, sort: v })} label={t("sortBy")}
-          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />
-      </div>
-      <FilterTray open={filtOpen} onToggle={() => setFiltOpen((o) => !o)} t={t} active={filtActive}
-        end={ranged ? <button type="button" className="dk-pill" onClick={() => setFilters({ q: "", status: "all", from: "", to: "", sort: f.sort || "newest" })}>
-          ✕ {t("clearFilters")}</button> : null}>
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+      <SearchFilterBar t={t} q={f.q} onQ={(v) => setFilters({ ...f, q: v })} qPlaceholder={t("searchTx")}
+        activeCount={(f.status !== "all" ? 1 : 0) + (f.from || f.to ? 1 : 0) + ((f.sort || "newest") !== "newest" ? 1 : 0)}
+        onReset={() => setFilters({ q: "", status: "all", from: "", to: "", sort: "newest" })}
+        chips={[
+          f.status !== "all" ? { key: "st", label: f.status === "paid" ? t("paidS") : f.status === "partial" ? t("partial") : t("unpaid"),
+            onRemove: () => setFilters({ ...f, status: "all" }) } : null,
+          f.from || f.to ? { key: "range", label: `${f.from ? dmy(f.from) : "…"} → ${f.to ? dmy(f.to) : "…"}`,
+            onRemove: () => setFilters({ ...f, from: "", to: "" }) } : null,
+          (f.sort || "newest") !== "newest" ? { key: "sort", label: sortChipLabel(t, f.sort),
+            onRemove: () => setFilters({ ...f, sort: "newest" }) } : null,
+        ].filter(Boolean)}>
+        <FilterGroup label={t("colStatus")}>
           {[["all", t("statusAll")], ["paid", t("paidS")], ["partial", t("partial")], ["unpaid", t("unpaid")]].map(([k, lb]) => (
-            <Chip key={k} active={f.status === k} onClick={() => setFilters({ ...f, status: k })}
-              color={chipTone(k)}>{lb}</Chip>))}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
-          <input type="date" value={f.from} onChange={(e) => setFilters({ ...f, from: e.target.value })}
-            style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
-          <input type="date" value={f.to} onChange={(e) => setFilters({ ...f, to: e.target.value })}
-            style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
-        </div>
-      </FilterTray>
+            <Chip key={k} active={f.status === k} onClick={() => setFilters({ ...f, status: k })} color={chipTone(k)}>{lb}</Chip>))}
+        </FilterGroup>
+        <FilterGroup label={t("customRange")}>
+          <DateFilterPills t={t} from={f.from} to={f.to}
+            onChange={(from, to) => setFilters({ ...f, from, to })} />
+        </FilterGroup>
+        <FilterGroup label={t("sortBy")}>
+          <SortPair t={t} sort={f.sort || "newest"} onChange={(sort) => setFilters({ ...f, sort })} />
+        </FilterGroup>
+      </SearchFilterBar>
 
       <div className="adapt-grid">
         <Kpi label={`${t("totalSold")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rSold, S.rate, lang)} />
@@ -6781,7 +6810,7 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
     || (logType === "sale" && e.type === "saleReimburse")
     || (logType === "prod" && ["milk", "milkBulk", "milkUse", "eggs"].includes(e.type))
     || (logType === "herd" && ["animalAdd", "animalEdit", "status", "due", "loss", "birth", "weight", "workerAdd", "customerAdd", "profile"].includes(e.type));
-  const list = foldMilkBulkLog(scoped.filter(belongs));
+  const list = foldMilkBulkLog(scoped.filter(belongs)).slice().sort((a, b) => compareEntries(a, b, true));
   return <Card><Title>🧾 {t("log")} · {list.length}</Title>
     <Scroller>{groups.map(([k, ic, lb]) => <Chip key={k} active={logType === k} onClick={() => setLogType(k)} color={C.ink}>{ic} {lb}</Chip>)}</Scroller>
     <div style={{ display: "grid", gap: 8 }}>
@@ -8317,23 +8346,24 @@ function FarmApp() {
       : expRange === "custom" ? `${dmy(expBounds.from)} — ${dmy(expBounds.to)}` : t("thisMonth");
   const DeskExpenses = (
     <div style={{ display: "grid", gap: 14 }}>
-      <FilterTray open={expFiltOpen} onToggle={() => setExpFiltOpen((o) => !o)} t={t} active={expFiltActive}
-        end={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
-          onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-          {[["today", t("today")], ["yesterday", t("yesterday")], ["month", t("thisMonth")], ["week", t("thisWeek")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+      <SearchFilterBar t={t} q={expQ} onQ={setExpQ} qPlaceholder={t("searchExpenses")}
+        extra={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px", fontSize: 14, minHeight: 44 }}
+          onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>}
+        activeCount={(expRange !== "today" ? 1 : 0)}
+        onReset={() => { setExpRange("today"); setExpFrom(""); setExpTo(""); }}
+        chips={[
+          expRange !== "today" ? { key: "range", label: expPeriodLabel, onRemove: () => { setExpRange("today"); setExpFrom(""); setExpTo(""); } } : null,
+        ].filter(Boolean)}>
+        <FilterGroup label={t("customRange")}>
+          {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
+            ["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
             <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
-        </div>
-        {expRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-          <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} style={{ ...inp, width: 160 }} />
-          <span>→</span>
-          <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} style={{ ...inp, width: 160 }} />
-        </div>}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={expQ} onChange={(e) => setExpQ(e.target.value)} placeholder={t("searchExpenses")}
-            style={{ ...inp, flex: 1, minWidth: 180, padding: "8px 10px", fontSize: 13.5 }} />
-        </div>
-      </FilterTray>
+        </FilterGroup>
+        {expRange === "custom" && <FilterGroup>
+          <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
+          <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+        </FilterGroup>}
+      </SearchFilterBar>
 
       <DeskCard style={{ order: 1 }} pad={0} title={`✦ ${t("expenseOverview")}`}>
         <div className="adapt-grid" style={{ gap: 0 }}>
@@ -9198,20 +9228,35 @@ function FarmApp() {
   };
   const DeskDashboard = (
     <div style={{ display: "grid", gap: 14 }} className="cash-box">
-      <FilterTray open={cashFiltOpen} onToggle={() => setCashFiltOpen((o) => !o)} t={t} active={cashFiltActive}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+      <SearchFilterBar t={t} q={cashQ} onQ={setCashQ} qPlaceholder={t("cashSearch")}
+        extra={<>
+          <button type="button" className={`dk-pill${cashRefOpen ? " on" : ""}`} style={{ minHeight: 44 }}
+            onClick={() => setCashRefOpen((v) => !v)}>{cashRefOpen ? t("cashHideRef") : t("cashShowRef")}</button>
+          <button type="button" className={`dk-pill${cashCustomizeOpen ? " on" : ""}`} style={{ minHeight: 44 }}
+            aria-expanded={cashCustomizeOpen} onClick={() => setCashCustomizeOpen((v) => !v)}>
+            ⚙ {t("cashTableSettings")}</button>
+        </>}
+        activeCount={(cashRange !== "today" ? 1 : 0) + (cashDir !== "all" ? 1 : 0)}
+        onReset={() => { setCashRange("today"); setCashFrom(""); setCashTo(""); setCashDir("all"); }}
+        chips={[
+          cashRange !== "today" ? { key: "range", label: cashPeriodLabel, onRemove: () => { setCashRange("today"); setCashFrom(""); setCashTo(""); } } : null,
+          cashDir !== "all" ? { key: "dir", label: cashDir === "in" ? t("cashFilterIn") : t("cashFilterOut"), onRemove: () => setCashDir("all") } : null,
+        ].filter(Boolean)}>
+        <FilterGroup label={t("customRange")}>
           {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
             ["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
             <Chip key={k} active={cashRange === k || (k === "week" && cashRange === "thisWeek") || (k === "month" && cashRange === "thisMonth")}
               onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
-        </div>
-        {cashRange === "custom" && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
-          <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} style={{ ...inp, width: 160 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
-          <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} style={{ ...inp, width: 160 }} />
-        </div>}
-      </FilterTray>
+        </FilterGroup>
+        {cashRange === "custom" && <FilterGroup>
+          <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
+          <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+        </FilterGroup>}
+        <FilterGroup label={t("cashFilterAll")}>
+          {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
+            <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}>{lb}</Chip>))}
+        </FilterGroup>
+      </SearchFilterBar>
 
       <DeskCard pad={0} title={`✦ ${t("cashOverview")}`}>
         <div className="cash-overview">
@@ -9233,21 +9278,7 @@ function FarmApp() {
       </DeskCard>
 
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
-        right={<div className="cash-register-tools">
-          <div className="cash-dir">
-            {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
-              <button key={k} type="button" className={`dk-pill${cashDir === k ? " on" : ""}`}
-                onClick={() => setCashDir(k)}>{lb}</button>))}
-          </div>
-          <label className="cash-search"><span aria-hidden>⌕</span>
-            <input value={cashQ} onChange={(e) => setCashQ(e.target.value)} placeholder={t("cashSearch")} />
-          </label>
-          <button type="button" className={`dk-pill${cashRefOpen ? " on" : ""}`}
-            onClick={() => setCashRefOpen((v) => !v)}>{cashRefOpen ? t("cashHideRef") : t("cashShowRef")}</button>
-          <button type="button" className={`dk-pill${cashCustomizeOpen ? " on" : ""}`}
-            aria-expanded={cashCustomizeOpen} onClick={() => setCashCustomizeOpen((v) => !v)}>
-            ⚙ {t("cashTableSettings")} {cashCustomizeOpen ? "▴" : "▾"}</button>
-        </div>}>
+        right={null}>
         {cashView.filtered && <div className="cash-filter-note">
           <span>ⓘ {t("cashFilteredHint")}</span>
           <b>{t("cashViewTotals")}: <span style={{ color: C.green }}>+{fmtC(cashView.totalIn, S.rate, lang)}</span>
@@ -9456,24 +9487,26 @@ function FarmApp() {
   const clearHerdFilters = () => { setQ(""); setSpFilter("all"); setHerdStatusFilter("all"); };
   const DeskAnimals = (
     <div style={{ display: "grid", gap: 14 }}>
-      <FilterTray open={herdFiltOpen} onToggle={() => setHerdFiltOpen((open) => !open)}
-        t={t} active={herdFilterActive}
-        end={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "9px 16px", fontSize: 14, marginInlineStart: "auto" }}
-          onClick={() => setSheet({ k: "addAnimal" })}>＋ {t("addAnimal")}</button>}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchAnimals")}
-          style={{ ...inp, width: "100%", padding: "9px 11px", fontSize: 14, marginBottom: 10 }} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 9 }}>
-          <Chip active={spFilter === "all"} onClick={() => setSpFilter("all")}>{t("all")} · {t("species")}</Chip>
+      <SearchFilterBar t={t} q={q} onQ={setQ} qPlaceholder={t("searchAnimals")}
+        extra={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px", fontSize: 14, minHeight: 44 }}
+          onClick={() => setSheet({ k: "addAnimal" })}>＋ {t("addAnimal")}</button>}
+        activeCount={(spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0)}
+        onReset={clearHerdFilters}
+        chips={[
+          spFilter !== "all" ? { key: "sp", label: spName(spFilter, lang, true), onRemove: () => setSpFilter("all") } : null,
+          herdStatusFilter !== "all" ? { key: "st", label: statusLabel(herdStatusFilter, lang), onRemove: () => setHerdStatusFilter("all") } : null,
+        ].filter(Boolean)}>
+        <FilterGroup label={t("species")}>
+          <Chip active={spFilter === "all"} onClick={() => setSpFilter("all")}>{t("all")}</Chip>
           {speciesPresent.map((k) => <Chip key={k} active={spFilter === k} onClick={() => setSpFilter(k)} color={SPECIES[k].color}>
             {SPECIES[k].icon} {spName(k, lang, true)}</Chip>)}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        </FilterGroup>
+        <FilterGroup label={t("status")}>
           <Chip active={herdStatusFilter === "all"} onClick={() => setHerdStatusFilter("all")}>{t("statusAll")}</Chip>
           {herdStatusKeys.map((k) => <Chip key={k} active={herdStatusFilter === k}
             onClick={() => setHerdStatusFilter(k)} color={statusColor(k)}>{statusLabel(k, lang)}</Chip>)}
-          {herdFilterActive > 0 && <button type="button" className="dk-pill" onClick={clearHerdFilters}>{t("clearFilters")}</button>}
-        </div>
-      </FilterTray>
+        </FilterGroup>
+      </SearchFilterBar>
 
       <DeskCard pad={0} title={`✦ ${t("herdOverview")}`}>
         <div className="adapt-grid" style={{ gap: 0 }}>
@@ -9701,32 +9734,37 @@ function FarmApp() {
         <Empty icon="🐄" title={t("noAnimals")} sub={t("noAnimalsSub")}
           cta={`＋ ${t("addAnimal")}`} onCta={() => setSheet({ k: "addAnimal" })} />)}
 
-      <DeskCard pad={0} title={`📋 ${t("milkStockLog")} · ${milkLogView.rows.length}`}
-        right={<SortControl value={milkLogFilt.sort || "newest"}
-          onChange={(v) => setMilkLogFilt((p) => ({ ...p, sort: v }))}
-          options={[["newest", t("sortNewest")], ["oldest", t("sortOldest")]]} />}>
+      <DeskCard pad={0} title={`📋 ${t("milkStockLog")} · ${milkLogView.rows.length}`}>
         <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
-          <FilterTray open={milkLogFiltOpen} onToggle={() => setMilkLogFiltOpen((o) => !o)} t={t}
-            active={(milkLogFilt.sess !== "all" ? 1 : 0) + (milkLogFilt.from || milkLogFilt.to ? 1 : 0)}
-            end={milkLogView.active ? <button type="button" className="dk-pill"
-              onClick={() => setMilkLogFilt((p) => ({ ...p, sess: "all", from: "", to: "" }))}>
-              ✕ {t("clearFilters")}</button> : null}>
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
-              {[["all", t("milkSessionAll")], ["am", `🌅 ${t("morningMilk")}`], ["pm", `🌙 ${t("eveningMilk")}`]].map(([k, lb]) => (
+          <SearchFilterBar t={t}
+            activeCount={(milkLogFilt.sess !== "all" ? 1 : 0) + (milkLogFilt.from || milkLogFilt.to ? 1 : 0) + ((milkLogFilt.sort || "newest") !== "newest" ? 1 : 0)}
+            onReset={() => setMilkLogFilt({ sess: "all", from: "", to: "", sort: "newest" })}
+            chips={[
+              milkLogFilt.sess !== "all" ? { key: "sess", label: milkLogFilt.sess === "pm" ? t("eveningMilk") : t("morningMilk"),
+                onRemove: () => setMilkLogFilt((p) => ({ ...p, sess: "all" })) } : null,
+              milkLogFilt.from ? { key: "from", label: `${t("fromDate")} ${dmy(milkLogFilt.from)}`,
+                onRemove: () => setMilkLogFilt((p) => ({ ...p, from: "" })) } : null,
+              milkLogFilt.to ? { key: "to", label: `${t("toDate")} ${dmy(milkLogFilt.to)}`,
+                onRemove: () => setMilkLogFilt((p) => ({ ...p, to: "" })) } : null,
+              (milkLogFilt.sort || "newest") !== "newest" ? { key: "sort", label: t("sortOldest"),
+                onRemove: () => setMilkLogFilt((p) => ({ ...p, sort: "newest" })) } : null,
+            ].filter(Boolean)}>
+            <FilterGroup label={t("milkSession")}>
+              {[["all", t("milkSessionAll")], ["am", t("morningMilk")], ["pm", t("eveningMilk")]].map(([k, lb]) => (
                 <Chip key={k} active={milkLogFilt.sess === k}
                   onClick={() => setMilkLogFilt((p) => ({ ...p, sess: k }))}>{lb}</Chip>))}
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
-              <input type="date" value={milkLogFilt.from}
-                onChange={(e) => setMilkLogFilt((p) => ({ ...p, from: e.target.value }))}
-                style={{ ...inp, flex: 1, minWidth: 130, padding: "8px 10px", fontSize: 14 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
-              <input type="date" value={milkLogFilt.to}
-                onChange={(e) => setMilkLogFilt((p) => ({ ...p, to: e.target.value }))}
-                style={{ ...inp, flex: 1, minWidth: 130, padding: "8px 10px", fontSize: 14 }} />
-            </div>
-          </FilterTray>
+            </FilterGroup>
+            <FilterGroup label={t("customRange")}>
+              <DateFilterPills t={t} from={milkLogFilt.from} to={milkLogFilt.to}
+                onChange={(from, to) => setMilkLogFilt((p) => ({ ...p, from, to }))} />
+            </FilterGroup>
+            <FilterGroup label={t("sortBy")}>
+              <Chip active={(milkLogFilt.sort || "newest") === "newest"}
+                onClick={() => setMilkLogFilt((p) => ({ ...p, sort: "newest" }))}>{t("sortNewest")}</Chip>
+              <Chip active={milkLogFilt.sort === "oldest"}
+                onClick={() => setMilkLogFilt((p) => ({ ...p, sort: "oldest" }))}>{t("sortOldest")}</Chip>
+            </FilterGroup>
+          </SearchFilterBar>
         </div>
 
         <div style={{ padding: "12px 14px" }} className="adapt-grid">
@@ -9846,9 +9884,17 @@ function FarmApp() {
               ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")}
                   cta={`＋ ${t("addCustomer")}`} onCta={() => setSheet({ k: "addCustomer" })} /></div>
               : <>
-                <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper,
-                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <SortControl value={custSort} onChange={setCustSort} label={t("sortBy")} options={custSortOpts} />
+                <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
+                  <SearchFilterBar t={t}
+                    activeCount={custSort !== "nameAsc" ? 1 : 0}
+                    onReset={() => setCustSort("nameAsc")}
+                    chips={custSort !== "nameAsc" ? [{ key: "sort", label: (custSortOpts.find((o) => o[0] === custSort) || [])[1] || custSort,
+                      onRemove: () => setCustSort("nameAsc") }] : []}>
+                    <FilterGroup label={t("sortBy")}>
+                      {custSortOpts.map(([k, lb]) => (
+                        <Chip key={k} active={custSort === k} onClick={() => setCustSort(k)}>{lb}</Chip>))}
+                    </FilterGroup>
+                  </SearchFilterBar>
                 </div>
                 <DataList
                   cards={sortedCustomers.map((c) => {
@@ -9976,9 +10022,8 @@ function FarmApp() {
                     tone={moneyColor("due", supplierDash.overdue)} />
                   <Kpi label={t("supplierPaidMonth")} value={fmtC(supplierDash.paidMonth, S.rate, lang)} tone={C.green} />
                 </div>
-                <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
-                  <input value={suppQ} onChange={(e) => setSuppQ(e.target.value)} placeholder={t("searchSuppliers")}
-                    style={{ ...inp, padding: "8px 10px", fontSize: 14 }} />
+                <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
+                  <SearchFilterBar t={t} q={suppQ} onQ={setSuppQ} qPlaceholder={t("searchSuppliers")} />
                 </div>
                 <DataList
                   cards={filteredSuppliers.map((s) => {
@@ -10058,18 +10103,19 @@ function FarmApp() {
         </div>
       </DeskCard>
       <div style={{ display: "grid", gap: 14 }}>
-        <FilterTray open={reportFiltOpen} onToggle={() => setReportFiltOpen((o) => !o)} t={t}
-          active={range !== "today" ? 1 : 0}
-          end={<span style={{ marginInlineStart: "auto", fontSize: 12.5, color: C.inkSoft }}>
-            {t("preparedBy")}: {me?.name || "—"} · {periodLabel}</span>}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <SearchFilterBar t={t}
+          extra={<span style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>{me?.name || "—"} · {periodLabel}</span>}
+          activeCount={range !== "today" ? 1 : 0}
+          onReset={() => { setRange("today"); setFrom(""); setTo(""); }}
+          chips={range !== "today" ? [{ key: "range", label: periodLabel, onRemove: () => { setRange("today"); setFrom(""); setTo(""); } }] : []}>
+          <FilterGroup label={t("customRange")}>
             {["today", "week", "month", "custom"].map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{t(r)}</Chip>)}
-            {range === "custom" && <>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...inp, width: 160, padding: "8px 10px", fontSize: 14 }} />
-            </>}
-          </div>
-        </FilterTray>
+          </FilterGroup>
+          {range === "custom" && <FilterGroup>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+          </FilterGroup>}
+        </SearchFilterBar>
         <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped: report === "log" ? scoped : financialScoped, animals, workers, customers,
           summaryLines, series, outstanding, scopedSales, ledger,
           onReceipt: (x) => setSheet({ k: "receipt", id: x.sourceExpenseId || x.id }) }} />
@@ -10582,10 +10628,10 @@ function FarmApp() {
           entries={entries}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, reimbursements, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
+          onSave={({ customerId, product, qty, price, amount, priceMode, reimbursements, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
             const loggedAt = iso(Date.now());
-            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount,
+            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit",
               discountAmount: discountAmount || 0, discountNote: discountNote || "",
               currency, rateUsed, at, loggedAt, note }];
             (reimbursements || []).forEach((r) => es.push({ id: `reimb-${uid()}`, type: "saleReimburse",
@@ -10609,9 +10655,9 @@ function FarmApp() {
         {sheet?.k === "quickSale" && <QuickSaleSheet lang={lang} t={t} S={S} customers={activeCustomers} preId={sheet.cid}
           onClose={() => setSheet(null)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, note, unit, paid, at }) => {
+          onSave={({ customerId, product, qty, price, amount, priceMode, note, unit, paid, at }) => {
             const saleId = `sale-${uid()}`;
-            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, at, note,
+            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit", at, note,
               loggedAt: at, currency: "usd", rateUsed: S.rate }];
             if (paid && amount > 0) es.push({ type: "payment", customerId, saleId, amount, method: "cash",
               at, loggedAt: at, currency: "usd", rateUsed: S.rate });
@@ -10972,6 +11018,9 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   radial-gradient(900px 420px at 100% 0%,${C.glowGold},transparent 50%),
   ${C.bg}}
 .app.theme-dark .dk-pill{background:${C.card};color:${C.ink}}
+.app.theme-dark .sf-search,.app.theme-dark .sf-chip{background:${C.paper};color:${C.ink}}
+.app.theme-dark .sf-ico,.app.theme-dark .sf-clear,.app.theme-dark .sf-gear,.app.theme-dark .sf-chip{color:${C.inkSoft}}
+.app.theme-dark .sf-pop,.app.theme-dark .help-kit-pop{background:${C.card}}
 .app.theme-dark .dk-search{background:${C.card};color:${C.inkSoft}}
 .app.theme-dark .pal-tile{background:${C.card}}
 .app.theme-dark .pal-tile:hover,.app.theme-dark .pal-tile.on{background:${C.paper};box-shadow:0 8px 20px rgba(0,0,0,.25)}
@@ -11271,6 +11320,77 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   .cash-secondary-actions .dk-pill:last-child{margin-inline-start:0!important}
   .cash-customize-top{align-items:flex-start}.cash-column-list{grid-template-columns:1fr}
 }
+.sf-wrap{position:relative;display:grid;gap:8px}
+.sf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sf-search{flex:1 1 180px;min-width:0;display:flex;align-items:center;gap:6px;min-height:44px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:0 6px 0 12px;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.sf-search:focus-within{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}22}
+.sf-ico{display:inline-flex;color:${C.inkSoft};flex-shrink:0}
+.sf-search input{flex:1;min-width:0;border:none;background:transparent;outline:none;font-family:var(--body);
+  font-size:15px;color:${C.ink};height:44px;padding:0}
+.sf-search input::placeholder{color:${C.inkSoft};opacity:.85}
+.sf-clear,.sf-gear,.sf-dir,.sf-apply,.sf-chip,.help-kit-btn{min-width:44px;min-height:44px}
+.sf-clear{display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;
+  color:${C.inkSoft};border-radius:10px;cursor:pointer;padding:0;flex-shrink:0}
+.sf-clear:hover{background:${C.paper};color:${C.ink}}
+.sf-gear{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;flex:0 0 44px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;color:${C.inkSoft};cursor:pointer;padding:0}
+.sf-gear:hover,.sf-gear.on{border-color:${C.field};color:${C.field};background:${C.paper}}
+.sf-gear.hot{background:${C.paper};border-color:${C.line};color:${C.ink};box-shadow:inset 0 0 0 1px ${C.line}}
+.sf-badge{position:absolute;top:-5px;inset-inline-end:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:99px;
+  background:${C.field};color:#fff;font-size:10px;font-weight:800;display:inline-grid;place-items:center;font-family:var(--mono);line-height:1}
+.sf-scrim{display:none}
+.sf-pop{position:absolute;z-index:40;inset-inline-end:0;top:calc(100% + 8px);width:min(380px,calc(100vw - 24px));
+  background:${C.card};border:1px solid ${C.line};border-radius:16px;padding:14px 14px 12px;
+  box-shadow:0 16px 40px ${C.shadow};display:grid;gap:12px;max-height:min(70vh,560px);overflow:auto}
+.sf-pop-handle{display:none;width:40px;height:4px;border-radius:99px;background:${C.line};margin:0 auto 4px}
+.sf-group{display:grid;gap:8px}
+.sf-group-lb{font-size:11.5px;font-weight:700;color:${C.inkSoft};letter-spacing:.02em}
+.sf-group-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sf-span{flex:1 1 100%;min-width:0;display:grid;gap:8px}
+.sf-dates{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sf-date,.sf-select,.sf-mini{min-height:44px;border:1px solid ${C.line};border-radius:10px;background:${C.paper};
+  color:${C.ink};font-family:var(--body);font-size:14px;padding:0 12px;min-width:0}
+.sf-date,.sf-select{flex:1 1 140px}
+.sf-mini{width:100%}
+.sf-sort{display:flex;align-items:center;gap:8px;width:100%}
+.sf-seg{flex:1;display:flex;background:${C.paper};border:1px solid ${C.line};border-radius:12px;padding:3px;gap:3px;min-height:44px}
+.sf-seg-btn{flex:1;min-height:38px;min-width:44px;border:none;background:transparent;border-radius:9px;cursor:pointer;
+  font-family:var(--body);font-size:12.5px;font-weight:700;color:${C.inkSoft}}
+.sf-seg-btn.on{background:${C.card};color:${C.ink};box-shadow:0 1px 2px ${C.shadow}}
+.sf-dir{display:inline-flex;align-items:center;justify-content:center;width:44px;flex:0 0 44px;border:1px solid ${C.line};
+  background:${C.paper};border-radius:12px;color:${C.ink};cursor:pointer;padding:0}
+.sf-pop-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px}
+.sf-reset{border:none;background:transparent;color:${C.field};font-family:var(--body);font-size:13.5px;font-weight:700;
+  cursor:pointer;min-height:44px;padding:0 8px}
+.sf-apply{border:none;background:${C.field};color:#fff;font-family:var(--body);font-size:14px;font-weight:700;
+  cursor:pointer;border-radius:10px;padding:0 16px;min-height:44px}
+.sf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sf-chip{display:inline-flex;align-items:center;gap:4px;padding:0 10px;background:${C.paper};color:${C.ink};
+  font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${C.line};cursor:pointer;font-family:var(--body);line-height:1}
+.sf-chip .sf-svg{width:12px;height:12px;opacity:.7}
+.help-kit{position:relative;display:inline-flex}
+.help-kit-btn{width:44px;height:44px;border-radius:50%;border:1px solid ${C.line};background:${C.card};color:${C.inkSoft};
+  font-weight:800;cursor:pointer;font-family:var(--body);font-size:16px}
+.help-kit-btn.inv{background:transparent;border-color:rgba(255,255,255,.35);color:#fff}
+.help-kit-pop{position:absolute;z-index:30;top:calc(100% + 6px);inset-inline-end:0;min-width:220px;max-width:280px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px;box-shadow:0 12px 32px ${C.shadow}}
+.help-kit-act{display:block;width:100%;text-align:start;min-height:44px;border:none;background:transparent;padding:10px;
+  border-radius:8px;cursor:pointer;font-weight:600;font-family:var(--body);color:${C.ink}}
+.help-kit-act:hover{background:${C.paper}}
+.help-kit-txt{margin:8px 4px 0;font-size:12.5px;color:${C.inkSoft};line-height:1.45}
+.app.theme-dark .sf-search,.app.theme-dark .sf-pop,.app.theme-dark .sf-gear,.app.theme-dark .help-kit-pop{background:${C.card};color:${C.ink}}
+.app.theme-dark .sf-chip,.app.theme-dark .sf-date,.app.theme-dark .sf-select,.app.theme-dark .sf-dir,.app.theme-dark .sf-seg{background:${C.paper};color:${C.ink}}
+.app.theme-dark .sf-gear.hot{background:${C.paper};border-color:${C.line}}
+@media(max-width:720px){
+  body.sf-open{overflow:hidden}
+  .sf-search{flex:1 1 calc(100% - 52px)}
+  .sf-scrim{display:block;position:fixed;inset:0;z-index:80;background:${C.overlay};border:0;padding:0}
+  .sf-pop{position:fixed;inset-inline:0;bottom:0;top:auto;width:100%;max-height:min(82vh,640px);overflow:auto;
+    border-radius:16px 16px 0 0;z-index:90;padding:12px 16px calc(16px + env(safe-area-inset-bottom))}
+  .sf-pop-handle{display:block}
+}
 .filter-tray{display:grid;gap:0}
 .filter-tray-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .filter-tog{display:inline-flex;align-items:center;gap:7px;background:${C.card};border:1px solid ${C.line};
@@ -11297,6 +11417,57 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sort-dd select:focus{outline:none;border-color:${C.field}}
 .sort-lbl{font-size:12px;font-weight:700;color:${C.inkSoft}}
 [dir=rtl] .sort-dd select{padding:7px 12px 7px 28px;background-position:10px 55%,15px 55%}
+.sf-wrap{position:relative;display:grid;gap:8px}
+.sf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sf-search{flex:1;min-width:140px;display:flex;align-items:center;gap:6px;background:#F1F5F9;
+  border:1px solid ${C.line};border-radius:999px;padding:0 4px 0 12px;min-height:44px}
+.sf-search input{flex:1;border:none;background:transparent;min-width:0;padding:10px 4px;font-size:15px;
+  font-family:var(--body);color:${C.ink};outline:none;box-shadow:none}
+.sf-search input:focus{border:none!important;box-shadow:none!important}
+.sf-ico{display:grid;place-items:center;color:#334155;flex-shrink:0}
+.sf-svg{display:block}
+.sf-clear,.sf-gear{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:999px;cursor:pointer;
+  display:inline-grid;place-items:center;flex-shrink:0}
+.sf-clear{border:none;background:transparent;color:#334155;font-size:16px}
+.sf-gear{border:1px solid ${C.line};background:${C.card};color:#334155;position:relative}
+.sf-gear.on,.sf-gear.hot{border-color:${C.field};color:${C.field};background:${C.paper}}
+.sf-gear.hot{border-color:${C.amber};color:${C.amber}}
+.sf-badge{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;
+  border-radius:99px;background:${C.amber};color:#fff;font-size:10px;font-weight:800;
+  display:inline-grid;place-items:center;font-family:var(--mono);line-height:1}
+.sf-scrim{display:none}
+.sf-pop{position:absolute;top:calc(100% + 8px);inset-inline-end:0;z-index:60;width:min(420px,calc(100vw - 32px));
+  background:${C.card};border:1px solid ${C.line};border-radius:16px;padding:14px 14px 12px;
+  box-shadow:0 16px 40px rgba(28,25,23,.16);display:grid;gap:14px}
+.sf-pop-handle{display:none;width:44px;height:4px;border-radius:99px;background:${C.line};margin:4px auto 8px}
+.sf-group-lb{font-size:12px;font-weight:700;color:${C.inkSoft};margin-bottom:8px}
+.sf-group-body{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input.sf-date{min-height:44px;min-width:140px;flex:1;padding:9px 10px;border:1px solid ${C.line};
+  border-radius:10px;background:${C.card};color:${C.ink};font-family:var(--body);font-size:15px}
+.sf-pop-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
+.sf-reset{background:none;border:none;cursor:pointer;font-family:var(--body);font-weight:700;font-size:13.5px;
+  color:${C.field};min-height:44px;padding:0 8px}
+.sf-apply{background:${C.field};color:#fff;border:none;border-radius:999px;padding:10px 18px;min-height:44px;
+  font-family:var(--body);font-weight:700;font-size:14px;cursor:pointer}
+.sf-chips{display:flex;gap:8px;flex-wrap:wrap}
+.sf-chip{display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;border:1px solid ${C.line};
+  border-radius:999px;padding:8px 12px;min-height:44px;font-family:var(--body);font-size:13px;font-weight:600;
+  color:#334155;cursor:pointer}
+.help-kit{position:relative}
+.help-kit-btn{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:999px;border:1.5px solid ${C.line};
+  background:${C.card};color:${C.ink};font-weight:800;font-size:18px;cursor:pointer}
+.help-kit-btn.inv{border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.16);color:#fff}
+.help-kit-pop{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:30;min-width:230px;max-width:280px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px;box-shadow:0 12px 28px rgba(28,25,23,.16)}
+.help-kit-act{display:flex;align-items:center;width:100%;min-height:44px;border:none;background:${C.paper};
+  border-radius:10px;padding:10px 12px;font-weight:700;font-family:var(--body);cursor:pointer;margin-bottom:6px;color:${C.ink}}
+.help-kit-txt{font-size:12.5px;color:${C.inkSoft};margin:8px 0 0;font-weight:600;line-height:1.45}
+@media(max-width:700px){
+  .sf-scrim{display:block;position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:80}
+  .sf-pop{position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;max-height:min(82vh,640px);
+    overflow:auto;border-radius:18px 18px 0 0;z-index:81;padding:10px 16px 20px}
+  .sf-pop-handle{display:block}
+}
 .dk-quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 22px;background:${C.card};
   border-bottom:1px solid ${C.line}}
 .dk-quick-btn{display:inline-flex;align-items:center;gap:5px;background:${C.paper};border:1px solid ${C.line};
@@ -11410,7 +11581,8 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .status-row--info,.data-card--info{border-inline-start-color:#0EA5E9}
 .status-row--neutral,.data-card--neutral{border-inline-start-color:#94A3B8}
 .adapt-grid{display:grid;grid-template-columns:1fr;gap:1rem}
-.touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog{
+.touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog,
+.sf-gear,.sf-clear,.sf-chip,.sf-apply,.help-kit-btn,.help-kit-act{
   min-height:44px;min-width:44px}
 .dk-pill,.filter-tog,.sort-tog,.dk-quick-btn{display:inline-flex;align-items:center;justify-content:center}
 .dk-icon-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
