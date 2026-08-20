@@ -17,9 +17,25 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.0", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.1", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.1": {
+    ar: [
+      "حفظ البيع يعمل عندما تكون الكمية والسعر صحيحين، ويعرض سبب المنع بدل التعطيل الصامت",
+      "تبديل سعر الوحدة أو السعر الكامل في البيع والبيع السريع",
+      "ترتيب الحركات حسب يوم المزرعة ثم وقت التسجيل دون خلط أوقات الجلسة",
+      "استخدام المزرعة وأدلة الشاشة صارت داخل زر ؟",
+      "شريط بحث وتصفية موحّد للقوائم الرئيسية",
+    ],
+    en: [
+      "Sale save works when qty and price are valid, and shows why it is blocked instead of failing silently",
+      "Toggle unit price or full price on Sale and Quick Sale",
+      "Lists sort by farm day then time logged, without mixing session stamps",
+      "Farm use and on-screen guides moved behind a ? toolkit",
+      "One compact search and filter bar on the main lists",
+    ],
+  },
   "2.9.0": {
     ar: [
       "الحذف أصبح مرتبطًا عبر المبيعات والمصاريف وصندوق النقد حتى لا تبقى حركات يتيمة",
@@ -908,7 +924,10 @@ const T = {
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
     paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", transfer: "تحويل",
     invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", purchaseInvoice: "فاتورة شراء", invoiceNo: "رقم الفاتورة",
-    priceAsTotal: "إدخال الإجمالي", pricePerUnit: "السعر لكل وحدة", calculatedTotal: "الإجمالي المحسوب",
+    priceAsTotal: "إدخال الإجمالي", pricePerUnit: "سعر الوحدة", priceFull: "السعر الكامل",
+    calculatedTotal: "الإجمالي المحسوب", calculatedUnit: "سعر الوحدة المحسوب",
+    needCustomer: "اختر زبونًا قبل الحفظ.", needQty: "أدخل كمية أكبر من صفر.",
+    needPrice: "أدخل سعرًا أكبر من صفر.", needAmount: "أدخل إجمالي بيع أكبر من صفر.",
     receiptNo: "رقم الإيصال", overdue: "متأخر", daysLate: "يوم تأخير", markPaid: "تسديد كامل المبلغ",
     noCustomers: "لا يوجد زبائن بعد.", noCustomersSub: "أضف أول زبون لتبدأ تسجيل المبيعات.",
     noSales: "لا توجد مبيعات في هذه الفترة.", allocAuto: "تُوزَّع الدفعة على أقدم الفواتير تلقائيًا.",
@@ -923,6 +942,9 @@ const T = {
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
+    applyFilters: "تم", filterAndSort: "تصفية وترتيب",
+    sortDate: "التاريخ", sortAmount: "المبلغ", sortAlpha: "أبجدي",
+    sortAsc: "تصاعدي", sortDesc: "تنازلي",
     herdOverview: "نظرة على القطيع", searchAnimals: "ابحث بالاسم أو الرقم أو السلالة…",
     noAnimalsMatch: "لا توجد حيوانات مطابقة", noAnimalsMatchSub: "غيّر البحث أو أزل التصفية لرؤية القطيع.",
     basicDetails: "البيانات الأساسية", moreDetails: "تفاصيل أكثر", needsAttention: "تحتاج متابعة",
@@ -1320,7 +1342,10 @@ const T = {
     collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record a payment",
     paymentAmount: "Payment amount", method: "Method", cash: "Cash", transfer: "Transfer",
     invoice: "Invoice", receipt: "Receipt", statement: "Statement", purchaseInvoice: "Purchase invoice", invoiceNo: "Invoice no.",
-    priceAsTotal: "Enter total", pricePerUnit: "Price per unit", calculatedTotal: "Calculated total",
+    priceAsTotal: "Enter total", pricePerUnit: "Price per unit", priceFull: "Full price",
+    calculatedTotal: "Calculated total", calculatedUnit: "Calculated unit price",
+    needCustomer: "Pick a customer before saving.", needQty: "Enter a quantity greater than zero.",
+    needPrice: "Enter a price greater than zero.", needAmount: "Enter a sale total greater than zero.",
     receiptNo: "Receipt no.", overdue: "Overdue", daysLate: "days late", markPaid: "Settle the full amount",
     noCustomers: "No customers yet.", noCustomersSub: "Add your first customer to record sales.",
     noSales: "No sales in this period.", allocAuto: "Applied to the oldest invoices first.",
@@ -1335,6 +1360,9 @@ const T = {
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
+    applyFilters: "Done", filterAndSort: "Filter & sort",
+    sortDate: "Date", sortAmount: "Amount", sortAlpha: "A–Z",
+    sortAsc: "Ascending", sortDesc: "Descending",
     herdOverview: "Herd at a glance", searchAnimals: "Search name, tag, or breed…",
     noAnimalsMatch: "No matching animals", noAnimalsMatchSub: "Change the search or clear filters to see the herd.",
     basicDetails: "Basic details", moreDetails: "More details", needsAttention: "Needs attention",
@@ -1512,7 +1540,11 @@ const T = {
 
 /* ------------------------------ helpers ------------------------------ */
 const iso = (d) => new Date(d).toISOString();
-const dayKey = (v) => { const d = new Date(v); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const dayKey = (v) => {
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 /* Storage and comparison stay ISO (YYYY-MM-DD); everything a person reads is DD/MM/YYYY. */
 const dmy = (v) => { if (!v) return ""; const d = new Date(typeof v === "string" && v.length === 10 ? `${v}T12:00:00` : v);
   if (isNaN(d)) return ""; return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -1523,7 +1555,12 @@ const nf = (n) => Math.round(n || 0).toLocaleString("en-US");
    a $115.50 invoice print as $116 and the printed total stop matching the rows. */
 const nm = (n) => (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n1 = (n) => (Math.round((n || 0) * 10) / 10).toLocaleString("en-US");
-const hhmm = (v) => { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const hhmm = (v) => {
+  const src = (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? `${v}T12:00:00` : v;
+  const d = src instanceof Date ? src : new Date(src);
+  if (!Number.isFinite(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 const L = (lang, ar, en) => (lang === "ar" ? ar : en);
 
@@ -1587,6 +1624,57 @@ const sessionStamp = (dk, session) => {
   const hh = session === "pm" ? "18:00:00" : "06:00:00";
   return iso(new Date(`${dk}T${hh}`));
 };
+const parseWhen = (v) => {
+  if (v == null || v === "") return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (v instanceof Date) { const n = v.getTime(); return Number.isFinite(n) ? n : 0; }
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T12:00:00`).getTime();
+  const n = Date.parse(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const txDay = (e) => {
+  if (!e) return "";
+  if (typeof e.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.day)) return e.day;
+  return dayKey(e.at || e.loggedAt || "");
+};
+const cmpTx = (a, b, dir = "newest") => {
+  const da = txDay(a), db = txDay(b);
+  if (da !== db) return dir === "newest" ? db.localeCompare(da) : da.localeCompare(db);
+  const ta = parseWhen(a.loggedAt || a.at), tb = parseWhen(b.loggedAt || b.at);
+  if (ta !== tb) return dir === "newest" ? tb - ta : ta - tb;
+  const ia = String(a.id || a.key || "");
+  const ib = String(b.id || b.key || "");
+  return dir === "newest" ? ib.localeCompare(ia) : ia.localeCompare(ib);
+};
+function compareEntries(a, b, newestFirst = true) {
+  return cmpTx(a, b, newestFirst ? "newest" : "oldest");
+}
+const qtyMoney = (qty, unit) => fromCents(toCents((Number(qty) || 0) * (Number(unit) || 0)));
+const unitFromTotal = (total, qty) => {
+  const q = Number(qty) || 0;
+  if (!(q > 0)) return 0;
+  return +((fromCents(toCents(total)) / q).toFixed(4));
+};
+function datePresetBounds(kind) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  if (kind === "today") { const dk = dayKey(now); return { from: dk, to: dk }; }
+  if (kind === "week") {
+    const c = new Date(); c.setHours(0, 0, 0, 0); c.setDate(c.getDate() - 6);
+    return { from: dayKey(c), to: dayKey(now) };
+  }
+  if (kind === "month") return { from: dayKey(new Date(y, m, 1)), to: dayKey(now) };
+  return { from: "", to: "" };
+}
+function saleSaveReason(t, { cid, qty, price, amount, priceMode, reimburseOver, discountOver }) {
+  if (!cid) return t("needCustomer");
+  if (!(Number(qty) > 0)) return t("needQty");
+  if (priceMode === "unit" && !(Number(price) > 0)) return t("needPrice");
+  if (!(Number(amount) > 0)) return t("needAmount");
+  if (reimburseOver) return t("reimburseOverGross");
+  if (discountOver) return t("discountOverNet");
+  return "";
+}
 const dayLabel = (dk, lang) => (dk === dayKey(Date.now()) ? T[lang].today
   : dk === dayKey(Date.now() - 864e5) ? T[lang].yesterday : dmy(dk));
 function ageText(a, lang) {
@@ -1798,7 +1886,7 @@ const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplier
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
-  return [...keep, ...vol.slice(0, 2000)].sort((a, b) => new Date(b.at) - new Date(a.at));
+  return [...keep, ...vol.slice(0, 2000)].sort((a, b) => cmpTx(a, b, "newest"));
 }
 function migrate(farm) {
   if (!farm) return emptyFarm();
@@ -1929,7 +2017,7 @@ function groupMilkDayRows(lots) {
   (lots || []).forEach((l) => {
     const d = dayKey(l.at);
     const g = byDay[d] || {
-      key: `day|${d}`, day: d, at: l.at, loggedAt: l.loggedAt || l.at,
+      key: `day|${d}`, day: d, at: d, loggedAt: l.loggedAt || l.at,
       byName: l.byName || "—", unit: l.unit, am: 0, pm: 0, extra: 0,
     };
     const sess = l.session || "am";
@@ -1937,9 +2025,8 @@ function groupMilkDayRows(lots) {
     else if (sess === "am") g.am += l.liters || 0;
     else g.extra += l.liters || 0;
     const when = l.loggedAt || l.at;
-    if (new Date(when) >= new Date(g.loggedAt || 0)) {
+    if (parseWhen(when) >= parseWhen(g.loggedAt)) {
       g.loggedAt = when;
-      g.at = l.at;
       if (l.byName) g.byName = l.byName;
       if (l.unit) g.unit = l.unit;
     }
@@ -1965,7 +2052,7 @@ function foldMilkBulkLog(list) {
         if (mate.id) used.add(mate.id);
         const am = e.session === "am" ? e : mate;
         const pm = e.session === "pm" ? e : mate;
-        const later = new Date(e.loggedAt || e.at) >= new Date(mate.loggedAt || mate.at) ? e : mate;
+        const later = parseWhen(e.loggedAt || e.at) >= parseWhen(mate.loggedAt || mate.at) ? e : mate;
         out.push({
           ...later,
           session: "day",
@@ -2005,7 +2092,7 @@ function milkDeductions(list, asOf) {
 }
 function milkStock(list, asOf = dayKey(Date.now())) {
   const lots = effectiveMilkLots(list).filter((l) => dayKey(l.at) <= asOf)
-    .sort((a, b) => new Date(a.at) - new Date(b.at));
+    .sort((a, b) => parseWhen(a.at) - parseWhen(b.at) || String(a.id || "").localeCompare(String(b.id || "")));
   const { sold, used, total: deduct } = milkDeductions(list, asOf);
   let rem = deduct;
   const now = Date.now();
@@ -2013,7 +2100,7 @@ function milkStock(list, asOf = dayKey(Date.now())) {
     const take = Math.min(l.liters, rem);
     rem -= take;
     const remaining = +(l.liters - take).toFixed(2);
-    const ageH = Math.max(0, (now - new Date(l.at).getTime()) / 36e5);
+    const ageH = Math.max(0, (now - parseWhen(l.at)) / 36e5);
     return { ...l, remaining, consumed: take, ageH, fresh: milkFreshBand(ageH) };
   });
   const produced = +lots.reduce((s, l) => s + l.liters, 0).toFixed(2);
@@ -2172,7 +2259,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
     if (from && k < from) return false;
     if (to && k > to) return false;
     return true;
-  }).slice().sort((a, b) => new Date(a.at) - new Date(b.at) || String(a.id).localeCompare(String(b.id)));
+  }).slice().sort((a, b) => cmpTx(a, b, "oldest"));
 
   let opening = 0;
   if (from) {
@@ -2258,11 +2345,11 @@ function CashParts({ parts }) {
 }
 
 function buildLedger(entries, customers) {
-  const sales = entries.filter((e) => e.type === "sale").slice().sort((a, b) => new Date(a.at) - new Date(b.at));
-  const pays = entries.filter((e) => e.type === "payment");
+  const sales = entries.filter((e) => e.type === "sale").slice().sort((a, b) => cmpTx(a, b, "oldest"));
+  const pays = entries.filter((e) => e.type === "payment").slice().sort((a, b) => cmpTx(a, b, "oldest"));
   const saleIds = new Set(sales.map((s) => s.id));
   const reimbursements = entries.filter((e) => e.type === "saleReimburse" && saleIds.has(e.saleId)
-    && toCents(e.amount) > 0).slice().sort((a, b) => new Date(a.at) - new Date(b.at));
+    && toCents(e.amount) > 0).slice().sort((a, b) => cmpTx(a, b, "oldest"));
   const reimbBySale = {};
   reimbursements.forEach((r) => {
     if (!reimbBySale[r.saleId]) reimbBySale[r.saleId] = [];
@@ -2304,7 +2391,7 @@ function buildLedger(entries, customers) {
       discountAmount: fromCents(discountC), discountNote: s.discountNote || "",
       netAmount: fromCents(netC), reimbRows, paidAmount, due, no: `INV-${String(i + 1).padStart(4, "0")}`,
       status: due <= 0.009 ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
-      lateDays: Math.floor((Date.now() - new Date(s.at)) / 864e5) };
+      lateDays: Math.max(0, Math.floor((Date.now() - parseWhen(s.at)) / 864e5)) };
   });
   const byCustomer = {};
   const blank = () => ({ gross: 0, net: 0, sold: 0, reimbursed: 0, discounted: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
@@ -2330,8 +2417,8 @@ function buildLedger(entries, customers) {
 function buildSupplierLedger(entries, suppliers) {
   const src = withImpliedSupplierPays(entries);
   const bills = src.filter((e) => e.type === "expense" && e.supplierId)
-    .slice().sort((a, b) => new Date(a.at) - new Date(b.at));
-  const pays = src.filter((e) => e.type === "supplierPay");
+    .slice().sort((a, b) => cmpTx(a, b, "oldest"));
+  const pays = src.filter((e) => e.type === "supplierPay").slice().sort((a, b) => cmpTx(a, b, "oldest"));
   const recC = {}; bills.forEach((b) => { recC[b.id] = 0; });
   pays.filter((p) => p.expenseId && p.expenseId in recC).forEach((p) => { recC[p.expenseId] += toCents(p.amount); });
   const poolC = {};
@@ -2379,12 +2466,12 @@ function buildSupplierLedger(entries, suppliers) {
       row.oldest = Math.max(row.oldest, b.lateDays);
       if (b.overdue) row.overdueDue = fromCents(toCents(row.overdueDue) + toCents(b.due));
     }
-    if (!row.lastAt || new Date(b.at) > new Date(row.lastAt)) row.lastAt = b.at;
+    if (!row.lastAt || parseWhen(b.at) > parseWhen(row.lastAt)) row.lastAt = b.at;
   });
   pays.forEach((p) => {
     const row = bySupplier[p.supplierId];
     if (!row) return;
-    if (!row.lastAt || new Date(p.at) > new Date(row.lastAt)) row.lastAt = p.at;
+    if (!row.lastAt || parseWhen(p.at) > parseWhen(row.lastAt)) row.lastAt = p.at;
   });
   Object.keys(poolC).forEach((sid) => {
     if (bySupplier[sid] && poolC[sid] > 0) bySupplier[sid].credit = fromCents(poolC[sid]);
@@ -2886,6 +2973,12 @@ function Chip({ active, onClick, children, color = C.field }) {
     fontFamily: "var(--body)", flexShrink: 0, minHeight: 44, minWidth: 44,
     transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
 }
+function PriceModeToggle({ t, mode, onChange }) {
+  return <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+    <Chip active={mode === "unit"} onClick={() => onChange("unit")}>{t("pricePerUnit")}</Chip>
+    <Chip active={mode === "total"} onClick={() => onChange("total")}>{t("priceAsTotal")}</Chip>
+  </div>;
+}
 function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
   const isMed = entry.type === "med";
   const [amount, setAmount] = useState(isMed ? (entry.cost || 0) : (entry.amount || 0));
@@ -2977,6 +3070,159 @@ function FilterTray({ open, onToggle, t, active = 0, children, end }) {
     </div>
     {open ? <div className="filter-body">{children}</div> : null}
   </div>;
+}
+function FilterGroup({ label, children }) {
+  return <div className="sf-group">
+    {label ? <div className="sf-group-lb">{label}</div> : null}
+    <div className="sf-group-body">{children}</div>
+  </div>;
+}
+function IcoSearch() {
+  return <svg className="sf-svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M20 20l-3.4-3.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+function IcoSliders() {
+  return <svg className="sf-svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <path d="M4 7h9M17 7h3M4 17h3M11 17h9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <circle cx="15" cy="7" r="2.25" fill="none" stroke="currentColor" strokeWidth="2" />
+    <circle cx="9" cy="17" r="2.25" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>;
+}
+function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, onReset, children }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDoc); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const count = activeCount != null ? activeCount : (chips || []).length;
+  const hasPanel = children != null && children !== false;
+  return <div className="sf-wrap" ref={wrapRef}>
+    <div className="sf-bar">
+      {onQ ? <label className="sf-search">
+        <span className="sf-ico"><IcoSearch /></span>
+        <input value={q || ""} onChange={(e) => onQ(e.target.value)}
+          placeholder={qPlaceholder || t("search")} aria-label={qPlaceholder || t("search")} />
+        {(q || "").trim()
+          ? <button type="button" className="sf-clear" aria-label={t("clearFilters")} title={t("clearFilters")}
+              onClick={() => onQ("")}>✕</button>
+          : null}
+      </label> : null}
+      {hasPanel ? <button type="button" className={`sf-gear${open ? " on" : ""}${count > 0 ? " hot" : ""}`}
+        aria-label={t("filterAndSort")} title={t("filterAndSort")} aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}>
+        <IcoSliders />
+        {count > 0 ? <span className="sf-badge">{count > 9 ? "9+" : count}</span> : null}
+      </button> : null}
+      {extra}
+    </div>
+    {open && hasPanel && <>
+      <div className="sf-scrim" onClick={() => setOpen(false)} />
+      <div className="sf-pop" role="dialog" aria-label={t("filterAndSort")}>
+        <div className="sf-pop-handle" aria-hidden="true" />
+        {children}
+        <div className="sf-pop-actions">
+          {onReset ? <button type="button" className="sf-reset" onClick={onReset}>{t("resetFilters")}</button> : <span />}
+          <button type="button" className="sf-apply" onClick={() => setOpen(false)}>{t("applyFilters")}</button>
+        </div>
+      </div>
+    </>}
+    {(chips || []).length > 0 && <div className="sf-chips">
+      {chips.map((c) => (
+        <button key={c.key} type="button" className="sf-chip" onClick={c.onRemove}
+          aria-label={`${t("clearFilters")}: ${c.label}`} title={c.label}>
+          {c.label} <span aria-hidden>✕</span>
+        </button>
+      ))}
+    </div>}
+  </div>;
+}
+function HelpKit({ t, actions = [], items = [], tone }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [open]);
+  if (!actions.length && !items.length) return null;
+  return <div className="help-kit" ref={ref}>
+    <button type="button" className={`help-kit-btn${tone === "inv" ? " inv" : ""}`}
+      aria-label={t("help")} title={t("help")} aria-expanded={open}
+      onClick={() => setOpen((o) => !o)}>?</button>
+    {open && <div className="help-kit-pop" role="dialog" aria-label={t("help")}>
+      {actions.map((a) => (
+        <button key={a.key} type="button" className="help-kit-act"
+          onClick={() => { setOpen(false); a.run && a.run(); }}>
+          {a.icon ? `${a.icon} ` : ""}{a.label}
+        </button>
+      ))}
+      {items.map((txt, i) => <p key={i} className="help-kit-txt">{txt}</p>)}
+    </div>}
+  </div>;
+}
+function DateFilterPills({ t, from, to, onChange }) {
+  const today = datePresetBounds("today");
+  const week = datePresetBounds("week");
+  const month = datePresetBounds("month");
+  const none = !from && !to;
+  const isToday = from === today.from && to === today.to;
+  const isWeek = from === week.from && to === week.to;
+  const isMonth = from === month.from && to === month.to;
+  const custom = !none && !isToday && !isWeek && !isMonth;
+  return <>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <Chip active={none} onClick={() => onChange("", "")}>{t("statusAll")}</Chip>
+      <Chip active={isToday} onClick={() => onChange(today.from, today.to)}>{t("today")}</Chip>
+      <Chip active={isWeek} onClick={() => onChange(week.from, week.to)}>{t("thisWeek")}</Chip>
+      <Chip active={isMonth} onClick={() => onChange(month.from, month.to)}>{t("thisMonth")}</Chip>
+      <Chip active={custom} onClick={() => onChange(from || today.from, to || today.to)}>{t("customRange")}</Chip>
+    </div>
+    {(from || to || custom) && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("fromDate")}</span>
+      <input type="date" value={from || ""} onChange={(e) => onChange(e.target.value, to || "")}
+        style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>{t("toDate")}</span>
+      <input type="date" value={to || ""} onChange={(e) => onChange(from || "", e.target.value)}
+        style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
+    </div>}
+  </>;
+}
+function SalePriceToggle({ t, S, lang, priceMode, onMode, qty, unitPrice, amount, onUnit, onTotal, step, currency, setCurrency }) {
+  return <>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <Chip active={priceMode === "unit"} onClick={() => onMode("unit")}>{t("pricePerUnit")}</Chip>
+      <Chip active={priceMode === "total"} onClick={() => onMode("total")}>{t("priceFull")}</Chip>
+    </div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
+      {priceMode === "unit"
+        ? <>
+          <MoneyStepper usd={unitPrice} onChange={onUnit} rate={S.rate} lang={lang} t={t} step={step}
+            currency={currency} setCurrency={setCurrency} />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+            paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+            <span style={{ color: C.inkSoft }}>{t("calculatedTotal")}</span>
+            <Money usd={amount} rate={S.rate} lang={lang} tone={C.field} />
+          </div>
+        </>
+        : <>
+          <MoneyStepper usd={amount} onChange={onTotal} rate={S.rate} lang={lang} t={t} step={Math.max(1, step)}
+            currency={currency} setCurrency={setCurrency} />
+          {qty > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+            paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+            <span style={{ color: C.inkSoft }}>{t("calculatedUnit")}</span>
+            <Money usd={unitPrice} rate={S.rate} lang={lang} tone={C.field} />
+          </div>}
+        </>}
+    </div>
+  </>;
 }
 function Step({ n, label }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 8px" }}>
@@ -3099,8 +3345,14 @@ function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact }) 
     <div style={{ minWidth: big ? 116 : compact ? 72 : 98, textAlign: "center" }}>
       <input value={shown} inputMode="decimal"
         onFocus={(e) => { setTyping(String(value || 0)); setTimeout(() => e.target.select(), 0); }}
-        onChange={(e) => setTyping(e.target.value.replace(/[^0-9.,]/g, ""))}
-        onBlur={() => { if (typing === null) return; const n = parseFloat(typing.replace(",", ".")); onChange(isNaN(n) ? 0 : Math.max(0, n)); setTyping(null); }}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/[^0-9.,]/g, "");
+          setTyping(raw);
+          const n = parseFloat(String(raw).replace(",", "."));
+          if (!isNaN(n)) onChange(Math.max(0, n));
+          else if (raw === "" || raw === "." || raw === ",") onChange(0);
+        }}
+        onBlur={() => { if (typing === null) return; const n = parseFloat(String(typing).replace(",", ".")); onChange(isNaN(n) ? 0 : Math.max(0, n)); setTyping(null); }}
         onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
         style={{ width: "100%", textAlign: "center", border: `1.5px dashed ${C.line}`, borderRadius: compact ? 4 : 5,
           background: C.paper, padding: compact ? "4px 2px" : "6px 2px", fontFamily: "var(--mono)", fontWeight: 700,
@@ -3667,8 +3919,6 @@ function PaySplit({ amount, paid, onChange, rate, lang, t, supplierLinked }) {
       <Kpi label={t("amountPaid")} value={fmtC(p.paid, rate, lang)} tone={C.green} />
       <Kpi label={supplierLinked ? t("weOwe") : t("remainder")} value={fmtC(p.due, rate, lang)} tone={moneyColor("due", p.due)} />
     </div>
-    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>
-      {supplierLinked ? t("supplierPayHint") : t("paySplitHint")}</div>
     {supplierLinked && (p.paid > 0.009 || p.due > 0.009) && (
       <div style={{ display: "grid", gap: 6, fontSize: 12.5, fontWeight: 600 }}>
         {p.paid > 0.009 && <div style={{ background: "#E6F6F0", color: "#0F5C4D", borderRadius: 4, padding: "8px 10px" }}>
@@ -3726,7 +3976,7 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L" }) {
     ["home", t("milkUseHome")], ["calves", t("milkUseCalves")],
     ["waste", t("milkUseWaste")], ["other", t("milkUseOther")],
   ];
-  return <Sheet title={`🥛 ${t("milkUse")}`} sub={t("milkUseSub")} onClose={onClose}>
+  return <Sheet title={`🥛 ${t("milkUse")}`} onClose={onClose}>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13.5 }}>
       <span>{t("milkLeft")}</span>
@@ -3761,6 +4011,9 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
   const label = { fresh: t("milkFresh"), ok: t("milkOk"), aging: t("milkAging"), old: t("milkOld") };
   const s = stock || { available: 0, produced: 0, sold: 0, used: 0, lots: [] };
   const [showLots, setShowLots] = useState(false);
+  const kit = onUse ? <HelpKit t={t} tone={simple ? "inv" : undefined}
+    actions={[{ key: "use", icon: "−", label: t("milkUse"), run: onUse }]}
+    items={[t("milkUseSub")]} /> : null;
   if (simple) {
     return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
       background: C.field, color: "#fff", borderRadius: 8, padding: "14px 16px" }}>
@@ -3768,10 +4021,7 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
         <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 28 }}>{n1(s.available)} {u}</div>
       </div>
-      {onUse ? <button type="button" onClick={onUse}
-        style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "#fff",
-          borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)" }}>
-          − {t("milkUse")}</button> : null}
+      {kit}
     </div>;
   }
   return <div style={{ display: "grid", gap: 10 }}>
@@ -3781,9 +4031,12 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
         <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26 }}>{n1(s.available)} {u}</div>
       </div>
-      <div style={{ fontSize: 12, opacity: .9, textAlign: "end", fontWeight: 600, lineHeight: 1.45 }}>
-        <div>{t("milkProduced")} {n1(s.produced)} {u}</div>
-        <div>{t("milkSoldToday")} {n1(s.sold)} {u}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ fontSize: 12, opacity: .9, textAlign: "end", fontWeight: 600, lineHeight: 1.45 }}>
+          <div>{t("milkProduced")} {n1(s.produced)} {u}</div>
+          <div>{t("milkSoldToday")} {n1(s.sold)} {u}</div>
+        </div>
+        {kit}
       </div>
     </div>
     {s.lots.length > 0 && (
@@ -3807,8 +4060,6 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
       </div>
     ))}
     {s.lots.length === 0 && <div style={{ color: C.inkSoft, fontSize: 13.5 }}>{t("milkNoStock")}</div>}
-    {onUse && <button type="button" onClick={onUse} style={{ ...secondaryBtn, padding: "10px 12px", fontSize: 13.5 }}>
-      − {t("milkUse")}</button>}
   </div>;
 }
 
@@ -4424,6 +4675,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
     const next = Math.max(0, Number(v) || 0);
     setQty(next);
     if (priceMode === "unit") setBill(fromCents(toCents(unitPrice * next)));
+    else if (next > 0) setUnitPrice(unitFromTotal(amount, next));
   };
   const choosePriceMode = (nextMode) => {
     if (nextMode === priceMode) return;
@@ -4591,7 +4843,7 @@ function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
 function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBillId, busy }) {
   const b = ledger.bySupplier[supplier.id] || { due: 0, credit: 0, paid: 0 };
   const open = ledger.list.filter((x) => x.supplierId === supplier.id && x.due > 0)
-    .slice().sort((a, c) => new Date(a.at) - new Date(c.at));
+    .slice().sort((a, c) => cmpTx(a, c, "oldest"));
   const startBill = preBillId && open.some((x) => x.id === preBillId) ? preBillId : null;
   const pickDue = (id) => {
     if (!id) return b.due;
@@ -4656,7 +4908,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0, openCount: 0, overdueDue: 0 };
   const [sort, setSort] = useState("newest");
   const newest = sort !== "oldest";
-  const byDate = (a, c) => newest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
+  const byDate = (a, c) => cmpTx(a, c, newest ? "newest" : "oldest");
   const allBills = ledger.list.filter((x) => x.supplierId === supplier.id).slice().sort(byDate);
   const openBills = allBills.filter((x) => x.due > 0.009);
   const pays = (ledger.pays || entries.filter((e) => e.type === "supplierPay" && !e.implied))
@@ -4874,6 +5126,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [product, setProduct] = useState(c?.product || "milk");
   const [qty, setQty] = useState(0);
   const [price, setPrice] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [priceMode, setPriceMode] = useState("unit");
   const [paidNow, setPaidNow] = useState(0);
   const [paidTouched, setPaidTouched] = useState(false);
   const [cur, setCur] = useState("usd");
@@ -4886,7 +5140,11 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [err, setErr] = useState("");
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => { if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); } }, [cid]);
-  useEffect(() => { setPrice(defPrice(product) || 0); }, [cid, product]);
+  useEffect(() => {
+    const next = defPrice(product) || 0;
+    setPrice(next);
+    setTotal(fromCents(toCents((c?.defaultQty || 0) * next)));
+  }, [cid, product]);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const unit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   const stockUnit = milkUnitOf(S.milkUnit);
@@ -4901,7 +5159,18 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
         savedReimburseTypes.push(clean);
       }
     });
-  const amount = fromCents(toCents(qty * price));
+  const amount = priceMode === "total"
+    ? fromCents(toCents(total))
+    : fromCents(toCents(qty * price));
+  const unitPrice = priceMode === "total"
+    ? (qty > 0.0001 ? fromCents(toCents(amount / qty)) : 0)
+    : price;
+  const switchPriceMode = (next) => {
+    if (next === priceMode) return;
+    if (next === "total") setTotal(fromCents(toCents(qty * price)));
+    else if (qty > 0.0001) setPrice(fromCents(toCents(total / qty)));
+    setPriceMode(next);
+  };
   const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
   const reimbAmount = fromCents(reimbC);
   const afterReimbC = Math.max(0, toCents(amount) - reimbC);
@@ -4921,13 +5190,15 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
   };
   const saveSale = () => {
-    if (!cid || amount <= 0) return;
+    if (!cid) return setErr(t("pickCustomer"));
+    if (!(qty > 0)) return setErr(t("needQty"));
+    if (!(amount > 0)) return setErr(t("needPrice"));
     const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
       .map((r) => ({ name: r.name.trim(), amount: fromCents(toCents(r.amount)) }));
     if (reimbursements.some((r) => !r.name)) return setErr(t("reimburseNameNeeded"));
     if (reimburseOver) return setErr(t("reimburseOverGross"));
     if (discountOver) return setErr(t("discountOverNet"));
-    onSave({ customerId: cid, product, qty, price, amount, reimbursements, payNow,
+    onSave({ customerId: cid, product, qty, price: unitPrice, amount, reimbursements, payNow,
       discountAmount: fromCents(discC), discountNote: discountNote.trim(),
       unit: product === "milk" ? milkSaleUnit : undefined,
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
@@ -4973,15 +5244,21 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
       <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1} />
     </div>
-    <Step n="4" label={`${t("unitPrice")} — ${t("enterIn")}`} />
+    <Step n="4" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
+    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t}
-        step={product === "animal" ? 25 : 0.05} currency={cur} setCurrency={setCur} />
+      {priceMode === "unit"
+        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t}
+            step={product === "animal" ? 25 : 0.05} currency={cur} setCurrency={setCur} />
+        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
+            step={1} currency={cur} setCurrency={setCur} />}
+      {qty > 0 && amount > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+        paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+        <span style={{ color: C.inkSoft }}>{priceMode === "unit" ? t("calculatedTotal") : t("calculatedUnit")}</span>
+        <Money usd={priceMode === "unit" ? amount : unitPrice} rate={S.rate} lang={lang} tone={C.field} />
+      </div>}
     </div>
     <Step n="5" label={t("reimbursements")} />
-    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 500, margin: "-2px 0 8px", lineHeight: 1.4 }}>
-      {t("chooseOrAddExpenseType")}
-    </div>
     <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
       <datalist id="sale-reimburse-types">
         {savedReimburseTypes.map((name) => <option key={name.toLocaleLowerCase()} value={name} />)}
@@ -5048,8 +5325,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     {product === "milk" && milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4,
       padding: "10px 12px", marginBottom: 10, fontWeight: 600, color: "#7A5312", fontSize: 13 }}>
       ⚠️ {t("milkUnitMismatch")}</div>}
-    {err && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
-    <button style={{ ...primaryBtn, opacity: cid && amount > 0 && !reimburseOver && !discountOver ? 1 : .45 }}
+    {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
+    <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
       onClick={saveSale}>✓ {t("save")}</button>
   </Sheet>;
 }
@@ -5060,15 +5337,38 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const [product, setProduct] = useState(c?.product || "milk");
   const [qty, setQty] = useState(c?.defaultQty || 0);
   const [price, setPrice] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [priceMode, setPriceMode] = useState("unit");
   const [paidNow, setPaidNow] = useState(true);
   const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => { if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); } }, [cid]);
-  useEffect(() => { setPrice(defPrice(product) || 0); }, [cid, product]);
+  useEffect(() => {
+    const next = defPrice(product) || 0;
+    setPrice(next);
+    setTotal(fromCents(toCents((c?.defaultQty || 0) * next)));
+  }, [cid, product]);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const unitLb = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
-  const amount = fromCents(toCents(qty * price));
+  const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
+  const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
+  const switchPriceMode = (next) => {
+    if (next === priceMode) return;
+    if (next === "total") setTotal(qtyMoney(qty, price));
+    else if (qty > 0) setPrice(unitFromTotal(total, qty));
+    setPriceMode(next);
+  };
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode });
+  const saveQuick = () => {
+    if (block) return setErr(block);
+    onSave({
+      customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
+      unit: product === "milk" ? milkSaleUnit : undefined,
+      paid: paidNow, at: iso(Date.now()),
+    });
+  };
   if (customers.length === 0) return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
@@ -5097,10 +5397,17 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
       <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb} />
     </div>
+    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("unitPrice")}</div>
-      <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>
+        {priceMode === "total" ? t("priceAsTotal") : t("unitPrice")}</div>
+      {priceMode === "unit"
+        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
+        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
     </div>
+    {qty > 0 && amount > 0 && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-2px 0 10px", textAlign: "center" }}>
+      {priceMode === "unit" ? `${t("calculatedTotal")}: ${fmtC(amount, S.rate, lang)}` : `${t("unitPrice")}: ${fmtC(unitPrice, S.rate, lang)}`}
+    </div>}
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
       style={{ ...inp, marginBottom: 12 }} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
@@ -5112,12 +5419,9 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
       <span style={{ fontWeight: 700 }}>{t("netInvoiceTotal")}</span>
       <Money usd={amount} rate={S.rate} lang={lang} size={26} tone="#fff" />
     </div>
-    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: cid && amount > 0 ? 1 : .45 }}
-      onClick={() => cid && amount > 0 && onSave({
-        customerId: cid, product, qty, price, amount, note: note.trim(),
-        unit: product === "milk" ? milkSaleUnit : undefined,
-        paid: paidNow, at: iso(Date.now()),
-      })}>✓ {t("save")}</button>
+    {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
+    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
+      onClick={saveQuick}>✓ {t("save")}</button>
   </Sheet>;
 }
 
@@ -5161,7 +5465,6 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
       {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => { setSaleId(iv.id); setAmount(iv.due); }}>
         {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
     </Scroller>
-    <div style={{ fontSize: 13, color: C.inkSoft, fontWeight: 500, marginBottom: 10 }}>💡 {t("allocAuto")}</div>
     <Step n="5" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     <button style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
@@ -5286,7 +5589,6 @@ function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledge
         </div>
       </div>
     </div>
-    <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 14, fontWeight: 500 }}>💡 {t("setTipDocs")}</div>
     <Step n="1" label={t("docType")} />
     <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
       {kinds.map((k) => <button key={k} onClick={() => setKind(k)} style={{ ...rowBtn,
@@ -5319,13 +5621,22 @@ function DocPreviewSheet({ lang, t, onClose, onPrint, title, children }) {
 function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const [qty, setQty] = useState(sale.qty || 0);
   const [price, setPrice] = useState(sale.price || 0);
+  const [total, setTotal] = useState(sale.amount || qtyMoney(sale.qty, sale.price));
+  const [priceMode, setPriceMode] = useState(sale.priceMode === "total" ? "total" : "unit");
   const [date, setDate] = useState(dayKey(sale.at));
   const [note, setNote] = useState(sale.note || "");
   const [product, setProduct] = useState(sale.product || "milk");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(sale.unit));
   const [discount, setDiscount] = useState(sale.discountAmount || 0);
   const [discountNote, setDiscountNote] = useState(sale.discountNote || "");
-  const amount = fromCents(toCents(qty * price));
+  const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
+  const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
+  const switchPriceMode = (next) => {
+    if (next === priceMode) return;
+    if (next === "total") setTotal(qtyMoney(qty, price));
+    else if (qty > 0) setPrice(unitFromTotal(total, qty));
+    setPriceMode(next);
+  };
   const reimbAmount = fromCents((sale.reimbRows || []).reduce((sum, r) => sum + toCents(r.amount), 0));
   const afterReimbC = Math.max(0, toCents(amount) - toCents(reimbAmount));
   const discC = Math.min(afterReimbC, Math.max(0, toCents(discount)));
@@ -5356,9 +5667,13 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
     <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit} /></div>
-    <Step n="3" label={t("unitPrice")} />
+    <Step n="3" label={priceMode === "total" ? t("priceAsTotal") : t("unitPrice")} />
+    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
-      <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} /></div>
+      {priceMode === "unit"
+        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
+        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
+    </div>
     {(sale.reimbRows || []).length > 0 && <div style={{ background: C.paper, border: `1px solid ${C.line}`,
       borderRadius: 6, padding: 12, marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{t("reimbursements")}</div>
@@ -5391,8 +5706,8 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
       style={{ ...inp, marginBottom: 12 }} />
     {reimburseOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("discountOverNet")}</div>}
-    <button style={{ ...primaryBtn, opacity: amount > 0 && !reimburseOver && !discountOver ? 1 : .45 }}
-      onClick={() => amount > 0 && !reimburseOver && !discountOver && onSave({ qty, price, amount, product,
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && qty > 0 && !reimburseOver && !discountOver ? 1 : .45 }}
+      onClick={() => amount > 0 && qty > 0 && !reimburseOver && !discountOver && onSave({ qty, price: unitPrice, amount, product,
         discountAmount: fromCents(discC), discountNote: discountNote.trim(),
         unit: product === "milk" ? milkSaleUnit : undefined,
         at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
@@ -5441,7 +5756,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const f = filters;
   const [filtOpen, setFiltOpen] = useState(false);
   const sortNewest = (f.sort || "newest") !== "oldest";
-  const byDate = (a, c) => sortNewest ? (new Date(c.at) - new Date(a.at)) : (new Date(a.at) - new Date(c.at));
+  const byDate = (a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest");
   const pays = entries.filter((e) => e.type === "payment" && e.customerId === customer.id)
     .slice().sort(byDate);
   const inR = (iso) => { const k = dayKey(iso); return (!f.from || k >= f.from) && (!f.to || k <= f.to); };
@@ -5560,7 +5875,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             </tr></thead>
             <tbody>
               {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
-                const paidOn = pays.filter((p2) => p2.saleId === iv.id).sort((a2, c2) => new Date(c2.at) - new Date(a2.at))[0];
+                const paidOn = pays.filter((p2) => p2.saleId === iv.id).sort((a2, c2) => cmpTx(a2, c2, "newest"))[0];
                 const kind = payStatusKind(iv);
                 return <tr key={iv.id} className={statusRowClass(kind)}
                   onContextMenu={(e) => onCtx && onCtx(e, [
@@ -6607,7 +6922,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         d: x.amount, c: 0,
       })), ...(sl.allPays || sl.pays || []).filter((p) => p.supplierId === doc.id).map((p) => ({
         at: p.at, k: "p", label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount,
-      }))].sort((a, b2) => new Date(a.at) - new Date(b2.at));
+      }))].sort((a, b2) => cmpTx(a, b2, "oldest"));
       const paidTotal = rows.reduce((sum, r) => sum + r.c, 0);
       let run = 0;
       return <div dir={T[dlang].dir} style={docWrap}>
@@ -6716,7 +7031,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
           d: 0, c: x.discountAmount }] : [])];
     }), ...ledger.pays.filter((p) => p.customerId === doc.id).map((p) => ({ at: p.at, k: "p",
       label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount }))]
-      .sort((a, b2) => new Date(a.at) - new Date(b2.at));
+      .sort((a, b2) => cmpTx(a, b2, "oldest"));
     const totalDebit = fromCents(rows.reduce((sum, r) => sum + toCents(r.d), 0));
     const totalCredit = fromCents(rows.reduce((sum, r) => sum + toCents(r.c), 0));
     const finalBalance = fromCents(toCents(totalDebit) - toCents(totalCredit));
@@ -7650,7 +7965,7 @@ function FarmApp() {
       return { ...e, due };
     })
     .filter((e) => e.due > 0.009)
-    .sort((a, b) => new Date(a.dueDate || a.at) - new Date(b.dueDate || b.at)), [entries]);
+    .sort((a, b) => parseWhen(a.dueDate || a.at) - parseWhen(b.dueDate || b.at) || String(a.id || "").localeCompare(String(b.id || ""))), [entries]);
   const directDueList = useMemo(() => directOpenExpenses.filter((e) => {
     const dueAt = new Date(e.dueDate || e.at);
     return Math.ceil((dueAt - Date.now()) / 864e5) <= 7;
@@ -7663,7 +7978,8 @@ function FarmApp() {
     const pm = entries.find((x) => x.type === "milk" && x.animalId === a.id && x.session === "pm" && dayKey(x.at) === k);
     return (am ? am.liters : 0) + (pm ? pm.liters : 0);
   };
-  const lastFor = (a) => entries.find((x) => x.animalId === a.id && ["milk", "eggs"].includes(x.type));
+  const lastFor = (a) => (entries || []).filter((x) => x.animalId === a.id && ["milk", "eggs"].includes(x.type))
+    .sort((x, y) => cmpTx(x, y, "newest"))[0];
   const series = useMemo(() => {
     const map = {};
     const mk = milkTotals(scoped), eg = prodTotals(scoped, "eggs");
@@ -7697,8 +8013,8 @@ function FarmApp() {
       case "nameDesc": return list.sort((a, b) => cmpStr(b.name, a.name));
       case "account": return list.sort((a, b) => (idx.get(a.id) ?? 0) - (idx.get(b.id) ?? 0));
       case "product": return list.sort((a, b) => cmpStr(prodLbl(a), prodLbl(b)) || cmpStr(a.name, b.name));
-      case "newest": return list.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
-      case "oldest": return list.sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
+      case "newest": return list.sort((a, b) => cmpTx(a, b, "newest"));
+      case "oldest": return list.sort((a, b) => cmpTx(a, b, "oldest"));
       default: return list.sort((a, b) => cmpStr(a.name, b.name));
     }
   }, [activeCustomers, customers, custSort, lang]);
@@ -7914,9 +8230,7 @@ function FarmApp() {
       if (f.from && r.day < f.from) return false;
       if (f.to && r.day > f.to) return false;
       return (r.total || 0) > 0.0001;
-    }).slice().sort((a, b) => newest
-      ? (new Date(b.loggedAt || b.at) - new Date(a.loggedAt || a.at) || String(b.day).localeCompare(String(a.day)))
-      : (new Date(a.loggedAt || a.at) - new Date(b.loggedAt || b.at) || String(a.day).localeCompare(String(b.day))));
+    }).slice().sort((a, b) => cmpTx(a, b, newest ? "newest" : "oldest"));
     const totalQty = +rows.reduce((s, r) => s + (r.total || 0), 0).toFixed(2);
     const amQty = +rows.reduce((s, r) => s + (r.am || 0), 0).toFixed(2);
     const pmQty = +rows.reduce((s, r) => s + (r.pm || 0), 0).toFixed(2);
@@ -8154,7 +8468,7 @@ function FarmApp() {
             const q = expQ.toLowerCase();
             const label = e.type === "med" ? t("medicine") : catLabel(e.category, lang, S.categories);
             return `${label} ${e.note || ""} ${e.vendor || ""} ${e.amount || e.cost || ""} ${e.supplier || ""}`.toLowerCase().includes(q);
-          }).sort((a, b) => new Date(b.at) - new Date(a.at));
+          }).sort((a, b) => cmpTx(a, b, "newest"));
           if (rows.length === 0) return <div style={{ padding: 24 }}>
             <Empty icon="💸" title={t("noPaidExpenses")} sub={t("noPaidExpensesSub")}
               cta={`＋ ${t("logExpense")}`} onCta={() => setSheet({ k: "expense" })} /></div>;
@@ -10040,7 +10354,7 @@ function FarmApp() {
               if (busy) return;
               const openBills = supplierLedger.list
                 .filter((x) => x.supplierId === s.id && x.due > 0.009)
-                .slice().sort((a, c) => new Date(a.at) - new Date(c.at));
+                .slice().sort((a, c) => cmpTx(a, c, "oldest"));
               rewriteEntries((rows) => {
                 const now = iso(Date.now());
                 let remainC = toCents(v.amount);
@@ -10270,13 +10584,14 @@ function FarmApp() {
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
           onSave={({ customerId, product, qty, price, amount, reimbursements, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
+            const loggedAt = iso(Date.now());
             const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount,
               discountAmount: discountAmount || 0, discountNote: discountNote || "",
-              currency, rateUsed, at, note }];
+              currency, rateUsed, at, loggedAt, note }];
             (reimbursements || []).forEach((r) => es.push({ id: `reimb-${uid()}`, type: "saleReimburse",
               saleId, customerId, name: r.name, amount: fromCents(toCents(r.amount)),
-              currency, rateUsed, at }));
-            if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at });
+              currency, rateUsed, at, loggedAt }));
+            if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at, loggedAt });
             const savedTypes = [], seenTypes = new Set();
             [...(S.saleReimburseTypes || []), ...(reimbursements || []).map((r) => r.name)].forEach((name) => {
               const clean = String(name || "").trim();
