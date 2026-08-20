@@ -17,9 +17,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.5": {
+    ar: [
+      "البيع والبيع السريع يفتحان صندوق تحصيل: دفع كامل أو دفعة جزئية بدل زر حفظ",
+    ],
+    en: [
+      "Sale and Quick Sale open a cashier prompt: pay in full or take a partial instead of Save",
+    ],
+  },
   "2.9.4": {
     ar: [
       "البيع السريع فيه خيار زبون عابر لمرة واحدة — بلا اسم، ويُسجَّل في الصندوق والحساب",
@@ -979,8 +987,15 @@ const T = {
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
-    quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ادفع الآن أو لاحقًا",
+    quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ثم الصندوق: كامل أو جزئي",
     walkIn: "زبون عابر", walkInHint: "بيع لمرة واحدة — لا حاجة لاسم",
+    cashier: "الصندوق", charge: "تحصيل", payInFull: "دفع كامل",
+    amountReceived: "المبلغ المستلم", amountDue: "المطلوب",
+    chargeFull: "تحصيل الكامل", takePartial: "تحصيل الجزئي",
+    putOnAccount: "على الحساب", pickPayMode: "اختر طريقة الدفع",
+    cashierFullHint: "يُسجَّل في الصندوق الآن",
+    cashierPartialHint: "الباقي يبقى على حساب الزبون",
+    cashierLaterHint: "الفاتورة كاملة على الحساب — بدون دفعة الآن",
     editPayment: "تعديل الدفعة", editCashMove: "تعديل حركة الصندوق", saleDate: "تاريخ البيع", paymentDate: "تاريخ الدفع",
     notes2: "ملاحظات", noTx: "لا حركات مطابقة.", lastPayment: "آخر دفعة", payments: "الدفعات",
     colQty: "الكمية", colUnit: "السعر", colTotal: "الإجمالي", colPaid: "المدفوع", colDue: "المتبقي",
@@ -1398,8 +1413,15 @@ const T = {
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
-    quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — pay now or later",
+    quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — then cashier: full or partial",
     walkIn: "Walk-in", walkInHint: "One-off sale — no name needed",
+    cashier: "Cashier", charge: "Charge", payInFull: "Pay in full",
+    amountReceived: "Amount received", amountDue: "Amount due",
+    chargeFull: "Charge full", takePartial: "Take partial",
+    putOnAccount: "Put on account", pickPayMode: "Choose how they pay",
+    cashierFullHint: "Posted to Cash Box now",
+    cashierPartialHint: "The remainder stays on the customer account",
+    cashierLaterHint: "Whole invoice on account — no payment now",
     editPayment: "Edit payment", editCashMove: "Edit cash movement", saleDate: "Sale date", paymentDate: "Payment date",
     notes2: "Notes", noTx: "No matching transactions.", lastPayment: "Last payment", payments: "Payments",
     colQty: "Qty", colUnit: "Unit price", colTotal: "Total", colPaid: "Paid", colDue: "Due",
@@ -3996,6 +4018,73 @@ function PaySplit({ amount, paid, onChange, rate, lang, t, supplierLinked }) {
   </div>;
 }
 
+/* Till-style checkout for sales: take the full amount, or a partial, then post. */
+function CashierPayPrompt({ t, lang, S, amount, err, onConfirm }) {
+  const [mode, setMode] = useState(null);
+  const [tender, setTender] = useState(0);
+  const paid = mode === "full" ? amount
+    : mode === "later" ? 0
+    : fromCents(Math.min(toCents(tender), toCents(amount)));
+  const p = payState(amount, paid);
+  const pick = (m) => {
+    setMode(m);
+    if (m === "partial" && !(tender > 0.009)) setTender(0);
+    if (m === "full") setTender(amount);
+    if (m === "later") setTender(0);
+  };
+  const ready = mode === "full" || mode === "later" || (mode === "partial" && paid > 0.009);
+  const confirmLabel = mode === "full" ? `💵 ${t("chargeFull")} · ${fmtC(amount, S.rate, lang)}`
+    : mode === "partial" ? `💵 ${t("takePartial")} · ${fmtC(paid, S.rate, lang)}`
+    : mode === "later" ? `📋 ${t("putOnAccount")}`
+    : t("pickPayMode");
+  const payBtn = (k, icon, label, color, sub) => {
+    const on = mode === k;
+    return <button type="button" onClick={() => pick(k)} style={{
+      background: on ? color : C.card, color: on ? "#fff" : C.ink,
+      border: `2px solid ${on ? color : C.line}`, borderRadius: 10, padding: "16px 10px",
+      cursor: "pointer", fontFamily: "var(--body)", minHeight: 92, textAlign: "center" }}>
+      <div style={{ fontSize: 26, lineHeight: 1 }}>{icon}</div>
+      <div style={{ fontWeight: 800, fontSize: 15.5, marginTop: 7 }}>{label}</div>
+      {sub && <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, opacity: on ? .92 : .75 }}>{sub}</div>}
+    </button>;
+  };
+  return <>
+    <div style={{ background: C.field, color: "#fff", borderRadius: 10, padding: "18px 16px", marginBottom: 14,
+      textAlign: "center" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".04em", opacity: .85, marginBottom: 4 }}>{t("amountDue")}</div>
+      <Money usd={amount} rate={S.rate} lang={lang} size={36} tone="#fff" />
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+      {payBtn("full", "💵", t("payInFull"), C.green, fmtC(amount, S.rate, lang))}
+      {payBtn("partial", "💰", t("payPartialMode"), C.amber, t("remainder"))}
+    </div>
+    {mode === "partial" && <>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8, textAlign: "center" }}>{t("amountReceived")}</div>
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+        <MoneyStepper big usd={paid} onChange={(v) => setTender(fromCents(Math.min(toCents(amount), Math.max(0, toCents(v)))))}
+          rate={S.rate} lang={lang} t={t} step={1} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+        fontWeight: 700 }}>
+        <span>{t("remainder")}</span>
+        <Money usd={p.due} rate={S.rate} lang={lang} size={20} tone={p.due > 0.009 ? C.red : C.green} />
+      </div>
+      <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 12px" }}>💡 {t("cashierPartialHint")}</div>
+    </>}
+    {mode === "full" && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-2px 0 12px" }}>💡 {t("cashierFullHint")}</div>}
+    {mode === "later" && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "0 0 12px" }}>💡 {t("cashierLaterHint")}</div>}
+    <button type="button" onClick={() => pick("later")} style={{
+      ...secondaryBtn, marginBottom: 12,
+      borderColor: mode === "later" ? C.amber : C.line,
+      background: mode === "later" ? "#F6EFDD" : C.paper }}>📋 {t("payLater")} · {t("putOnAccount")}</button>
+    {err && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    <button type="button" style={{ ...primaryBtn, opacity: ready ? 1 : .45, padding: "16px 18px", fontSize: 17,
+      background: mode === "later" ? C.amber : primaryBtn.background }}
+      onClick={() => ready && onConfirm(paid)}>{confirmLabel}</button>
+  </>;
+}
+
 function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose, unit = "L" }) {
   const [am, setAm] = useState(existing.am || 0);
   const [pm, setPm] = useState(existing.pm || 0);
@@ -5190,8 +5279,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [price, setPrice] = useState(0);
   const [total, setTotal] = useState(0);
   const [priceMode, setPriceMode] = useState("unit");
-  const [paidNow, setPaidNow] = useState(0);
-  const [paidTouched, setPaidTouched] = useState(false);
+  const [till, setTill] = useState(false);
   const [cur, setCur] = useState("usd");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const [date, setDate] = useState(dayKey(Date.now()));
@@ -5241,22 +5329,26 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const reimburseOver = reimbC > toCents(amount);
   const discountOver = toCents(discount) > afterReimbC;
   const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
-  useEffect(() => {
-    if (!paidTouched) return;
-    setPaidNow((p) => fromCents(Math.min(toCents(p), toCents(netAmount))));
-  }, [netAmount, paidTouched]);
-  const pay = payState(netAmount, paidNow);
-  const payNow = pay.paid;
-  const setPaid = (v) => { setPaidTouched(true); setPaidNow(v); };
   const updateReimb = (id, patch) => {
     setErr("");
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
   };
-  const saveSale = () => {
-    if (block) return setErr(block);
+  const saleReimbursements = () => {
     const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
       .map((r) => ({ name: r.name.trim(), amount: fromCents(toCents(r.amount)) }));
-    if (reimbursements.some((r) => !r.name)) return setErr(t("reimburseNameNeeded"));
+    if (reimbursements.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
+    return reimbursements;
+  };
+  const goTill = () => {
+    if (block) return setErr(block);
+    if (!saleReimbursements()) return;
+    setErr("");
+    setTill(true);
+  };
+  const saveSale = (payNow) => {
+    if (block) return setErr(block);
+    const reimbursements = saleReimbursements();
+    if (!reimbursements) return;
     onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, reimbursements, payNow,
       discountAmount: fromCents(discC), discountNote: discountNote.trim(),
       unit: product === "milk" ? milkSaleUnit : undefined,
@@ -5267,7 +5359,12 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
-  return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
+  return <Sheet title={till ? `💵 ${t("cashier")}` : `🧾 ${t("newSale")}`}
+    sub={c ? customerLabel(c, t) : undefined}
+    onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
+    {till
+      ? <CashierPayPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveSale} />
+      : <>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
@@ -5377,16 +5474,15 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    <Step n="8" label={t("amountPaid")} />
-    <PaySplit amount={netAmount} paid={paidNow} onChange={setPaid} rate={S.rate} lang={lang} t={t} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {milkUnitLb(stockUnit, t)})</div>}
     {product === "milk" && milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4,
       padding: "10px 12px", marginBottom: 10, fontWeight: 600, color: "#7A5312", fontSize: 13 }}>
       ⚠️ {t("milkUnitMismatch")}</div>}
     {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
-    <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
-      onClick={saveSale}>✓ {t("save")}</button>
+    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
+      onClick={goTill}>💵 {t("charge")} ›</button>
+      </>}
   </Sheet>;
 }
 
@@ -5400,7 +5496,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const [price, setPrice] = useState(0);
   const [total, setTotal] = useState(0);
   const [priceMode, setPriceMode] = useState("unit");
-  const [paidNow, setPaidNow] = useState(true);
+  const [till, setTill] = useState(false);
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
@@ -5425,15 +5521,22 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     setPriceMode(next);
   };
   const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode });
-  const saveQuick = () => {
+  const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
+  const saveQuick = (payNow) => {
     if (block) return setErr(block);
     onSave({
       customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
       unit: product === "milk" ? milkSaleUnit : undefined,
-      paid: paidNow, at: iso(Date.now()),
+      payNow, at: iso(Date.now()),
     });
   };
-  return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
+  const who = walkIn ? t("walkIn") : (c ? c.name : "");
+  return <Sheet title={till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
+    sub={who || undefined}
+    onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
+    {till
+      ? <CashierPayPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} />
+      : <>
     <Scroller>
       <Chip active={walkIn} onClick={() => setCid(WALKIN_ID)} color={C.tag}>🛍️ {t("walkIn")}</Chip>
       {named.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
@@ -5474,10 +5577,6 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     </div>}
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
       style={{ ...inp, marginBottom: 12 }} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-      <Chip active={paidNow} onClick={() => setPaidNow(true)} color={C.green}>{t("payNowMode")}</Chip>
-      <Chip active={!paidNow} onClick={() => setPaidNow(false)} color={C.amber}>{t("payLater")}</Chip>
-    </div>
     <div style={{ background: C.field, color: "#fff", borderRadius: 8, padding: 14, marginBottom: 12,
       display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <span style={{ fontWeight: 700 }}>{t("netInvoiceTotal")}</span>
@@ -5485,7 +5584,8 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     </div>
     {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
     <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
-      onClick={saveQuick}>✓ {t("save")}</button>
+      onClick={goTill}>💵 {t("charge")} ›</button>
+      </>}
   </Sheet>;
 }
 
@@ -10756,11 +10856,11 @@ function FarmApp() {
         {sheet?.k === "quickSale" && <QuickSaleSheet lang={lang} t={t} S={S} customers={activeCustomers} preId={sheet.cid}
           onClose={() => setSheet(null)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, priceMode, note, unit, paid, at }) => {
+          onSave={({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, at }) => {
             const saleId = `sale-${uid()}`;
             const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit", at, note,
               loggedAt: at, currency: "usd", rateUsed: S.rate }];
-            if (paid && amount > 0) es.push({ type: "payment", customerId, saleId, amount, method: "cash",
+            if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash",
               at, loggedAt: at, currency: "usd", rateUsed: S.rate });
             const needWalkIn = customerId === WALKIN_ID;
             commit(es, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
