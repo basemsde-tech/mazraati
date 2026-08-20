@@ -1,5 +1,5 @@
 import React from "react";
-import { STATUS_PILL_TOKENS, statusToneOf, statusRowClass, payStatusKind } from "./statusTone.js";
+import { STATUS_PILL_TOKENS, statusToneOf, statusRowClass, payStatusKind } from "./statusTone.mjs";
 
 const PILL_BASE = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0";
 

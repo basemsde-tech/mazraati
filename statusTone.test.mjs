@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { statusToneOf, statusRowClass, payStatusKind, STATUS_PILL_TOKENS } from "./statusTone.js";
+import { statusToneOf, statusRowClass, payStatusKind, STATUS_PILL_TOKENS } from "./statusTone.mjs";
 
 test("statusToneOf maps operational statuses to semantic tones", () => {
   assert.equal(statusToneOf("paid"), "success");
@@ -40,4 +40,29 @@ test("pill tokens stay on soft fills with AA-friendly ink", () => {
   assert.equal(STATUS_PILL_TOKENS.danger.pill.includes("rose"), true);
   assert.equal(STATUS_PILL_TOKENS.info.dot, "bg-sky-500");
   assert.equal(STATUS_PILL_TOKENS.neutral.pill, "bg-slate-100 text-slate-600 border-slate-200");
+});
+
+function relativeLuminance(hex) {
+  const n = hex.replace("#", "");
+  const rgb = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+}
+function contrastRatio(fg, bg) {
+  const a = relativeLuminance(fg), b = relativeLuminance(bg);
+  const hi = Math.max(a, b), lo = Math.min(a, b);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+test("status pill text meets WCAG AA contrast on soft fills", () => {
+  const pairs = [
+    ["#047857", "#ECFDF5"],
+    ["#B45309", "#FFFBEB"],
+    ["#BE123C", "#FFF1F2"],
+    ["#0369A1", "#F0F9FF"],
+    ["#475569", "#F1F5F9"],
+  ];
+  for (const [fg, bg] of pairs) {
+    assert.ok(contrastRatio(fg, bg) >= 4.5, `${fg} on ${bg} is ${contrastRatio(fg, bg).toFixed(2)}`);
+  }
 });
