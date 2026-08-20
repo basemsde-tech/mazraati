@@ -17,9 +17,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.3", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.4", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.4": {
+    ar: [
+      "البيع السريع فيه خيار زبون عابر لمرة واحدة — بلا اسم، ويُسجَّل في الصندوق والحساب",
+    ],
+    en: [
+      "Quick Sale has a walk-in / one-off customer option — no name needed, still posted to Cash Box",
+    ],
+  },
   "2.9.3": {
     ar: [
       "إصلاح تعطل شاشة حساب الزبون بعد شريط البحث والتصفية",
@@ -971,7 +979,8 @@ const T = {
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
-    quickSale: "بيع سريع", quickSaleHint: "زبون · منتج · كمية — ادفع الآن أو لاحقًا",
+    quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ادفع الآن أو لاحقًا",
+    walkIn: "زبون عابر", walkInHint: "بيع لمرة واحدة — لا حاجة لاسم",
     editPayment: "تعديل الدفعة", editCashMove: "تعديل حركة الصندوق", saleDate: "تاريخ البيع", paymentDate: "تاريخ الدفع",
     notes2: "ملاحظات", noTx: "لا حركات مطابقة.", lastPayment: "آخر دفعة", payments: "الدفعات",
     colQty: "الكمية", colUnit: "السعر", colTotal: "الإجمالي", colPaid: "المدفوع", colDue: "المتبقي",
@@ -1389,7 +1398,8 @@ const T = {
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
-    quickSale: "Quick Sale", quickSaleHint: "Customer · product · qty — pay now or later",
+    quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — pay now or later",
+    walkIn: "Walk-in", walkInHint: "One-off sale — no name needed",
     editPayment: "Edit payment", editCashMove: "Edit cash movement", saleDate: "Sale date", paymentDate: "Payment date",
     notes2: "Notes", noTx: "No matching transactions.", lastPayment: "Last payment", payments: "Payments",
     colQty: "Qty", colUnit: "Unit price", colTotal: "Total", colPaid: "Paid", colDue: "Due",
@@ -2239,6 +2249,21 @@ function accNo(customers, id) {
   const i = customers.findIndex((c) => c.id === id);
   return i < 0 ? "\u2014" : `C-${String(i + 1).padStart(4, "0")}`;
 }
+const WALKIN_ID = "cust-walkin";
+const isWalkInCustomer = (c) => !!(c && (c.id === WALKIN_ID || c.kind === "walkin"));
+const makeWalkInCustomer = () => ({
+  id: WALKIN_ID, kind: "walkin", name: "Walk-in", product: "milk",
+  priceL: 0, defaultQty: 0, at: iso(Date.now()),
+});
+const withWalkInCustomer = (list) => {
+  const rows = list || [];
+  return rows.some((c) => c.id === WALKIN_ID || c.kind === "walkin") ? rows : [...rows, makeWalkInCustomer()];
+};
+const customerLabel = (c, t) => (isWalkInCustomer(c) ? t("walkIn") : ((c && c.name) || "—"));
+const customerNameById = (customers, id, t) => {
+  if (id === WALKIN_ID) return t("walkIn");
+  return customerLabel((customers || []).find((x) => x.id === id), t);
+};
 function supplierNo(suppliers, id) {
   const i = suppliers.findIndex((s) => s.id === id);
   return i < 0 ? "\u2014" : `V-${String(i + 1).padStart(4, "0")}`;
@@ -2285,7 +2310,7 @@ function cashMoveAmount(e) {
   return 0;
 }
 function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom, from, to } = {}) {
-  const cust = (id) => (customers.find((c) => c.id === id) || {}).name || "—";
+  const cust = (id) => customerNameById(customers, id, t);
   const supp = (id) => (suppliers.find((s) => s.id === id) || {}).name || "—";
   const src = withImpliedSupplierPays(entries);
   const byId = Object.fromEntries(src.filter((e) => e.type === "expense").map((e) => [e.id, e]));
@@ -2638,8 +2663,8 @@ function smartSummary({ lang, t, sums, prev, days, animals, workers, scoped, S, 
     const worst = (customers || []).map((c) => ({ c, b: (ledger && ledger.byCustomer[c.id]) || { due: 0, oldest: 0 } }))
       .filter((x) => x.b.due > 0).sort((a, b) => b.b.due - a.b.due)[0];
     out.push({ icon: "⏳", tone: C.red, text: ar
-      ? `المستحقات غير المحصّلة ${money(outstanding)}${worst ? `، أكبرها على ${worst.c.name} بقيمة ${money(worst.b.due)} منذ ${worst.b.oldest} يومًا` : ""}.`
-      : `Outstanding receivables ${money(outstanding)}${worst ? `, largest from ${worst.c.name} at ${money(worst.b.due)}, ${worst.b.oldest} days old` : ""}.` });
+      ? `المستحقات غير المحصّلة ${money(outstanding)}${worst ? `، أكبرها على ${customerLabel(worst.c, t)} بقيمة ${money(worst.b.due)} منذ ${worst.b.oldest} يومًا` : ""}.`
+      : `Outstanding receivables ${money(outstanding)}${worst ? `, largest from ${customerLabel(worst.c, t)} at ${money(worst.b.due)}, ${worst.b.oldest} days old` : ""}.` });
   }
 
   const due = animals.filter((a) => a.due && (new Date(a.due) - Date.now()) / 864e5 <= 30 && new Date(a.due) >= Date.now());
@@ -2710,7 +2735,6 @@ ${body}</Workbook>`;
 function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, customers, scoped, scopedSales, ledger, outstanding, summaryLines }) {
   const aOf = (id) => animals.find((a) => a.id === id);
   const aLbl = (id) => { const a = aOf(id); return a ? `${spOf(a).icon} ${animalLabel(a)}` : "—"; };
-  const cOf = (id) => (customers || []).find((c) => c.id === id);
   const d = (e) => dmy(e.at), h = (e) => hhmm(e.at);
   const r2 = (n) => Math.round((n || 0) * 100) / 100;
   const money = (n) => fmt(n, S.rate, lang);
@@ -2762,7 +2786,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
       t("reimbursementTotal"), t("discount"), t("netInvoiceTotal"), t("amountPaid"), t("due"), t("payStatus"), t("colUser")],
     ...(scopedSales || []).map((iv) => {
       const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
-      return [dmy(iv.at), hhmm(iv.at), (cOf(iv.customerId) || {}).name || "—", lang === "ar" ? pr[2] : pr[3],
+      return [dmy(iv.at), hhmm(iv.at), customerNameById(customers, iv.customerId, t), lang === "ar" ? pr[2] : pr[3],
         `${iv.qty} ${saleQtyUnit(iv, lang, t)}`, money(iv.price), money(iv.grossAmount), money(iv.reimbAmount),
         money(iv.discountAmount || 0), money(iv.netAmount), money(iv.paidAmount), money(iv.due),
         iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid"), iv.byName];
@@ -2773,7 +2797,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
       t("grossSubtotal"), t("reimbursementTotal"), t("collected"), t("due"), t("daysLate"), t("payStatus")],
     ...(customers || []).map((c) => {
       const b = (ledger && ledger.byCustomer[c.id]) || { sold: 0, paid: 0, due: 0, oldest: 0, count: 0 };
-      return [c.name, c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold),
+      return [customerLabel(c, t), c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold),
         money(b.gross || b.sold), money(b.reimbursed), money(b.paid), money(b.due),
         b.due > 0 ? b.oldest : 0, b.due <= 0 ? t("paidS") : t("unpaid")];
     }), [], [t("outstanding"), "", "", "", "", "", "", "", "", money(outstanding)]] });
@@ -2813,7 +2837,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     rows: [[t("colDate"), t("colTime"), t("colUser"), t("colType"), t("colNote"), t("colValue")],
     ...auditRows.map((e) => [d(e), h(e), e.byName, label[e.type] || e.type,
       e.animalId ? aLbl(e.animalId) : e.workerId ? ((workers.find((w) => w.id === e.workerId) || {}).name || "")
-        : e.customerId ? ((cOf(e.customerId) || {}).name || "") : e.name || e.field || "",
+        : e.customerId ? customerNameById(customers, e.customerId, t) : e.name || e.field || "",
       e.liters ?? e.count ?? e.cost ?? e.amount ?? e.kg ?? e.value ?? (e.present === undefined ? "" : (e.present ? t("present") : t("absent")))])] });
 
   return sheets;
@@ -2830,7 +2854,7 @@ function exportAccount({ customer, no, rows, pays, lang, t, S }) {
   const net = fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
   const sheets = [
     { name: t("account"), cols: [18, 26], rows: [
-      [t("customerName"), customer.name],
+      [t("customerName"), customerLabel(customer, t)],
       [t("accountNo"), no],
       [t("phone"), customer.phone || "\u2014"],
       [t("since"), dmy(customer.at)],
@@ -2861,7 +2885,7 @@ function exportAccount({ customer, no, rows, pays, lang, t, S }) {
       ...pays.map((p) => [dmy(p.at), money(p.amount), p.method === "transfer" ? t("transfer") : t("cash"), p.note || ""]),
     ] },
   ];
-  return writeSheets(sheets, lang, `${customer.name}-${no}`);
+  return writeSheets(sheets, lang, `${customerLabel(customer, t)}-${no}`);
 }
 function writeSheets(sheets, lang, fname) {
   const X = typeof window !== "undefined" ? window.XLSX : null;
@@ -5251,7 +5275,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     </div>
     <Step n="1" label={t("pickCustomer")} />
     <Scroller>
-      {customers.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
+      {customers.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{customerLabel(x, t)}</Chip>)}
       <Chip active={false} onClick={onAddCustomer}>➕</Chip>
     </Scroller>
     <Step n="2" label={t("product")} />
@@ -5367,8 +5391,10 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
 }
 
 function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCustomer }) {
-  const [cid, setCid] = useState(preId || (customers.length === 1 ? customers[0].id : null));
-  const c = customers.find((x) => x.id === cid);
+  const named = (customers || []).filter((c) => !isWalkInCustomer(c));
+  const [cid, setCid] = useState(preId || WALKIN_ID);
+  const walkIn = cid === WALKIN_ID;
+  const c = named.find((x) => x.id === cid);
   const [product, setProduct] = useState(c?.product || "milk");
   const [qty, setQty] = useState(c?.defaultQty || 0);
   const [price, setPrice] = useState(0);
@@ -5379,7 +5405,10 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const [err, setErr] = useState("");
   const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
-  useEffect(() => { if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); } }, [cid]);
+  useEffect(() => {
+    if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); }
+    else { setProduct("milk"); setQty(0); }
+  }, [cid]);
   useEffect(() => {
     const next = defPrice(product) || 0;
     setPrice(next);
@@ -5404,14 +5433,14 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
       paid: paidNow, at: iso(Date.now()),
     });
   };
-  if (customers.length === 0) return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
-    <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
-  </Sheet>;
   return <Sheet title={`⚡ ${t("quickSale")}`} onClose={onClose}>
     <Scroller>
-      {customers.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
+      <Chip active={walkIn} onClick={() => setCid(WALKIN_ID)} color={C.tag}>🛍️ {t("walkIn")}</Chip>
+      {named.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
       <Chip active={false} onClick={onAddCustomer}>➕</Chip>
     </Scroller>
+    {walkIn && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px" }}>
+      {t("walkInHint")}</div>}
     <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "12px 0" }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
         const on = product === k;
@@ -5469,7 +5498,7 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
-  return <Sheet title={`💵 ${t("recordPayment")}`} sub={customer.name} onClose={onClose}>
+  return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 12, boxShadow: sh1,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
       <span>{t("due")}</span><Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.red} />
@@ -5767,14 +5796,14 @@ function AccountHead({ customer, no, b, lang, t, S }) {
   const bits = [`${t("accountNo")} ${no}`];
   if (customer.phone) bits.push(customer.phone);
   bits.push(`${t("since")} ${dmy(customer.at)}`);
-  bits.push(`${fmtC(price, S.rate, lang)} / ${t("colUnit")}`);
+  if (!isWalkInCustomer(customer)) bits.push(`${fmtC(price, S.rate, lang)} / ${t("colUnit")}`);
   return <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
     background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
     <div style={{ width: 46, height: 46, borderRadius: "50%", flexShrink: 0, background: C.bg,
       color: C.field, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 16 }}>
-      {initials(customer.name)}</div>
+      {initials(customerLabel(customer, t))}</div>
     <div style={{ flex: 1, minWidth: 150 }}>
-      <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19 }}>{customer.name}</div>
+      <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19 }}>{customerLabel(customer, t)}</div>
       <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600, marginTop: 3 }}>{bits.join(" \u00b7 ")}</div>
     </div>
     <div style={{ textAlign: "end", borderRadius: 12, padding: "10px 14px",
@@ -6086,12 +6115,14 @@ function ConfirmPinSheet({ lang, t, me, title, warn, confirmLabel, onConfirm, on
 
 function CustomerManageSheet({ customer, no, lang, t, S, ledger, onArchive, onDelete, onExport, onClose }) {
   const b = ledger.byCustomer[customer.id] || { due: 0 };
-  return <Sheet title={`⚙️ ${t("manageAccount")}`} sub={customer.name} onClose={onClose}>
+  const system = isWalkInCustomer(customer);
+  return <Sheet title={`⚙️ ${t("manageAccount")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <Row k={t("accountNo")} v={no} />
     <Row k={t("due")} v={fmtC(b.due || 0, S.rate, lang)} tone={moneyColor("due", b.due)} />
+    {system && <div style={{ fontSize: 13, color: C.inkSoft, fontWeight: 600, margin: "10px 0 4px" }}>{t("walkInHint")}</div>}
     <button style={{ ...secondaryBtn, marginTop: 14, marginBottom: 10 }} onClick={onExport}>💾 {t("exportArchive")}</button>
-    <button style={{ ...secondaryBtn, marginBottom: 10 }} onClick={onArchive}>📦 {t("archiveAccount")}</button>
-    <button style={{ ...secondaryBtn, color: C.red, borderColor: C.red }} onClick={onDelete}>🗑️ {t("deleteAccount")}</button>
+    {!system && <button style={{ ...secondaryBtn, marginBottom: 10 }} onClick={onArchive}>📦 {t("archiveAccount")}</button>}
+    {!system && <button style={{ ...secondaryBtn, color: C.red, borderColor: C.red }} onClick={onDelete}>🗑️ {t("deleteAccount")}</button>}
   </Sheet>;
 }
 
@@ -6282,9 +6313,9 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     med: [m ? m.i : "💉", `${m ? (lang === "ar" ? m.ar : m.en) : ""}${e.name ? ` (${e.name})` : ""} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
     expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
-    sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? c.name : "—"}`, fmtC(e.amount, rate, lang)],
-    saleReimburse: ["↩️", `${t("reimbursement")} · ${e.name || "—"} · ${c ? c.name : "—"}`, `−${fmtC(e.amount, rate, lang)}`],
-    payment: ["💵", `${t("recordPayment")} · ${c ? c.name : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
+    sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? customerLabel(c, t) : "—"}`, fmtC(e.amount, rate, lang)],
+    saleReimburse: ["↩️", `${t("reimbursement")} · ${e.name || "—"} · ${c ? customerLabel(c, t) : "—"}`, `−${fmtC(e.amount, rate, lang)}`],
+    payment: ["💵", `${t("recordPayment")} · ${c ? customerLabel(c, t) : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     loss: ["💀", `${t("losses")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)}`],
     birth: ["🐣", `${t("births")} · ${a ? animalLabel(a) : "—"}${e.males !== undefined ? ` · ♂${e.males} ♀${e.females}` : ""}${e.dead ? ` · 💀${e.dead}` : ""}`, `${nf(e.count)}`],
@@ -7078,7 +7109,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     return <div dir={T[dlang].dir} style={docWrap}>
       <DocHead lang={dlang} both={both} {...farm} title={t("statement")}
         docNo={accNo(customers, c.id)}
-        party={{ name: c.name, phone: c.phone, acc: accNo(customers, c.id) }}
+        party={{ name: customerLabel(c, t), phone: c.phone, acc: accNo(customers, c.id) }}
         meta={[[t("generated"), now], [t("preparedBy"), me.name],
           ...(tpl.showRate !== false && S.rate > 0 ? [[t("rate"), `1 USD = ${nf(S.rate)} ${L2("ل.ل", "LBP")}`]] : [])]} />
       <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
@@ -7125,7 +7156,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
   const docNo = isReceipt ? iv.no.replace("INV", "REC") : iv.no;
   return <div dir={T[dlang].dir} style={docWrap}>
     <DocHead lang={dlang} both={both} {...farm} title={isReceipt ? t("receipt") : t("invoice")} docNo={docNo}
-      party={{ name: c ? c.name : "—", phone: c && c.phone, acc: c ? accNo(customers, c.id) : null }}
+      party={{ name: c ? customerLabel(c, t) : "—", phone: c && c.phone, acc: c ? accNo(customers, c.id) : null }}
       meta={[[t("colDate"), `${dmy(iv.at)} ${hhmm(iv.at)}`], [t("preparedBy"), me.name], [t("payStatus"), payBadge(iv.status)]]} />
     <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 4 }}><tbody>
       <tr>
@@ -7911,7 +7942,7 @@ function FarmApp() {
   }, [supplierLedger, activeSuppliers]);
   const outstanding = useMemo(() => activeCustomers.reduce((a, c) => a + ((ledger.byCustomer[c.id] || {}).due || 0), 0), [activeCustomers, ledger]);
   const scopedSales = useMemo(() => ledger.list.filter(inRange).map((iv) => ({ ...iv,
-    customerName: (customers.find((c) => c.id === iv.customerId) || {}).name || "—" })), [ledger, inRange, customers]);
+    customerName: (customerNameById(customers, iv.customerId, t)) })), [ledger, inRange, customers, t]);
   const sums = useMemo(() => computeSums(financialScoped, S, workers, days), [financialScoped, S, workers, days]);
   const prevSums = useMemo(() => computeSums(prevFinancialScoped, S, workers, days), [prevFinancialScoped, S, workers, days]);
 
@@ -8057,18 +8088,19 @@ function FarmApp() {
     const needle = (custQ || "").trim().toLowerCase();
     const list = [...activeCustomers].filter((c) => {
       if (!needle) return true;
-      return `${c.name} ${c.phone || ""} ${accNo(customers, c.id)}`.toLowerCase().includes(needle);
+      return `${customerLabel(c, t)} ${c.name || ""} ${c.phone || ""} ${accNo(customers, c.id)}`.toLowerCase().includes(needle);
     });
     const cmpStr = (a, b) => a.localeCompare(b, lang === "ar" ? "ar" : "en", { sensitivity: "base" });
+    const nm = (c) => customerLabel(c, t);
     switch (custSort) {
-      case "nameDesc": return list.sort((a, b) => cmpStr(b.name, a.name));
+      case "nameDesc": return list.sort((a, b) => cmpStr(nm(b), nm(a)));
       case "account": return list.sort((a, b) => (idx.get(a.id) ?? 0) - (idx.get(b.id) ?? 0));
-      case "product": return list.sort((a, b) => cmpStr(prodLbl(a), prodLbl(b)) || cmpStr(a.name, b.name));
+      case "product": return list.sort((a, b) => cmpStr(prodLbl(a), prodLbl(b)) || cmpStr(nm(a), nm(b)));
       case "newest": return list.sort((a, b) => cmpTx(a, b, "newest"));
       case "oldest": return list.sort((a, b) => cmpTx(a, b, "oldest"));
-      default: return list.sort((a, b) => cmpStr(a.name, b.name));
+      default: return list.sort((a, b) => cmpStr(nm(a), nm(b)));
     }
-  }, [activeCustomers, customers, custSort, custQ, lang]);
+  }, [activeCustomers, customers, custSort, custQ, lang, t]);
 
   const custSortOpts = [["nameAsc", t("sortNameAsc")], ["nameDesc", t("sortNameDesc")], ["account", t("sortAccount")],
     ["product", t("sortProduct")], ["newest", t("sortNewest")], ["oldest", t("sortOldest")]];
@@ -8104,6 +8136,7 @@ function FarmApp() {
     ping(t("saved"));
   };
   const archiveCustomer = (c) => {
+    if (isWalkInCustomer(c)) return;
     commit([{ type: "customerArchive", customerId: c.id, name: c.name }], {
       customers: customers.map((x) => (x.id === c.id ? { ...x, archived: true, archivedAt: iso(Date.now()), archivedBy: me.name } : x)),
     });
@@ -8112,6 +8145,7 @@ function FarmApp() {
     ping(t("accountArchived"));
   };
   const deleteCustomer = (c) => {
+    if (isWalkInCustomer(c)) return;
     commit([{ type: "customerDelete", customerId: c.id, name: c.name }], {
       customers: customers.filter((x) => x.id !== c.id),
       replace: { customers: true },
@@ -8303,7 +8337,7 @@ function FarmApp() {
 
   const setup = { identity: !!(S.farmName || "").trim(), animals: animals.length > 0,
     prices: S.rate > 0 && (S.milkPrice > 0 || S.eggPrice > 0),
-    customers: activeCustomers.length > 0 };
+    customers: activeCustomers.some((c) => !isWalkInCustomer(c)) };
   const showSetup = !(setup.identity && setup.animals && setup.prices);
 
   const payBill = async (o) => {
@@ -9181,7 +9215,7 @@ function FarmApp() {
     ...animals.map((a) => ({ key: `a-${a.id}`, icon: spOf(a).icon, label: animalLabel(a),
       hint: spName(a.species, lang, true), tag: statusLabel(a.status, lang), group: "people", rank: 60,
       run: () => { navigate("animals"); setSel(a.id); } })),
-    ...activeCustomers.map((c) => ({ key: `c-${c.id}`, icon: "🤝", label: c.name, hint: t("customers"),
+    ...activeCustomers.map((c) => ({ key: `c-${c.id}`, icon: isWalkInCustomer(c) ? "🛍️" : "🤝", label: customerLabel(c, t), hint: t("customers"),
       tag: fmtC((ledger.byCustomer[c.id] || {}).due || 0, S.rate, lang), group: "people", rank: 70,
       run: () => { navigate("sales"); openAccount(c.id); } })),
   ];
@@ -9887,14 +9921,14 @@ function FarmApp() {
               <button onClick={() => { setSelCust(id); }}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
                   fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
-                {c.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
+                {customerLabel(c, t)}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
               <button onClick={() => closeAccount(id)} title={t("closeTab")}
                 style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
             </span>; })}
         </div>)}
 
       {selCustomer
-        ? <DeskCard title={`🧾 ${selCustomer.name}`}
+        ? <DeskCard title={`🧾 ${customerLabel(selCustomer, t)}`}
             right={<div style={{ display: "flex", gap: 7 }}>
               <button className="dk-pill" onClick={() => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"] })}>🖨️ {t("statement")}</button>
               <button className="dk-pill" onClick={() => setSelCust(null)}>‹ {t("backToCustomers")}</button>
@@ -9943,8 +9977,8 @@ function FarmApp() {
                     return (
                       <DataCard key={c.id} kind={kind}
                         status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("statusClear")}</StatusPill>}
-                        title={c.name}
-                        subtitle={`${accNo(customers, c.id)}${c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
+                        title={customerLabel(c, t)}
+                        subtitle={`${accNo(customers, c.id)}${isWalkInCustomer(c) ? ` · ${t("walkInHint")}` : c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
                         meta={c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined}
                         onClick={() => openAccount(c.id)}
                         actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}>
@@ -9979,7 +10013,7 @@ function FarmApp() {
                           ])}
                           style={{ cursor: "pointer" }}>
                           <Td mono tone={C.inkSoft}>{accNo(customers, c.id)}</Td>
-                          <Td strong>{c.name}</Td>
+                          <Td strong>{customerLabel(c, t)}</Td>
                           <Td tone={C.inkSoft}>{c.phone || t("noPhone")}</Td>
                           <Td tone={C.inkSoft}>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
                           <Td align="end" mono tone={C.inkSoft}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
@@ -10728,7 +10762,8 @@ function FarmApp() {
               loggedAt: at, currency: "usd", rateUsed: S.rate }];
             if (paid && amount > 0) es.push({ type: "payment", customerId, saleId, amount, method: "cash",
               at, loggedAt: at, currency: "usd", rateUsed: S.rate });
-            commit(es);
+            const needWalkIn = customerId === WALKIN_ID;
+            commit(es, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
             returnToAccount(customerId);
           }} />}
 
