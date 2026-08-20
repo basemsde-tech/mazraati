@@ -7395,6 +7395,9 @@ function FarmApp() {
     });
     setData(farm);
     setDraftS(farm.settings);
+    setCashRange("month");
+    setExpRange("month");
+    setRange("month");
     setSheet(null);
     try {
       await store.set(SHARED_KEY, JSON.stringify(farm), false);

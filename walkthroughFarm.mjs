@@ -236,6 +236,8 @@ export function buildWalkthroughFarm({ keep = {}, setupV = "1.6.4", now = Date.n
   sale("demo-sale-sam-2", "demo-cust-samir", "eggs", 60, "eggs", 0.22, 8, 10);
 
   sale("demo-sale-kar-1", "demo-cust-karim", "milk", 12, "L", 0.45, 2, 11);
+  const stock = sale("demo-sale-kar-2", "demo-cust-karim", "animal", 1, "head", 520, 0, 10);
+  pay("demo-pay-kar-2", "demo-cust-karim", stock.id, stock.amount, 0, 10);
 
   const bill = (id, supplierId, category, amount, daysAgo, extra = {}) => {
     const when = atHours(now, daysAgo, 11);
