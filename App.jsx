@@ -5,6 +5,10 @@ import {
   companyPullFarm, companyPushFarm, companySyncActive,
 } from "./firebaseCloud.js";
 import { StatusPill, DataList, DataCard, statusToneOf, statusRowClass, payStatusKind } from "./statusPill.jsx";
+import {
+  buildWalkthroughFarm, walkthroughCounts, walkthroughHoldActive, setWalkthroughHold,
+  savePreWalkthrough, readPreWalkthrough, clearPreWalkthrough,
+} from "./walkthroughFarm.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -13,9 +17,19 @@ import { StatusPill, DataList, DataCard, statusToneOf, statusRowClass, payStatus
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.8.7", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.8.8", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.8.8": {
+    ar: [
+      "مزرعة تجريبية على هذا الجهاز فقط لشرح التطبيق للزبون — لا تُرفع إلى سحابة الشركة",
+      "من الإعدادات: تحميل جولة العمل أو الخروج وإرجاع بياناتك",
+    ],
+    en: [
+      "A walkthrough farm on this device only, to show a client how the app works — never uploaded to company cloud",
+      "Settings: load the guided farm, or exit and restore your own data",
+    ],
+  },
   "2.8.7": {
     ar: [
       "شارات الحالة أصبحت حبوبًا هادئة بألوان واضحة دون تعبئة صلبة",
@@ -904,6 +918,15 @@ const T = {
     csvFileSub: "يفتح في أي برنامج", pdfFile: "تقرير (PDF)", pdfFileSub: "للطباعة والتوقيع",
     pickFile: "اختر ملف النسخة", restoreOk: "تم الاسترجاع.", restoreBad: "الملف غير صالح.",
     restoreFound: "يحتوي الملف على", confirmRestore: "استرجاع واستبدال البيانات",
+    walkthrough: "مزرعة تجريبية", walkthroughBtn: "تحميل جولة العمل (هذا الجهاز فقط)",
+    walkthroughTip: "بيانات نموذجية لشرح التطبيق. تُحفظ هنا فقط ولا تُرسل إلى سحابة الشركة.",
+    walkthroughWarn: "ستظهر مزرعة نموذجية على هذا الجهاز فقط. لن تُرفع إلى الشركة. يمكنك الخروج لاحقًا وإرجاع بياناتك.",
+    walkthroughSyncWarn: "مزامنة الشركة نشطة — سنوقف الرفع والسحب أثناء الجولة حتى لا تُستبدل البيانات أو تُنشر.",
+    walkthroughOk: "الجولة جاهزة على هذا الجهاز.",
+    walkthroughExit: "الخروج من الجولة",
+    walkthroughExitWarn: "ستُزال بيانات الجولة من هذا الجهاز. إن وُجدت نسخة سابقة تُعاد، وإلا تُجلب مزرعة الشركة إن كانت المزامنة مفعّلة.",
+    walkthroughBanner: "جولة عمل على هذا الجهاز فقط — غير متزامنة مع الشركة.",
+    walkthroughLoad: "بدء الجولة",
     resetAll: "مسح كل البيانات", resetWarn: "سيُحذف كل شيء ولا يمكن التراجع.",
     confirmReset: "نعم، احذف كل البيانات", print: "طباعة", quick: "إجراءات سريعة",
     goodMorning: "صباح الخير", goodDay: "نهارك سعيد", goodEvening: "مساء الخير",
@@ -1296,6 +1319,15 @@ const T = {
     csvFileSub: "opens anywhere", pdfFile: "Report (PDF)", pdfFileSub: "to print and sign",
     pickFile: "Choose the backup file", restoreOk: "Restored.", restoreBad: "That file is not valid.",
     restoreFound: "The file contains", confirmRestore: "Restore and replace data",
+    walkthrough: "Walkthrough farm", walkthroughBtn: "Load walkthrough (this device only)",
+    walkthroughTip: "Sample data to show a client how the app works. Saved here only — never sent to company cloud.",
+    walkthroughWarn: "A sample farm will appear on this device only. It is not uploaded to the company. You can exit later and restore your data.",
+    walkthroughSyncWarn: "Company sync is on — we will pause upload and download during the tour so this sample is not replaced or published.",
+    walkthroughOk: "Walkthrough is ready on this device.",
+    walkthroughExit: "Exit walkthrough",
+    walkthroughExitWarn: "Walkthrough data will be removed from this device. Your previous farm is restored if we saved it, otherwise the company farm is pulled if sync is on.",
+    walkthroughBanner: "Walkthrough on this device only — not synced with the company.",
+    walkthroughLoad: "Start walkthrough",
     resetAll: "Erase all data", resetWarn: "Everything is deleted and cannot be undone.",
     confirmReset: "Yes, erase everything", print: "Print", quick: "Quick actions",
     goodMorning: "Good morning", goodDay: "Good day", goodEvening: "Good evening",
@@ -1499,10 +1531,11 @@ const store = {
   },
   get available() { return this.kind !== "memory"; },
   async get(key, shared) {
-    if (shared && companySyncActive()) {
+    const remote = shared && !walkthroughHoldActive();
+    if (remote && companySyncActive()) {
       try { const v = await companyPullFarm(); this.mem[key] = v; return { key, value: v, shared }; } catch (e) { /* fall back */ }
     }
-    if (shared && cloud.on && cloud.url) {
+    if (remote && cloud.on && cloud.url) {
       try { const v = await cloudGet(); this.mem[key] = v; return { key, value: v, shared }; } catch (e) { /* fall back */ }
     }
     if (this.kind === "host") return await withTimeout(window.storage.get(key, shared));
@@ -1517,8 +1550,9 @@ const store = {
   async set(key, value, shared) {
     this.mem[key] = value;
     let cErr = null;
-    if (shared && companySyncActive()) { try { await companyPushFarm(value); } catch (e) { cErr = e; } }
-    else if (shared && cloud.on && cloud.url) { try { await cloudSet(value); } catch (e) { cErr = e; } }
+    const remote = shared && !walkthroughHoldActive();
+    if (remote && companySyncActive()) { try { await companyPushFarm(value); } catch (e) { cErr = e; } }
+    else if (remote && cloud.on && cloud.url) { try { await cloudSet(value); } catch (e) { cErr = e; } }
     if (this.kind === "host") return await withTimeout(window.storage.set(key, value, shared));
     if (this.kind === "device") { try { window.localStorage.setItem(key, value); } catch (e) { if (!cErr) cErr = e; } }
     if (cErr) throw cErr;
@@ -5443,6 +5477,22 @@ const HELP = {
         ["☁️", "Cloud sync", "Point the app at a server so everyone reaches it from anywhere."],
         ["💾", "Backup", "JSON to restore, or Excel, CSV or PDF to read."]],
       tip: "Any price change is saved under the name of whoever made it." } },
+  walkthrough: { ar: { title: "جولة للزبون", intro: "هذه مزرعة نموذجية على جهازك فقط. استخدمها لشرح الشاشات ثم اخرج من الإعدادات.",
+      steps: [["💵", "صندوق النقد", "القبض من الزبائن والصرف للموردين يظهران برصيد جارٍ."],
+        ["🐾", "الحيوانات", "أبقار وماعز وأغنام وقطيع دواجن — اضغط بطاقة لفتح الملف."],
+        ["🥛", "التسجيل", "حليب الصباح والمساء، البيض، الدواء والحضور."],
+        ["🤝", "المبيعات", "زبون مدفوع، جزئي، غير مدفوع، ومتأخر — الأحمر يعني أكثر من ٣٠ يومًا."],
+        ["🚚", "الموردون", "فاتورة مسدّدة، مستحقة، ومتأخرة. الدفع يظهر في الصندوق."],
+        ["📊", "التقارير", "الملخص والرسوم والأرباح تُبنى من التسجيلات دون حساب يدوي."]],
+      tip: "كل شيء هنا محلي. لن يصل إلى فريق الشركة حتى تخرج من الجولة." },
+    en: { title: "Client walkthrough", intro: "This is a sample farm on your device only. Use it to show each screen, then exit from Settings.",
+      steps: [["💵", "Cash box", "Money in from customers and out to suppliers, with a running balance."],
+        ["🐾", "Animals", "Cattle, goats, sheep and a poultry flock — tap a card to open the file."],
+        ["🥛", "Logging", "Morning and evening milk, eggs, medicine and attendance."],
+        ["🤝", "Sales", "Paid, partial, unpaid and overdue customers — red means more than 30 days."],
+        ["🚚", "Suppliers", "A settled bill, an open bill and an overdue one. Payments hit the cash box."],
+        ["📊", "Reports", "Summary, charts and profit build themselves from the logs."]],
+      tip: "Everything here stays local. It will not reach the company team until you exit the walkthrough." } },
 };
 const TERMS = [
   ["رقم الأذن", "Ear tag", "الرقم المثبَّت على أذن الحيوان.", "The number fixed to the animal's ear."],
@@ -5587,7 +5637,7 @@ function EmailSoonBox({ t }) {
   </div>;
 }
 
-function FarmSetupGate({ lang, setLang, t, settings, onSave }) {
+function FarmSetupGate({ lang, setLang, t, settings, onSave, onWalkthrough }) {
   const S = settings || {};
   const [farmName, setFarmName] = useState(S.farmName || "");
   const [logo, setLogo] = useState(S.logo || "");
@@ -5595,8 +5645,22 @@ function FarmSetupGate({ lang, setLang, t, settings, onSave }) {
   const [address, setAddress] = useState(S.farmAddress || "");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [askWalk, setAskWalk] = useState(false);
   const fileRef = useRef(null);
   const brand = farmName.trim() || T[lang].brand;
+
+  if (askWalk && onWalkthrough) {
+    return <GateShell lang={lang} setLang={setLang} t={t} brand={brand} logo={logo} wide>
+      <h2 className="gate-h2">🧭 {t("walkthrough")}</h2>
+      <p className="gate-lead">{t("walkthroughWarn")}</p>
+      <div style={{ background: "#F6EFDD", borderRadius: 6, padding: 14, fontWeight: 600, color: "#7A5312", marginBottom: 12, fontSize: 13.5 }}>
+        {t("walkthroughSyncWarn")}
+      </div>
+      <button type="button" style={{ ...primaryBtn, marginBottom: 10, opacity: busy ? .6 : 1 }} disabled={busy}
+        onClick={async () => { setBusy(true); await onWalkthrough(); setBusy(false); }}>✓ {t("walkthroughLoad")}</button>
+      <button type="button" style={secondaryBtn} onClick={() => setAskWalk(false)}>{t("cancel")}</button>
+    </GateShell>;
+  }
 
   return <GateShell lang={lang} setLang={setLang} t={t} brand={brand} logo={logo} wide>
     <h2 className="gate-h2">{t("completeFarmSetup")}</h2>
@@ -5647,6 +5711,8 @@ function FarmSetupGate({ lang, setLang, t, settings, onSave }) {
         await onSave({ farmName: n, logo, farmPhone: phone.trim(), farmAddress: address.trim(), setupV: SETUP_VERSION });
         setBusy(false);
       }}>{busy ? "…" : `✓ ${t("finishSetup")}`}</button>
+    {onWalkthrough && <button type="button" style={{ ...secondaryBtn, marginTop: 10 }}
+      onClick={() => setAskWalk(true)}>🧭 {t("walkthroughBtn")}</button>}
   </GateShell>;
 }
 
@@ -6684,6 +6750,8 @@ function FarmApp() {
       let farm; try { farm = await loadShared(); } catch (e) { farm = emptyFarm(); }
       done = true; clearTimeout(fb);
       setData(farm); setDraftS(farm.settings);
+      if (farm && farm.settings && farm.settings.demoWalkthrough) setWalkthroughHold(true);
+      else if (walkthroughHoldActive()) setWalkthroughHold(false);
       if (savedId) { const p = (farm.profiles || []).find((x) => x.id === savedId); if (p && p.pin) setPreId(p.id); else if (p) setMe(p); }
     })();
     return () => clearTimeout(fb);
@@ -6696,6 +6764,7 @@ function FarmApp() {
   }, [prefsReady]);
 
   const applyRemoteFarm = useCallback((raw) => {
+    if (walkthroughHoldActive()) return;
     try {
       const d = migrate(JSON.parse(raw));
       setData((prev) => {
@@ -7316,6 +7385,51 @@ function FarmApp() {
     r.onerror = () => ping(t("restoreBad"));
     r.readAsText(f);
   };
+  const applyWalkthrough = async () => {
+    const live = dataRef.current || data || emptyFarm();
+    savePreWalkthrough(live);
+    setWalkthroughHold(true);
+    const farm = buildWalkthroughFarm({
+      keep: { me, profiles: (live.profiles && live.profiles.length) ? live.profiles : (me ? [me] : []) },
+      setupV: SETUP_VERSION,
+    });
+    setData(farm);
+    setDraftS(farm.settings);
+    setSheet(null);
+    try {
+      await store.set(SHARED_KEY, JSON.stringify(farm), false);
+      ping(t("walkthroughOk"));
+      setSheet({ k: "help", topic: "walkthrough" });
+    } catch (e) { setFailed({ entries: [], patch: null, profile: me }); }
+  };
+  const exitWalkthrough = async () => {
+    setWalkthroughHold(false);
+    const backup = readPreWalkthrough();
+    clearPreWalkthrough();
+    setSheet(null);
+    try {
+      if (backup && typeof backup === "object") {
+        const restored = migrate(backup);
+        setData(restored);
+        setDraftS(restored.settings);
+        await store.set(SHARED_KEY, JSON.stringify(restored), false);
+        ping(t("saved"));
+        if (companySyncActive() || (cloud.on && cloud.url)) pull();
+        return;
+      }
+      if (companySyncActive() || (cloud.on && cloud.url)) {
+        await pull();
+        ping(t("saved"));
+        return;
+      }
+      const blank = emptyFarm();
+      blank.profiles = me ? [me] : [];
+      setData(blank);
+      setDraftS(blank.settings);
+      await store.set(SHARED_KEY, JSON.stringify(blank), false);
+      ping(t("saved"));
+    } catch (e) { setFailed({ entries: [], patch: null, profile: me }); }
+  };
   const saveCloud = async (cfg) => {
     const next = { ...cfg, url: (cfg.url || "").trim(), token: (cfg.token || "").trim(), on: !!cfg.on && !!(cfg.url || "").trim() };
     setCloudCfg(next); cloud.url = next.url; cloud.token = next.token; cloud.on = next.on;
@@ -7424,7 +7538,8 @@ function FarmApp() {
     farmName={(data.settings && data.settings.farmName) || ""} logo={(data.settings && data.settings.logo) || ""}
     settings={data.settings || {}}
     clearPre={() => setPreId(null)} onPick={chooseProfile} onCreate={createProfile} onResetPass={resetProfilePass} />;
-  if (needsFarmSetup(S)) return <FarmSetupGate lang={lang} setLang={setLang} t={t} settings={S} onSave={saveFarmSetup} />;
+  if (needsFarmSetup(S)) return <FarmSetupGate lang={lang} setLang={setLang} t={t} settings={S}
+    onSave={saveFarmSetup} onWalkthrough={applyWalkthrough} />;
 
   const setup = { identity: !!(S.farmName || "").trim(), animals: animals.length > 0,
     prices: S.rate > 0 && (S.milkPrice > 0 || S.eggPrice > 0),
@@ -8064,6 +8179,12 @@ function FarmApp() {
         <label style={{ ...secondaryBtn, display: "block", textAlign: "center", cursor: "pointer", padding: "9px 12px", fontSize: 13.5 }}>
           📂 {t("pickFile")}
           <input type="file" accept="application/json,.json" style={{ display: "none" }} onChange={onRestoreFile} /></label>
+        <SetLabel tip={t("walkthroughTip")}>{t("walkthrough")}</SetLabel>
+        {S.demoWalkthrough
+          ? <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "exitWalkthrough" })}>↩ {t("walkthroughExit")}</button>
+          : <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "walkthrough" })}>🧭 {t("walkthroughBtn")}</button>}
       </SetSection>
 
       <SetSection open={setOpen.system} onToggle={() => toggleSet("system")} icon="⚙" title={t("setCatSystem")} tip={t("setTipUpdate")}
@@ -9846,6 +9967,27 @@ function FarmApp() {
 
         {sheet?.k === "help" && <HelpSheet topic={sheet.topic} lang={lang} t={t} onClose={() => setSheet(null)} />}
 
+        {sheet?.k === "walkthrough" && <Sheet title={`🧭 ${t("walkthrough")}`} onClose={() => setSheet(null)}>
+          <div style={{ background: "#F6EFDD", borderRadius: 6, padding: 14, fontWeight: 600, color: "#7A5312", marginBottom: 12 }}>{t("walkthroughWarn")}</div>
+          {(companySyncActive() || cloudCfg.on) && <div style={{ background: "#F5E2E4", borderRadius: 6, padding: 14, fontWeight: 600, color: "#7A1A2E", marginBottom: 12 }}>{t("walkthroughSyncWarn")}</div>}
+          {(() => {
+            const c = walkthroughCounts(buildWalkthroughFarm({ keep: { me, profiles: data.profiles }, setupV: SETUP_VERSION }));
+            return <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 14, display: "grid", gap: 3, boxShadow: sh1 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{t("restoreFound")}:</div>
+              <Row k={t("animals")} v={`${c.animals}`} />
+              <Row k={t("customers")} v={`${c.customers}`} />
+              <Row k={t("workers")} v={`${c.workers}`} />
+              <Row k={t("log")} v={`${c.entries}`} />
+            </div>;
+          })()}
+          <button style={{ ...primaryBtn, marginBottom: 10 }} onClick={applyWalkthrough}>✓ {t("walkthroughLoad")}</button>
+          <button style={secondaryBtn} onClick={() => setSheet(null)}>{t("cancel")}</button></Sheet>}
+
+        {sheet?.k === "exitWalkthrough" && <Sheet title={`↩ ${t("walkthroughExit")}`} onClose={() => setSheet(null)}>
+          <div style={{ background: "#F6EFDD", borderRadius: 6, padding: 14, fontWeight: 600, color: "#7A5312", marginBottom: 12 }}>{t("walkthroughExitWarn")}</div>
+          <button style={{ ...primaryBtn, marginBottom: 10 }} onClick={exitWalkthrough}>✓ {t("walkthroughExit")}</button>
+          <button style={secondaryBtn} onClick={() => setSheet(null)}>{t("cancel")}</button></Sheet>}
+
         {sheet?.k === "restore" && sheet.payload && <Sheet title={`♻️ ${t("restore")}`} onClose={() => setSheet(null)}>
           <div style={{ background: "#F6EFDD", borderRadius: 6, padding: 14, fontWeight: 600, color: "#7A5312", marginBottom: 12 }}>{t("restoreWarn")}</div>
           <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 14, display: "grid", gap: 3, boxShadow: sh1 }}>
@@ -9955,6 +10097,16 @@ function FarmApp() {
               <button type="button" onClick={() => { setHideDeviceBanner(true); saveDevicePrefs({ hideDeviceBanner: true }); }}
                 style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "#7A5312",
                   fontFamily: "var(--body)", fontSize: 12.5 }}>{t("dismiss")}</button>
+            </div>)}
+          {S.demoWalkthrough && (
+            <div className="banner green" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ flex: 1 }}>🧭 {t("walkthroughBanner")}</span>
+              <button type="button" onClick={() => setSheet({ k: "help", topic: "walkthrough" })}
+                style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "#0F5C4D",
+                  fontFamily: "var(--body)", fontSize: 12.5 }}>{t("guide")}</button>
+              <button type="button" onClick={() => setSheet({ k: "exitWalkthrough" })}
+                style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "#0F5C4D",
+                  fontFamily: "var(--body)", fontSize: 12.5 }}>{t("walkthroughExit")}</button>
             </div>)}
           {updateReady && (
             <div className="banner green" style={{ display: "flex", alignItems: "center", gap: 10 }}>
