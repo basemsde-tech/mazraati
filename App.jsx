@@ -17,9 +17,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.7", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.8", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.8": {
+    ar: [
+      "اختيار الزبون والمورد أصبح قائمة بحث — البيع السريع والمصاريف دون صف طويل من الأسماء",
+      "كل تاريخ يظهر بيوم الأسبوع ثم اليوم/الشهر/السنة — الأحد 23/08/2026",
+    ],
+    en: [
+      "Customer and supplier pickers are a searchable list — Quick Sale and expenses no longer use a long row of names",
+      "Every date shows the weekday then day/month/year — Sunday 23/08/2026",
+    ],
+  },
   "2.9.6": {
     ar: [
       "ابدأ أو سجّل الدخول ببريد الشركة — نفس الحساب على كل الأجهزة، وكل حركة باسم من سجّلها ووقتها",
@@ -984,7 +994,8 @@ const T = {
     openAccount: "فتح الحساب", closeTab: "إغلاق", noOpenAccounts: "لا حسابات مفتوحة",
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
-    searchTx: "ابحث في الحركات…", searchCustomers: "ابحث عن زبون…", filters: "تصفية", clearFilters: "إزالة التصفية",
+    searchTx: "ابحث في الحركات…", searchCustomers: "ابحث عن زبون…", searchParty: "ابحث بالاسم أو الهاتف…",
+    noPartyMatch: "لا توجد نتائج", pickNone: "بدون اختيار", filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
     applyFilters: "تم", resetFilters: "إعادة التصفية", filterAndSort: "تصفية وترتيب",
     sortDate: "التاريخ", sortAmount: "المبلغ", sortAlpha: "أبجدي",
@@ -1422,7 +1433,8 @@ const T = {
     openAccount: "Open account", closeTab: "Close", noOpenAccounts: "No open accounts",
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
-    searchTx: "Search transactions…", searchCustomers: "Search customers…", filters: "Filters", clearFilters: "Clear filters",
+    searchTx: "Search transactions…", searchCustomers: "Search customers…", searchParty: "Search name or phone…",
+    noPartyMatch: "No matches", pickNone: "None", filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
     applyFilters: "Done", resetFilters: "Reset filters", filterAndSort: "Filter & sort",
     sortDate: "Date", sortAmount: "Amount", sortAlpha: "A–Z",
@@ -1617,10 +1629,31 @@ const dayKey = (v) => {
   const d = new Date(v);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-/* Storage and comparison stay ISO (YYYY-MM-DD); everything a person reads is DD/MM/YYYY. */
-const dmy = (v) => { if (!v) return ""; const d = new Date(typeof v === "string" && v.length === 10 ? `${v}T12:00:00` : v);
-  if (isNaN(d)) return ""; return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
-const dm = (v) => dmy(v).slice(0, 5);
+/* Storage and comparison stay ISO (YYYY-MM-DD). On screen: weekday + DD/MM/YYYY. */
+const DATE_LANG = { lang: "ar" };
+const DOW = {
+  ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+};
+const asDate = (v) => {
+  if (!v && v !== 0) return null;
+  const src = (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v))
+    ? `${v}T12:00:00`
+    : v;
+  const d = src instanceof Date ? src : new Date(src);
+  return Number.isFinite(d.getTime()) ? d : null;
+};
+const dmyNum = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+const dateLangOf = (lang) => (lang === "ar" || lang === "en") ? lang : (DATE_LANG.lang === "ar" ? "ar" : "en");
+const dmy = (v, lang) => {
+  const d = asDate(v);
+  if (!d) return "";
+  return `${DOW[dateLangOf(lang)][d.getDay()]} ${dmyNum(d)}`;
+};
+const dm = (v) => {
+  const d = asDate(v);
+  return d ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}` : "";
+};
 const nf = (n) => Math.round(n || 0).toLocaleString("en-US");
 /* Dollars keep their cents. Lira has no subunit in practice, so nf stays
    whole for lira, counts and quantities. Rounding money to the dollar made
@@ -1685,8 +1718,8 @@ function stamp(e, lang) {
   const d = new Date(when), k = dayKey(when);
   const shown = k === dayKey(Date.now()) ? `${T[lang].todayAt} ${hhmm(d)}`
     : k === dayKey(Date.now() - 864e5) ? `${T[lang].yesterday} ${hhmm(d)}`
-      : `${dmy(when)} ${hhmm(d)}`;
-  const mark = backdated(e) ? ` · ${T[lang].forDay} ${dmy(e.at)}` : "";
+      : `${dmy(when, lang)} ${hhmm(d)}`;
+  const mark = backdated(e) ? ` · ${T[lang].forDay} ${dmy(e.at, lang)}` : "";
   const who = (e.byName || "").trim();
   return `${who ? `${who} · ` : ""}${shown}${mark}`;
 }
@@ -1795,7 +1828,7 @@ function saleSaveReason(t, { cid, qty, price, amount, priceMode, reimburseOver, 
   return "";
 }
 const dayLabel = (dk, lang) => (dk === dayKey(Date.now()) ? T[lang].today
-  : dk === dayKey(Date.now() - 864e5) ? T[lang].yesterday : dmy(dk));
+  : dk === dayKey(Date.now() - 864e5) ? T[lang].yesterday : dmy(dk, lang));
 function ageText(a, lang) {
   let months = null;
   if (a.dob) months = Math.max(0, Math.round((Date.now() - new Date(a.dob)) / 2628e6));
@@ -2806,7 +2839,7 @@ ${body}</Workbook>`;
 function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, customers, scoped, scopedSales, ledger, outstanding, summaryLines }) {
   const aOf = (id) => animals.find((a) => a.id === id);
   const aLbl = (id) => { const a = aOf(id); return a ? `${spOf(a).icon} ${animalLabel(a)}` : "—"; };
-  const d = (e) => dmy(e.at), h = (e) => hhmm(e.at);
+  const d = (e) => dmy(e.at, lang), h = (e) => hhmm(e.at);
   const r2 = (n) => Math.round((n || 0) * 100) / 100;
   const money = (n) => fmt(n, S.rate, lang);
   const sheets = [];
@@ -2816,7 +2849,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     [S.farmAddress || "", S.farmPhone || ""],
     [t("poweredBy"), `v${VERSION.code}`],
     [t("period"), period, `${days} ${t("days")}`],
-    [t("generated"), new Date().toLocaleString(lang === "ar" ? "ar-LB" : "en-GB")],
+    [t("generated"), `${dmy(Date.now(), lang)} ${hhmm(Date.now())}`],
     [t("preparedBy"), me.name], [t("rate"), S.rate, "LBP / USD"], [],
     [t("colItem"), t("amount")],
     [t("salesIncome"), money(sums.invoiced)],
@@ -3106,6 +3139,99 @@ function Chip({ active, onClick, children, color = C.field }) {
     fontFamily: "var(--body)", flexShrink: 0, minHeight: 44, minWidth: 44,
     transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
 }
+function partyNeedle(item, q) {
+  const n = (q || "").trim().toLowerCase();
+  if (!n) return true;
+  return `${item.label || ""} ${item.hint || ""} ${item.search || ""}`.toLowerCase().includes(n);
+}
+/** Searchable list for customers/suppliers. Pinned extras (walk-in, none) stay visible. */
+function SearchPick({ value, onChange, items = [], extras = [], placeholder, emptyLabel, onAdd, addLabel, t }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+  const catalog = [...extras, ...items];
+  const selected = catalog.find((x) => String(x.id) === String(value ?? ""));
+  const shownExtras = extras.filter((x) => partyNeedle(x, q));
+  const shownItems = items.filter((x) => partyNeedle(x, q));
+  const shown = [...shownExtras, ...shownItems];
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    const tmr = setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch (err) { /* */ } }, 20);
+    return () => {
+      clearTimeout(tmr);
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const pick = (id) => { onChange(id); setQ(""); setOpen(false); };
+  const openList = () => { setOpen(true); setQ(""); };
+  return (
+    <div className="spick-row">
+      <div className="spick" ref={wrapRef}>
+        <div className={`spick-field${open ? " open" : ""}`}
+          onClick={() => { if (!open) openList(); }}>
+          <span className="spick-ico" aria-hidden="true"><IcoSearch /></span>
+          {open
+            ? <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder={placeholder || t("searchParty")} aria-label={placeholder || t("searchParty")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && shown[0]) { e.preventDefault(); pick(shown[0].id); }
+                }} />
+            : <span className={`spick-val${selected ? "" : " ph"}`}>
+                {selected ? <>
+                  {selected.icon ? <span className="spick-em">{selected.icon}</span> : null}
+                  {selected.label}
+                  {selected.hint ? <span className="spick-hint"> · {selected.hint}</span> : null}
+                </> : (placeholder || t("searchParty"))}
+              </span>}
+          <span className="spick-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
+        </div>
+        {open && <div className="spick-list" role="listbox">
+          {shown.length === 0
+            ? <div className="spick-empty">{emptyLabel || t("noPartyMatch")}</div>
+            : shown.map((x) => {
+              const on = String(x.id) === String(value ?? "");
+              return <button type="button" key={String(x.id)} role="option" aria-selected={on}
+                className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(x.id)}>
+                {x.icon ? <span className="spick-em">{x.icon}</span> : null}
+                <span className="spick-opt-copy">
+                  <span className="spick-opt-lb">{x.label}</span>
+                  {x.hint ? <span className="spick-opt-hint">{x.hint}</span> : null}
+                </span>
+              </button>;
+            })}
+        </div>}
+      </div>
+      {onAdd ? <button type="button" className="spick-add" title={addLabel} aria-label={addLabel} onClick={onAdd}>➕</button> : null}
+    </div>
+  );
+}
+function DatePick({ value, onChange, max, min, readOnly, disabled, className, style, ariaLabel, compact }) {
+  const locked = !!(readOnly || disabled);
+  return (
+    <label className={`date-pick${compact ? " compact" : ""}${locked ? " locked" : ""}${className ? ` ${className}` : ""}`}
+      style={style}>
+      <span className="date-pick-show">{value ? dmy(value) : "—"}</span>
+      <input type="date" value={value || ""} max={max || undefined} min={min || undefined}
+        readOnly={!!readOnly} disabled={!!disabled} aria-label={ariaLabel}
+        tabIndex={locked ? -1 : undefined}
+        onChange={(e) => {
+          if (locked || !onChange) return;
+          const v = e.target.value;
+          if (v) {
+            if (max && v > max) return;
+            if (min && v < min) return;
+          }
+          onChange(v);
+        }} />
+    </label>
+  );
+}
 function PriceModeToggle({ t, mode, onChange }) {
   return <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
     <Chip active={mode === "unit"} onClick={() => onChange("unit")}>{t("pricePerUnit")}</Chip>
@@ -3138,8 +3264,7 @@ function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
         })}
       </div>
     </>}
-    <input type="date" value={date} max={dayKey(Date.now())}
-      onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
       style={{ ...inp, marginBottom: 14 }} />
     <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
@@ -3316,10 +3441,8 @@ function DateFilterPills({ t, from, to, onChange }) {
       <Chip active={custom} onClick={() => onChange(from || today.from, to || today.to)}>{t("customRange")}</Chip>
     </div>
     {(from || to || custom) && <div className="sf-dates">
-      <input type="date" value={from || ""} onChange={(e) => onChange(e.target.value, to || "")}
-        aria-label={t("fromDate")} className="sf-date" />
-      <input type="date" value={to || ""} onChange={(e) => onChange(from || "", e.target.value)}
-        aria-label={t("toDate")} className="sf-date" />
+      <DatePick compact value={from || ""} onChange={(v) => onChange(v, to || "")} ariaLabel={t("fromDate")} />
+      <DatePick compact value={to || ""} onChange={(v) => onChange(from || "", v)} ariaLabel={t("toDate")} />
     </div>}
   </div>;
 }
@@ -3800,14 +3923,14 @@ function AnimalForm({ lang, t, animals, initial, onSave, onClose, onBack, backLa
     {step === 2 && sp && <>
       <Step n="1" label={flock ? t("flockStart") : t("dob")} />
       {flock
-        ? <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} style={inp} />
+        ? <DatePick value={dob} onChange={setDob} />
         : <>
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <Chip active={dobMode === "dob"} onClick={() => setDobMode("dob")}>{t("knowDob")}</Chip>
             <Chip active={dobMode === "age"} onClick={() => setDobMode("age")}>{t("knowAge")}</Chip>
           </div>
           {dobMode === "dob"
-            ? <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} style={inp} />
+            ? <DatePick value={dob} onChange={setDob} />
             : <div style={{ background: C.card, borderRadius: 6, padding: 14, boxShadow: sh1 }}>
                 <Stepper value={ageYears} onChange={setAgeYears} step={1} suffix={t("years")} /></div>}
         </>}
@@ -3862,7 +3985,8 @@ function DayPicker({ date, setDate, lang, t }) {
         {lang === "ar" ? "›" : "‹"}</button>
       <div style={{ flex: 1, textAlign: "center" }}>
         <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 17 }}>{dayLabel(date, lang)}</div>
-        <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: C.inkSoft }}>{dmy(date)}</div>
+        {(date === today || date === dayKey(Date.now() - 864e5)) &&
+          <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: C.inkSoft }}>{dmy(date, lang)}</div>}
       </div>
       <button onClick={() => shift(1)} disabled={isToday} aria-label={t("nextDay")}
         style={{ width: 44, height: 44, borderRadius: 4, border: `1px solid ${C.line}`, background: C.paper,
@@ -3872,9 +3996,7 @@ function DayPicker({ date, setDate, lang, t }) {
     <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
       <Chip active={isToday} onClick={() => setDate(today)}>{t("today")}</Chip>
       <Chip active={date === dayKey(Date.now() - 864e5)} onClick={() => setDate(dayKey(Date.now() - 864e5))}>{t("yesterday")}</Chip>
-      <input type="date" value={date} max={today}
-        onChange={(e) => { if (e.target.value && e.target.value <= today) setDate(e.target.value); }}
-        style={{ ...inp, flex: 1, minWidth: 130, padding: "9px 10px", fontSize: 15 }} />
+      <DatePick compact value={date} max={today} onChange={setDate} />
     </div>
     {!isToday && <div style={{ marginTop: 9, background: "#F6EFDD", border: `1px solid ${C.tag}`, borderRadius: 3,
       padding: "8px 10px", fontSize: 12.5, fontWeight: 600, color: "#7A5312" }}>
@@ -3968,8 +4090,7 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13, marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>📅 {t("serviceDate")}</div>
       <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 8 }}>{t("serviceHint")}</div>
-      <input type="date" value={served} max={dayKey(Date.now())}
-        onChange={(e) => e.target.value && setServed(e.target.value)} style={{ ...inp, marginBottom: 10 }} />
+      <DatePick value={served} max={dayKey(Date.now())} onChange={setServed} style={{ marginBottom: 10 }} />
       <div style={{ display: "flex", gap: 8 }}>
         <Chip active={method === "natural"} onClick={() => setMethod("natural")}>🐂 {t("natural")}</Chip>
         <Chip active={method === "ai"} onClick={() => setMethod("ai")}>💉 {t("ai")}</Chip>
@@ -4193,8 +4314,7 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L" }) {
         }}>{lb}</button>
       ))}
     </div>
-    <input type="date" value={date} max={dayKey(Date.now())} readOnly
-      style={{ ...inp, marginBottom: 12, opacity: .85 }} />
+    <DatePick value={date} max={dayKey(Date.now())} readOnly />
     {qty > avail + 0.001 && <div style={{ background: "#F8E9EC", borderRadius: 8, padding: "10px 12px", marginBottom: 10,
       fontWeight: 600, color: C.red, fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(avail)} {u})</div>}
     <button style={{ ...primaryBtn, opacity: qty > 0 && qty <= avail + 0.001 ? 1 : .45 }}
@@ -4610,11 +4730,10 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
         supplierLinked={linked || fromSupplier} />
       {pay.status !== "paid" && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+        <DatePick value={dueDate} onChange={setDueDate} />
       </>}
       <Step n="3" label={`${dmy(date)}`} />
-      <input type="date" value={date} max={dayKey(Date.now())}
-        onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
+      <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} style={{ marginBottom: 14 }} />
       <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45, marginBottom: 10 }}
         onClick={() => amount > 0 && setStep(3)}>{t("next")} ›</button>
       <button type="button" style={{ ...secondaryBtn, opacity: amount > 0 ? 1 : .45 }}
@@ -4627,11 +4746,10 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
     {step === 3 && <>
       <Step n="3" label={`${t("optional")}`} />
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("pickSupplier")}</div>
-      {activeSuppliers.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
-        <Chip active={!supplierId} onClick={() => pickSupplier(null)}>{t("noSupplierLink")}</Chip>
-        {activeSuppliers.slice(0, 12).map((s) => (
-          <Chip key={s.id} active={supplierId === s.id} onClick={() => pickSupplier(s)}>{s.name}</Chip>))}
-      </div>}
+      <SearchPick t={t} value={supplierId || ""}
+        onChange={(id) => pickSupplier(id ? (activeSuppliers.find((s) => s.id === id) || null) : null)}
+        extras={[{ id: "", label: t("noSupplierLink") }]}
+        items={activeSuppliers.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
       {!supplierId && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("vendor")}</div>
         <input value={vendor} onChange={(e) => {
@@ -4648,7 +4766,7 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
       {pay.status !== "paid" && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+        <DatePick value={dueDate} onChange={setDueDate} />
       </>}
       <button type="button" style={{ ...primaryBtn, opacity: cat && amount > 0 ? 1 : .45 }}
         onClick={() => cat && amount > 0 && onSave(buildPayload())}>✓ {t("saveExpense")}</button>
@@ -4716,11 +4834,15 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
           {SPECIES[k].icon} {spName(k, lang)}</Chip>)}
       </Scroller></>}
     <Step n={species.length > 1 ? "5" : "4"} label={`${t("supplier")} — ${t("optional")}`} />
-    {activeSuppliers.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }}>
-      <Chip active={!supplierId} onClick={() => { setSupplierId(null); }}>{t("noSupplierLink")}</Chip>
-      {activeSuppliers.slice(0, 10).map((s) => (
-        <Chip key={s.id} active={supplierId === s.id} onClick={() => { setSupplierId(s.id); setSupplier(s.name); }}>{s.name}</Chip>))}
-    </div>}
+    <SearchPick t={t} value={supplierId || ""}
+      onChange={(id) => {
+        if (!id) { setSupplierId(null); return; }
+        const s = activeSuppliers.find((x) => x.id === id);
+        setSupplierId(id);
+        if (s) setSupplier(s.name);
+      }}
+      extras={[{ id: "", label: t("noSupplierLink") }]}
+      items={activeSuppliers.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
     {!supplierId && <input value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ ...inp, marginBottom: 14 }}
       placeholder={t("newSupplier")} />}
     {supplierId && <div style={{ height: 8 }} />}
@@ -4990,11 +5112,10 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
       supplierLinked />
     {pay.status !== "paid" && <>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
-      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+      <DatePick value={dueDate} onChange={setDueDate} />
     </>}
     <Step n={qtyMeta ? "5" : "4"} label={`${t("colDate")} — ${dmy(date)}`} />
-    <input type="date" value={date} max={dayKey(Date.now())}
-      onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes2")} — {t("optional")}</div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")}
       style={{ ...inp, marginBottom: 16 }} />
@@ -5304,7 +5425,7 @@ function ObligationForm({ lang, t, S, initial, onSave, onClose }) {
       {OBL_FREQ.map(([k, lb]) => <Chip key={k} active={freq === k} onClick={() => setFreq(k)}>{t(lb)}</Chip>)}
     </div>
     <Step n="5" label={t("nextDue")} />
-    <input type="date" value={nextDue} onChange={(e) => setNextDue(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
+    <DatePick value={nextDue} onChange={setNextDue} style={{ marginBottom: 14 }} />
     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes")}</div>
     <input value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     <Step n="6" label={t("obligationDocs")} />
@@ -5425,10 +5546,14 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkAvail)} {milkUnitLb(stockUnit, t)}</span>
     </div>
     <Step n="1" label={t("pickCustomer")} />
-    <Scroller>
-      {customers.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{customerLabel(x, t)}</Chip>)}
-      <Chip active={false} onClick={onAddCustomer}>➕</Chip>
-    </Scroller>
+    <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
+      items={customers.map((x) => ({
+        id: x.id, label: customerLabel(x, t),
+        hint: isWalkInCustomer(x) ? "" : (x.phone || ""),
+        icon: isWalkInCustomer(x) ? "🛍️" : undefined,
+        search: `${x.name || ""} ${x.phone || ""}`,
+      }))}
+      onAdd={onAddCustomer} addLabel={t("addCustomer")} />
     <Step n="2" label={t("product")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
@@ -5524,8 +5649,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
       style={{ ...inp, marginBottom: 12 }} />
     <Step n="6" label={`${t("saleDate")} — ${dmy(date)}`} />
-    <input type="date" value={date} max={dayKey(Date.now())}
-      onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
@@ -5591,11 +5715,10 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     {till
       ? <CashierPayPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} />
       : <>
-    <Scroller>
-      <Chip active={walkIn} onClick={() => setCid(WALKIN_ID)} color={C.tag}>🛍️ {t("walkIn")}</Chip>
-      {named.map((x) => <Chip key={x.id} active={cid === x.id} onClick={() => setCid(x.id)}>{x.name}</Chip>)}
-      <Chip active={false} onClick={onAddCustomer}>➕</Chip>
-    </Scroller>
+    <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
+      extras={[{ id: WALKIN_ID, label: t("walkIn"), icon: "🛍️" }]}
+      items={named.map((x) => ({ id: x.id, label: x.name, hint: x.phone || "", search: `${x.name} ${x.phone || ""}` }))}
+      onAdd={onAddCustomer} addLabel={t("addCustomer")} />
     {walkIn && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px" }}>
       {t("walkInHint")}</div>}
     <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "12px 0" }}>
@@ -5675,8 +5798,7 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
       })}
     </div>
     <Step n="3" label={`${t("paymentDate")} — ${dmy(date)}`} />
-    <input type="date" value={date} max={dayKey(Date.now())}
-      onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <Step n="4" label={t("invoice")} />
     <Scroller>
       <Chip active={!saleId} onClick={() => setSaleId("")}>⚡ {t("allTypes")}</Chip>
@@ -5902,7 +6024,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
       </div>)}
     </div>}
     <Step n="4" label={`${t("saleDate")} — ${dmy(date)}`} />
-    <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+    <DatePick value={date} onChange={setDate} />
     <Step n="5" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     <div style={{ background: C.field, color: "#fff", borderRadius: 4, padding: 14, marginBottom: 14,
@@ -7264,6 +7386,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
   }
   const both = doc.docLang === "both";
   const dlang = both ? "ar" : (doc.docLang || lang);
+  DATE_LANG.lang = dlang === "ar" ? "ar" : "en";
   const t = (k) => (both ? `${T.ar[k]} / ${T.en[k]}` : T[dlang][k]);
   const L2 = (ar, en) => docL2(both, dlang, ar, en);
   const tpl = docTplOf(S);
@@ -7281,7 +7404,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     if (!showUsd && showLbp) return nf(v * (rateUsed || S.rate));
     return nm(v);
   };
-  const now = new Date().toLocaleString(dlang === "ar" ? "ar-LB" : "en-GB");
+  const now = `${dmy(Date.now(), dlang)} ${hhmm(Date.now())}`;
   const farm = { logo: S.logo, farmName: S.farmName, farmPhone: S.farmPhone, farmAddress: S.farmAddress, showParty: tpl.showParty !== false };
   const foot = `${(S.farmName || "").trim() ? `${S.farmName.trim()} · ` : ""}${T[both ? "ar" : dlang].poweredBy} · v${VERSION.code}`;
   const thanksTxt = (tpl.thanks || "").trim() || t("thanks");
@@ -7554,7 +7677,7 @@ function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, c
     margin: "13px 0 5px", color: C.field, borderBottom: `1.5px solid ${C.line}`, paddingBottom: 3 }}>{children}</div>;
   return <div dir={T[lang].dir} style={{ fontFamily: "var(--body)", color: "#000", padding: "9mm" }}>
     <DocHead lang={lang} logo={S.logo} farmName={S.farmName} farmPhone={S.farmPhone} farmAddress={S.farmAddress} title={t("reports")} meta={[[t("period"), `${periodLabel} (${days} ${t("days")})`],
-      [t("generated"), new Date().toLocaleString(lang === "ar" ? "ar-LB" : "en-GB")],
+      [t("generated"), `${dmy(Date.now(), lang)} ${hhmm(Date.now())}`],
       [t("preparedBy"), me.name], [t("rate"), `1 USD = ${nf(S.rate)} LBP`]]} />
     <H>📋 {t("summary")}</H>
     <ul style={{ margin: "4px 0", paddingInlineStart: 16, fontSize: 11.5, lineHeight: 1.6 }}>
@@ -7777,6 +7900,7 @@ function FarmApp() {
 
   /* Keep legacy format helpers in sync before descendants render. */
   MONEY.view = moneyView;
+  DATE_LANG.lang = lang === "ar" ? "ar" : "en";
   useEffect(() => { applyThemeColors(theme); }, [theme]);
 
   const t = (k) => T[lang][k] ?? k;
@@ -8759,8 +8883,8 @@ function FarmApp() {
             <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
         </FilterGroup>
         {expRange === "custom" && <FilterGroup>
-          <input type="date" value={expFrom} onChange={(e) => setExpFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
-          <input type="date" value={expTo} onChange={(e) => setExpTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+          <DatePick compact value={expFrom} onChange={setExpFrom} ariaLabel={t("fromDate")} />
+          <DatePick compact value={expTo} onChange={setExpTo} ariaLabel={t("toDate")} />
         </FilterGroup>}
         {expCatOpts.length > 0 && <FilterGroup label={t("category")}>
           <select className="sf-select" value={expCat} aria-label={t("category")}
@@ -9665,8 +9789,8 @@ function FarmApp() {
               onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
         </FilterGroup>
         {cashRange === "custom" && <FilterGroup>
-          <input type="date" value={cashFrom} onChange={(e) => setCashFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
-          <input type="date" value={cashTo} onChange={(e) => setCashTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+          <DatePick compact value={cashFrom} onChange={setCashFrom} ariaLabel={t("fromDate")} />
+          <DatePick compact value={cashTo} onChange={setCashTo} ariaLabel={t("toDate")} />
         </FilterGroup>}
         <FilterGroup label={t("cashFilterAll")}>
           {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
@@ -10061,9 +10185,8 @@ function FarmApp() {
           <button type="button" className="dk-pill" title={t("prevDay")} onClick={() => {
             const d = new Date(entryDate); d.setDate(d.getDate() - 1); setEntryDate(dayKey(d)); setBatch({});
           }}>‹</button>
-          <input type="date" value={entryDate} max={dayKey(Date.now())}
-            onChange={(e) => { if (e.target.value && e.target.value <= dayKey(Date.now())) { setEntryDate(e.target.value); setBatch({}); } }}
-            style={{ ...inp, width: 140, padding: "6px 8px", fontSize: 13 }} />
+          <DatePick compact value={entryDate} max={dayKey(Date.now())}
+            onChange={(v) => { if (v && v <= dayKey(Date.now())) { setEntryDate(v); setBatch({}); } }} />
           <button type="button" className="dk-pill" title={t("nextDay")} disabled={entryDate >= dayKey(Date.now())}
             onClick={() => {
               if (entryDate >= dayKey(Date.now())) return;
@@ -10561,8 +10684,8 @@ function FarmApp() {
             {["today", "week", "month", "custom"].map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{t(r)}</Chip>)}
           </FilterGroup>
           {range === "custom" && <FilterGroup>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("fromDate")} className="sf-date" />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("toDate")} className="sf-date" />
+            <DatePick compact value={from} onChange={setFrom} ariaLabel={t("fromDate")} />
+            <DatePick compact value={to} onChange={setTo} ariaLabel={t("toDate")} />
           </FilterGroup>}
         </SearchFilterBar>
         <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped: report === "log" ? scoped : financialScoped, animals, workers, customers,
@@ -10634,9 +10757,9 @@ function FarmApp() {
             {animal.status === "pregnant" && <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>
                 {t("dueDate")} · {L(lang, `مدة الحمل ${sp.gestation} يومًا`, `gestation ${sp.gestation} days`)}</div>
-              <input type="date" value={animal.due ? dayKey(animal.due) : ""} style={inp}
-                onChange={(e) => commit([{ type: "due", animalId: animal.id, due: e.target.value }],
-                  { animals: animals.map((x) => (x.id === animal.id ? { ...x, due: e.target.value } : x)) })} /></div>}
+              <DatePick value={animal.due ? dayKey(animal.due) : ""}
+                onChange={(v) => commit([{ type: "due", animalId: animal.id, due: v }],
+                  { animals: animals.map((x) => (x.id === animal.id ? { ...x, due: v } : x)) })} /></div>}
             <div style={{ fontSize: 13.5, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("history")}</div>
             <div style={{ display: "grid", gap: 8 }}>
               {mine.slice(0, 15).map((e) => <LogRow key={e.id} e={e} lang={lang} t={t} animals={animals} workers={workers} customers={customers} rate={S.rate} custom={S.categories} onReceipt={(x) => setSheet({ k: "receipt", id: x.id, back: sheet })} />)}
@@ -11811,6 +11934,39 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sf-group-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .sf-span{flex:1 1 100%;min-width:0;display:grid;gap:8px}
 .sf-dates{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.date-pick{position:relative;display:block;min-height:44px;border:1px solid ${C.line};border-radius:10px;
+  background:${C.paper};overflow:hidden;margin-bottom:12px;cursor:pointer}
+.date-pick.compact{margin-bottom:0;flex:1 1 160px;min-width:0}
+.date-pick.locked{opacity:.85;cursor:default}
+.date-pick-show{display:flex;align-items:center;min-height:44px;padding:0 12px;font-family:var(--body);
+  font-weight:700;font-size:14.5px;color:${C.ink};pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.date-pick input[type=date]{position:absolute;inset:0;opacity:.02;width:100%;height:100%;cursor:pointer;
+  border:none;background:transparent;font-size:16px;color:transparent}
+.sf-dates .date-pick,.sf-group-body .date-pick{flex:1 1 160px;margin-bottom:0;min-width:0}
+.spick-row{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
+.spick{position:relative;flex:1;min-width:0}
+.spick-field{display:flex;align-items:center;gap:8px;min-height:44px;border:1.5px solid ${C.line};
+  border-radius:12px;background:${C.paper};padding:0 10px 0 12px;cursor:pointer}
+.spick-field.open{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}22}
+.spick-ico{display:grid;place-items:center;color:${C.inkSoft};flex-shrink:0}
+.spick-val{flex:1;min-width:0;font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spick-val.ph{font-weight:500;color:${C.inkSoft}}
+.spick-hint,.spick-opt-hint{font-weight:500;color:${C.inkSoft};font-size:12.5px}
+.spick-caret{color:${C.inkSoft};font-size:12px;flex-shrink:0}
+.spick-field input{flex:1;min-width:0;border:none;background:transparent;font-family:var(--body);
+  font-size:15px;font-weight:600;color:${C.ink};outline:none;min-height:40px}
+.spick-list{position:absolute;z-index:50;left:0;right:0;top:calc(100% + 6px);max-height:min(50vh,320px);
+  overflow:auto;background:${C.card};border:1px solid ${C.line};border-radius:12px;
+  box-shadow:0 12px 32px ${C.shadow};padding:6px}
+.spick-empty{padding:14px 12px;color:${C.inkSoft};font-weight:600;font-size:13.5px}
+.spick-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:start;border:none;background:transparent;
+  border-radius:8px;padding:10px;cursor:pointer;font-family:var(--body);color:${C.ink};min-height:44px}
+.spick-opt.on,.spick-opt:hover{background:${C.paper}}
+.spick-opt-copy{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.spick-opt-lb{font-weight:700;font-size:14px}
+.spick-em{flex-shrink:0}
+.spick-add{width:44px;flex:0 0 44px;border:1.5px solid ${C.line};border-radius:12px;background:${C.paper};
+  cursor:pointer;font-size:18px}
 .sf-date,.sf-select,.sf-mini{min-height:44px;border:1px solid ${C.line};border-radius:10px;background:${C.paper};
   color:${C.ink};font-family:var(--body);font-size:14px;padding:0 12px;min-width:0}
 .sf-date,.sf-select{flex:1 1 140px}
