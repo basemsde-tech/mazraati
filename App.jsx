@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   isFirebaseReady, startCompanyCloud, subscribeCompanyCloud, getCompanyCloud,
   companySignUp, companySignIn, companySignOut, createCompany, joinCompany,
-  companyPullFarm, companyPushFarm, companySyncActive,
+  companyPullFarm, companyPushFarm, companySyncActive, companyWaitBound,
 } from "./firebaseCloud.js";
 import { StatusPill, DataList, DataCard, statusToneOf, statusRowClass, payStatusKind } from "./statusPill.jsx";
 import {
@@ -17,9 +17,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.5", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.7", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.6": {
+    ar: [
+      "ابدأ أو سجّل الدخول ببريد الشركة — نفس الحساب على كل الأجهزة، وكل حركة باسم من سجّلها ووقتها",
+    ],
+    en: [
+      "Get started or sign in with the company email — same account on every device, every change stamped with who and when",
+    ],
+  },
   "2.9.5": {
     ar: [
       "البيع والبيع السريع يفتحان صندوق تحصيل: دفع كامل أو دفعة جزئية بدل زر حفظ",
@@ -819,9 +827,21 @@ const T = {
     accountArchived: "تمت الأرشفة", accountDeleted: "تم الحذف", accountRestored: "تمت الاستعادة",
     exportArchive: "تصدير نسخة احتياطية", noArchived: "لا حسابات مؤرشفة.", manageAccount: "إدارة الحساب",
     obligationDocs: "المستندات المرفقة", addDocument: "إضافة مستند", docReserved: "محفوظ",
-    who: "مَن يستخدم التطبيق؟", whoSub: "اختر ملفك أو أنشئ حسابًا جديدًا.",
+    who: "مَن يستخدم هذا الجهاز اليوم؟", whoSub: "اختر المستخدم — المبيعات والحركات تُسجَّل باسمه ووقتها.",
     welcomeTitle: "نظام إدارة المزارع", welcomeSub: "منصة مكتبية لإدارة المبيعات والإنتاج والمصاريف — لكل مزرعة أو شركة.",
-    getStarted: "إعداد المزرعة", signIn: "تسجيل الدخول", continueBtn: "متابعة",
+    getStarted: "ابدأ", signIn: "تسجيل الدخول", continueBtn: "متابعة",
+    haveAccount: "لدي حساب",
+    welcomeCloudLead: "حساب واحد للشركة — بريد وكلمة مرور. على أي جهاز استخدم نفس البريد.",
+    cloudStartLead: "اسمك يظهر على كل عملية تسجّلها. بريد الشركة يُستخدم لتسجيل الدخول من كل الأجهزة.",
+    cloudSignInLead: "أدخل بريد الشركة وكلمة المرور لتحميل المزرعة.",
+    coCompanyEmail: "بريد الشركة",
+    coPassShort: "كلمة المرور ستة أحرف على الأقل.",
+    coEmailBad: "أدخل بريدًا صحيحًا.",
+    coEmailTaken: "هذا البريد مسجَّل — سجّل الدخول.",
+    coSignInBad: "البريد أو كلمة المرور غير صحيحة.",
+    coNoFarmOnAccount: "لا مزرعة على هذا الحساب. استخدم ابدأ لإنشاء واحدة.",
+    cloudUnavailable: "المزامنة غير متاحة بعد — يمكنك استخدام هذا الجهاز.",
+    useDeviceOnly: "استخدام هذا الجهاز فقط",
     noProfiles: "لا يوجد مستخدمون بعد.", firstOne: "أنشئ ملف المزرعة والمستخدم الأول.",
     createProfile: "إضافة مستخدم", yourName: "اسم الموظف", nameHint: "الاسم كما يُنادى به في المزرعة",
     chooseRole: "المهنة / الوظيفة", chooseAvatar: "اختر صورة", startNow: "بدء العمل",
@@ -1025,7 +1045,7 @@ const T = {
     setTipPrices: "أسعار البيع الافتراضية وأجرة المياومة لحساب الرواتب والتقارير.",
     setTipWeather: "الموقع يفعّل طقس المزرعة ونصائح الحرّ والمطر.",
     setTipPeople: "المستخدمون يسجّلون بأسمائهم. الرمز اختياري لحماية ملفك. العمال للحضور والأجور.",
-    setTipCloud: "سجّل ببريد إلكتروني لكل موظف، ثم أنشئ شركة أو انضم برمز الدعوة — تتزامن بيانات المزرعة بأمان بين الجميع.",
+    setTipCloud: "بريد الشركة واحد للجميع. سجّل الدخول به على أي جهاز — المبيعات تُختَم باسم من يستخدم الجهاز.",
     setTipBackup: "النسخة JSON كاملة وقابلة للاسترجاع. Excel وCSV وPDF للقراءة فقط.",
     setTipStorage: "الصور المرفقة تستهلك المساحة. احذف الإيصالات القديمة إن امتلأت الذاكرة.",
     setTipUpdate: "بعد رفع نسخة جديدة، اضغط للتحقق ثم ثبّت التحديث.",
@@ -1056,16 +1076,16 @@ const T = {
     loading: "جارٍ فتح بيانات المزرعة…", saveFail: "لم يتم الحفظ. تحقق من الاتصال.",
     storageFull: "الذاكرة ممتلئة. احذف بعض الصور.", retry: "إعادة المحاولة", refresh: "تحديث",
     noStore: "التخزين غير متاح: البيانات لن تُحفظ بعد إغلاق التطبيق.",
-    deviceOnly: "البيانات محفوظة على هذا الجهاز فقط. من الإعدادات سجّل بالبريد وأنشئ شركة لمزامنة الفريق.",
+    deviceOnly: "البيانات محفوظة على هذا الجهاز فقط. سجّل ببريد الشركة نفسه على أي جهاز للمزامنة.",
     help: "شرح", terms: "شرح المصطلحات", steps: "الخطوات", tip: "ملاحظة",
     preparedBy: "أعدّ التقرير", generated: "تاريخ الإصدار", period: "الفترة",
     signOwner: "صاحب المزرعة", signSupplier: "توقيع المورد", signVet: "الطبيب البيطري",
     setup: "ابدأ من هنا", setupAnimals: "أضف حيواناتك", setupPrices: "أدخل الأسعار",
     setupWorkers: "أضف العمال", setupCustomers: "أضف الزبائن",
-    cloud: "مزامنة الشركة", cloudSub: "حساب بريد لكل مستخدم — وقاعدة مزرعة واحدة للشركة.",
+    cloud: "مزامنة الشركة", cloudSub: "بريد شركة واحد — ومزرعة واحدة تتزامن على كل الأجهزة.",
     cloudUrl: "رابط قديم (اختياري)", cloudToken: "مفتاح الوصول (اختياري)", cloudTest: "اختبار الرابط القديم",
     cloudOn: "مفعّلة", cloudOff: "متوقفة", cloudOk: "تم الاتصال بنجاح.",
-    cloudFail: "تعذّر الاتصال.", cloudHint: "الطريقة الآمنة: تسجيل الدخول بالبريد ثم إنشاء شركة أو الانضمام برمز دعوة.",
+    cloudFail: "تعذّر الاتصال.", cloudHint: "بريد الشركة واحد للجميع — سجّل الدخول به على أي جهاز لحفظ المزرعة ومزامنتها.",
     cloudEasy: "إنشاء رابط قديم (غير موصى)", cloudEasyBusy: "جاري إنشاء الرابط…",
     cloudEasyOk: "تم إنشاء الرابط.",
     cloudEasyFail: "تعذّر إنشاء الرابط.",
@@ -1077,7 +1097,7 @@ const T = {
     coSignIn: "تسجيل الدخول", coSignUp: "إنشاء حساب", coSignOut: "تسجيل الخروج",
     coCreate: "إنشاء شركة", coJoin: "الانضمام للشركة", coCompany: "اسم الشركة",
     coInvite: "رمز الدعوة", coInviteHint: "شارك هذا الرمز مع موظفي الشركة فقط.",
-    coNoFirebase: "المزامنة غير مفعّلة بعد. المطوّر يضبط Firebase — راجع CLOUD-SYNC.md.",
+    coNoFirebase: "المزامنة غير متاحة بعد — يمكنك استخدام هذا الجهاز.",
     coNeedAuth: "سجّل الدخول بالبريد أولاً.",
     coReady: "مزامنة الشركة نشطة",
     coBusy: "جاري العمل…",
@@ -1245,9 +1265,21 @@ const T = {
     accountArchived: "Archived", accountDeleted: "Deleted", accountRestored: "Restored",
     exportArchive: "Export backup", noArchived: "No archived accounts.", manageAccount: "Manage account",
     obligationDocs: "Attached documents", addDocument: "Add document", docReserved: "On file",
-    who: "Who is using the app?", whoSub: "Pick your profile or create a new one.",
+    who: "Who is using this tablet today?", whoSub: "Pick the user — sales and other changes are stamped with their name and time.",
     welcomeTitle: "Farm Management System", welcomeSub: "Desktop software for sales, production and costs — for every farm or company.",
-    getStarted: "Set up the farm", signIn: "Sign in", continueBtn: "Continue",
+    getStarted: "Get started", signIn: "Sign in", continueBtn: "Continue",
+    haveAccount: "I already have an account",
+    welcomeCloudLead: "One company account — email and password. Use the same email on every device.",
+    cloudStartLead: "Your name is stamped on every change you record. The company email signs the whole farm in on every device.",
+    cloudSignInLead: "Enter the company email and password to load the farm.",
+    coCompanyEmail: "Company email",
+    coPassShort: "Password must be at least 6 characters.",
+    coEmailBad: "Enter a valid email.",
+    coEmailTaken: "That email is already registered — sign in.",
+    coSignInBad: "Email or password is incorrect.",
+    coNoFarmOnAccount: "No farm on this account. Use Get started to create one.",
+    cloudUnavailable: "Cloud is not available yet — you can still use this device.",
+    useDeviceOnly: "Use this device only",
     noProfiles: "No users yet.", firstOne: "Create the farm profile and the first user.",
     createProfile: "Add a user", yourName: "Employee name", nameHint: "The name people use on the farm",
     chooseRole: "Occupation / role", chooseAvatar: "Pick a picture", startNow: "Start working",
@@ -1451,7 +1483,7 @@ const T = {
     setTipPrices: "Default selling prices and the daily wage used for payroll and reports.",
     setTipWeather: "Location unlocks farm weather and heat/rain tips.",
     setTipPeople: "Users stamp entries with their name. PIN is optional. Workers power attendance & wages.",
-    setTipCloud: "Each staff member signs in with email. Create a company or join with an invite code — the farm database syncs securely for everyone.",
+    setTipCloud: "One company email for everyone. Sign in with it on any device — sales are stamped with whoever is using the tablet.",
     setTipBackup: "JSON is a full restorable backup. Excel, CSV and PDF are for reading only.",
     setTipStorage: "Attached photos use space. Remove old receipts if storage fills up.",
     setTipUpdate: "After uploading a new build, check here then install the update.",
@@ -1482,16 +1514,16 @@ const T = {
     loading: "Opening the farm…", saveFail: "Not saved. Check your connection.",
     storageFull: "Storage is full. Remove some photos.", retry: "Try again", refresh: "Refresh",
     noStore: "Storage unavailable: data will not survive closing the app.",
-    deviceOnly: "Data is saved on this device only. In Settings, sign in with email and create a company to sync the team.",
+    deviceOnly: "Data is saved on this device only. Sign in with the same company email on any device to sync.",
     help: "Help", terms: "What the words mean", steps: "Steps", tip: "Note",
     preparedBy: "Prepared by", generated: "Generated", period: "Period",
     signOwner: "Farm owner", signSupplier: "Supplier signature", signVet: "Veterinarian",
     setup: "Start here", setupAnimals: "Add your animals", setupPrices: "Enter your prices",
     setupWorkers: "Add your workers", setupCustomers: "Add your customers",
-    cloud: "Company sync", cloudSub: "Email accounts for staff — one shared farm database for the company.",
+    cloud: "Company sync", cloudSub: "One company email — one farm that syncs on every device.",
     cloudUrl: "Legacy link (optional)", cloudToken: "Access key (optional)", cloudTest: "Test legacy link",
     cloudOn: "On", cloudOff: "Off", cloudOk: "Connected successfully.",
-    cloudFail: "Could not connect.", cloudHint: "Secure path: sign in with email, then create a company or join with an invite code.",
+    cloudFail: "Could not connect.", cloudHint: "One company email for everyone — sign in with it on any device to save and sync the farm.",
     cloudEasy: "Create legacy link (not recommended)", cloudEasyBusy: "Creating link…",
     cloudEasyOk: "Legacy link created.",
     cloudEasyFail: "Could not create a link.",
@@ -1503,7 +1535,7 @@ const T = {
     coSignIn: "Sign in", coSignUp: "Create account", coSignOut: "Sign out",
     coCreate: "Create company", coJoin: "Join company", coCompany: "Company name",
     coInvite: "Invite code", coInviteHint: "Share this code only with company staff.",
-    coNoFirebase: "Company sync is not configured yet. Developer: set up Firebase — see CLOUD-SYNC.md.",
+    coNoFirebase: "Cloud is not available yet — you can still use this device.",
     coNeedAuth: "Sign in with email first.",
     coReady: "Company sync is active",
     coBusy: "Working…",
@@ -1649,13 +1681,30 @@ const animalLabel = (a) => (isFlock(a) ? (a.name || a.tag || "—") : `#${a.tag}
 const backdated = (e) => !!(e && e.loggedAt && dayKey(e.at) !== dayKey(e.loggedAt));
 function stamp(e, lang) {
   if (!e) return "";
-  const when = e.loggedAt || e.at;               // when a person actually typed it
+  const when = e.loggedAt || e.at;
   const d = new Date(when), k = dayKey(when);
   const shown = k === dayKey(Date.now()) ? `${T[lang].todayAt} ${hhmm(d)}`
     : k === dayKey(Date.now() - 864e5) ? `${T[lang].yesterday} ${hhmm(d)}`
       : `${dmy(when)} ${hhmm(d)}`;
   const mark = backdated(e) ? ` · ${T[lang].forDay} ${dmy(e.at)}` : "";
-  return `${e.byName || "—"} · ${shown}${mark}`;
+  const who = (e.byName || "").trim();
+  return `${who ? `${who} · ` : ""}${shown}${mark}`;
+}
+/* Tiny hover point — name and time stay off the row until the mark is hovered or tapped. */
+function WhoHint({ e, lang }) {
+  const [on, setOn] = useState(false);
+  const label = stamp(e, lang);
+  if (!e || !label) return null;
+  return (
+    <button type="button" className={`who-hint${on ? " is-on" : ""}`} title={label} aria-label={label}
+      onClick={(ev) => { ev.stopPropagation(); setOn((v) => !v); }}
+      onKeyDown={(ev) => ev.stopPropagation()}
+      onBlur={() => setOn(false)}
+      onMouseLeave={() => setOn(false)}>
+      <span className="who-hint-dot" aria-hidden="true" />
+      <span className="who-hint-tip">{label}</span>
+    </button>
+  );
 }
 /* midday keeps a chosen day on that day in every timezone */
 const dayStamp = (dk) => (dk === dayKey(Date.now()) ? iso(Date.now()) : iso(new Date(`${dk}T12:00:00`)));
@@ -3557,9 +3606,11 @@ function AnimalCard({ a, lang, t, today, last, onClick }) {
   const sp = spOf(a), flock = isFlock(a);
   const unit = producesEggs(a) ? t("eggsUnit") : t("L");
   return (
-    <button onClick={onClick} className={`data-card data-card--${statusToneOf(a.status)}`} style={{ width: "100%", textAlign: "start", cursor: "pointer",
+    <div role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(e); } }}
+      className={`data-card data-card--${statusToneOf(a.status)}`} style={{ width: "100%", textAlign: "start", cursor: "pointer",
       background: C.card, border: `1px solid ${C.line}`,
-      borderRadius: 12, padding: 0, overflow: "hidden", fontFamily: "var(--body)", display: "flex", flexDirection: "column" }}>
+      borderRadius: 12, padding: 0, overflow: "visible", fontFamily: "var(--body)", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px",
         background: C.paper, borderBottom: `1px solid ${C.line}` }}>
         <span style={{ fontSize: 14 }}>{sp.icon}</span>
@@ -3588,12 +3639,12 @@ function AnimalCard({ a, lang, t, today, last, onClick }) {
             {today > 0 ? `${n1(today)} ${unit}` : "—"}
           </span>
         </div>
-        <div style={{ marginTop: 9, paddingTop: 7, borderTop: `1px dotted ${C.line}`, fontSize: 10,
-          color: C.inkSoft, fontWeight: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {last ? stamp(last, lang) : t("never")}
+        <div style={{ marginTop: 9, paddingTop: 7, borderTop: `1px dotted ${C.line}`, display: "flex",
+          justifyContent: "flex-end" }}>
+          {last ? <WhoHint e={last} lang={lang} /> : <span style={{ fontSize: 10, color: C.inkSoft }}>{t("never")}</span>}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -3847,7 +3898,7 @@ function ProdSheet({ animal, lang, t, existing, date, setDate, lastAm, lastPm, o
     <div style={{ background: C.card, borderRadius: 4, border: `1px solid ${C.line}`, padding: 16, marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <span style={{ fontSize: 15.5, fontWeight: 700 }}>🥚 {t("eggs")}</span>
-        {lastAm && <span style={{ fontSize: 11.5, color: C.inkSoft }}>{stamp(lastAm, lang)}</span>}
+        {lastAm && <WhoHint e={lastAm} lang={lang} />}
       </div>
       <Stepper big value={count} onChange={setCount} step={10} suffix={t("eggsUnit")} />
     </div>
@@ -3870,7 +3921,7 @@ function ProdSheet({ animal, lang, t, existing, date, setDate, lastAm, lastPm, o
       <div key={k} style={{ background: C.card, borderRadius: 4, border: `1px solid ${C.line}`, padding: 15, marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
           <span style={{ fontSize: 15.5, fontWeight: 700 }}>{label}</span>
-          <span style={{ fontSize: 11, color: C.inkSoft, textAlign: "end" }}>{last ? stamp(last, lang) : t("never")}</span>
+          <span style={{ textAlign: "end" }}>{last ? <WhoHint e={last} lang={lang} /> : <span style={{ fontSize: 11, color: C.inkSoft }}>{t("never")}</span>}</span>
         </div>
         <Stepper big value={v} onChange={set} step={1} suffix={t("liters")} decimals={1} />
       </div>
@@ -5073,6 +5124,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
             status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
             title={bill.no}
             subtitle={`${dmy(bill.at)} · ${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`}
+            who={<WhoHint e={bill} lang={lang} />}
             meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
             onClick={onEditBill ? () => onEditBill(bill.id) : undefined}
             actions={(showPay && bill.due > 0.009) || onDoc ? (
@@ -5094,7 +5146,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
             <thead><tr>
               <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
               <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
-              <Th>{t("colStatus")}</Th>
+              <Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th>
               {showPay || onDoc ? <Th align="center">{t("actions")}</Th> : null}
             </tr></thead>
             <tbody>
@@ -5114,6 +5166,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
                     <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
                     <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
                     <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
+                    <Td align="center"><WhoHint e={bill} lang={lang} /></Td>
                     {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
                       {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
                         onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
@@ -5138,10 +5191,11 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
             <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
               borderBottom: `1px dotted ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
               onClick={() => onEditPay && onEditPay(p2)}>
-              <span style={{ fontSize: 13 }}>
+              <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
                 {p2.expenseId ? ` · ${t("invoice")}` : ""}
-                {p2.note ? ` · ${p2.note}` : ""}</span>
+                {p2.note ? ` · ${p2.note}` : ""}
+                <WhoHint e={p2} lang={lang} /></span>
               <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{fmtC(p2.amount, S.rate, lang)}</span>
             </div>))}
         </div>}
@@ -6019,6 +6073,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
               title={iv.no}
               subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
+              who={<WhoHint e={iv} lang={lang} />}
               meta={`${t("colTotal")} ${fmtC(iv.netAmount, S.rate, lang)} · ${t("colDue")} ${iv.due ? fmtC(iv.due, S.rate, lang) : "—"}`}
               actions={
                 <>
@@ -6039,7 +6094,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                 active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("product")}</Th>
               <Th align="end">{t("colQty")}</Th><Th align="end">{t("colUnit")}</Th><Th align="end">{t("colTotal")}</Th>
               <Th align="end">{t("colPaid")}</Th><Th align="end">{t("colDue")}</Th>
-              <Th>{t("colStatus")}</Th><Th>{t("colNotes")}</Th><Th align="center">{t("actions")}</Th>
+              <Th>{t("colStatus")}</Th><Th>{t("colNotes")}</Th><Th>{t("colUser")}</Th><Th align="center">{t("actions")}</Th>
             </tr></thead>
             <tbody>
               {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
@@ -6078,6 +6133,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                       {iv.lateDays} {t("daysLate")}</div>}
                   </Td>
                   <Td tone={C.inkSoft}>{iv.note || "—"}</Td>
+                  <Td align="center"><WhoHint e={iv} lang={lang} /></Td>
                   <Td align="center">
                     <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                       <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
@@ -6091,7 +6147,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               <Td align="end" mono strong>{fmtC(rSold, S.rate, lang)}</Td>
               <Td align="end" mono strong tone={C.green}>{fmtC(rPaid, S.rate, lang)}</Td>
               <Td align="end" mono strong tone={rDue > 0 ? C.red : C.inkSoft}>{fmtC(rDue, S.rate, lang)}</Td>
-              <Td colSpan={3} />
+              <Td colSpan={4} />
             </tr></tfoot>
           </table>}
       </div>
@@ -6105,9 +6161,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
               borderBottom: `1px dotted ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
               onClick={() => onEditPay && onEditPay(p2)}>
-              <span style={{ fontSize: 13 }}>
+              <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
-                {p2.note ? ` · ${p2.note}` : ""}</span>
+                {p2.note ? ` · ${p2.note}` : ""}
+                <WhoHint e={p2} lang={lang} /></span>
               <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.green }}>+{nf(p2.amount)}</span>
             </div>))}
         </div>
@@ -6441,8 +6498,8 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     <span style={{ fontSize: 19 }}>{ic}</span>
     <span style={{ flex: 1, minWidth: 0 }}>
       <span style={{ display: "block", fontWeight: 700, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-      <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft, fontWeight: 500 }}>👤 {stamp(e, lang)}</span>
     </span>
+    <WhoHint e={e} lang={lang} />
     {e.receipt && <button onClick={() => onReceipt && onReceipt(e)} title={t("viewReceipt")}
       style={{ background: onReceipt ? C.paper : "transparent", border: `1px solid ${C.line}`, borderRadius: 3,
         padding: "4px 7px", cursor: onReceipt ? "pointer" : "default", fontSize: 14, flexShrink: 0 }}>📎</button>}
@@ -6499,15 +6556,175 @@ function GateSteps({ step, total, t }) {
   </div>;
 }
 
-function EmailSoonBox({ t }) {
-  return <div className="gate-soon">
-    <div className="gate-field-label">{t("farmEmail")}</div>
-    <div className="gate-soon-row">
-      <input disabled placeholder="name@company.com" style={{ ...inp, opacity: .55, flex: 1 }} />
-      <span className="gate-soon-badge">{t("emailSoon")}</span>
-    </div>
-    <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 6, fontWeight: 500 }}>{t("emailSoonHint")}</div>
-  </div>;
+function cloudErrText(t, e) {
+  const code = String((e && (e.code || e.message)) || "");
+  if (/email-already-in-use/i.test(code)) return t("coEmailTaken");
+  if (/invalid-email/i.test(code)) return t("coEmailBad");
+  if (/weak-password/i.test(code)) return t("coPassShort");
+  if (/user-not-found|wrong-password|invalid-credential|invalid-login/i.test(code)) return t("coSignInBad");
+  if (/network/i.test(code)) return t("cloudFail");
+  return t("coErr");
+}
+
+function CloudGate({ lang, setLang, t, data, farmName, logo, onFarm, onEnter, onSkip, onWalkthrough }) {
+  const [mode, setMode] = useState("welcome");
+  const [name, setName] = useState("");
+  const [farm, setFarm] = useState(farmName || "");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [askWalk, setAskWalk] = useState(false);
+  const ready = isFirebaseReady();
+  const brand = (farm || farmName || "").trim() || T[lang].brand;
+  const shell = (body) => <GateShell lang={lang} setLang={setLang} t={t} brand={brand} logo={logo} wide>{body}</GateShell>;
+  const makeOwner = (n) => ({
+    id: uid(), name: n, role: "owner", emoji: AVATARS[0], pin: null, salt: null,
+    color: AVATAR_COLORS[0], at: iso(Date.now()),
+  });
+
+  const submitStart = async () => {
+    const n = name.trim(), f = farm.trim(), em = email.trim().toLowerCase();
+    if (!n) return setErr(t("nameNeeded"));
+    if (!f) return setErr(t("companyNeeded"));
+    if (ready && (!em.includes("@") || em.length < 5)) return setErr(t("coEmailBad"));
+    if (ready && pass.length < 6) return setErr(t("coPassShort"));
+    const owner = makeOwner(n);
+    const base = data || emptyFarm();
+    const others = (base.profiles || []).filter((p) => p.name.trim().toLowerCase() !== n.toLowerCase());
+    const farmObj = {
+      ...base,
+      settings: { ...(base.settings || {}), farmName: f, setupV: SETUP_VERSION },
+      profiles: [owner, ...others],
+    };
+    setBusy(true); setErr("");
+    try {
+      if (ready) {
+        await companySignUp(em, pass, n);
+        await createCompany(f, JSON.stringify(farmObj), onFarm);
+      }
+      await store.set(SHARED_KEY, JSON.stringify(farmObj), true);
+      onEnter(owner, farmObj);
+    } catch (e) {
+      setErr(cloudErrText(t, e));
+    } finally { setBusy(false); }
+  };
+
+  const submitSignIn = async () => {
+    const em = email.trim().toLowerCase();
+    if (!ready) return setErr(t("cloudUnavailable"));
+    if (!em.includes("@") || em.length < 5) return setErr(t("coEmailBad"));
+    if (!pass) return setErr(t("coPassShort"));
+    setBusy(true); setErr("");
+    try {
+      const cred = await companySignIn(em, pass);
+      const s = await companyWaitBound(10000, cred && cred.uid);
+      if (!s.companyId) { setErr(t("coNoFarmOnAccount")); setBusy(false); return; }
+      try {
+        const raw = await companyPullFarm();
+        let farmObj = migrate(JSON.parse(raw));
+        const rows = farmObj.profiles || [];
+        let pick = null;
+        if (rows.length === 0) {
+          const n = (s.user && s.user.name) || em.split("@")[0] || "Owner";
+          pick = makeOwner(n);
+          farmObj = { ...farmObj, profiles: [pick] };
+          await store.set(SHARED_KEY, JSON.stringify(farmObj), true);
+        } else {
+          if (rows.length === 1 && !rows[0].pin) pick = rows[0];
+          try { store.mem[SHARED_KEY] = raw; if (store.kind === "device") window.localStorage.setItem(SHARED_KEY, raw); } catch (e2) { /* */ }
+        }
+        onEnter(pick, farmObj);
+      } catch (e2) {
+        onEnter(null, null);
+      }
+    } catch (e) {
+      setErr(cloudErrText(t, e));
+    } finally { setBusy(false); }
+  };
+
+  if (askWalk && onWalkthrough) return shell(
+    <div className="gate-step">
+      <h2 className="gate-h2">{t("walkthrough")}</h2>
+      <p className="gate-lead">{t("walkthroughWarn")}</p>
+      <button type="button" style={{ ...primaryBtn, marginBottom: 10, opacity: busy ? .6 : 1 }} disabled={busy}
+        onClick={async () => { setBusy(true); await onWalkthrough(); setBusy(false); }}>✓ {t("walkthroughLoad")}</button>
+      <button type="button" style={secondaryBtn} onClick={() => setAskWalk(false)}>{t("cancel")}</button>
+    </div>);
+
+  if (mode === "start") return shell(
+    <div className="gate-step">
+      <h2 className="gate-h2">{t("getStarted")}</h2>
+      <p className="gate-lead">{t("cloudStartLead")}</p>
+      {!ready && <p className="gate-lead" style={{ color: C.inkSoft }}>{t("cloudUnavailable")}</p>}
+      <div className="gate-form-grid">
+        <label className="gate-field gate-span-2">
+          <span className="gate-field-label">{t("employeeName")}</span>
+          <input value={name} onChange={(e) => { setName(e.target.value); setErr(""); }}
+            autoComplete="name" autoFocus style={inp} />
+        </label>
+        <label className="gate-field gate-span-2">
+          <span className="gate-field-label">{t("companyName")}</span>
+          <input value={farm} onChange={(e) => { setFarm(e.target.value); setErr(""); }}
+            placeholder={lang === "ar" ? "مثال: مزرعة الريف" : "e.g. Al Reif Farm"} style={{ ...inp, fontWeight: 700 }} />
+        </label>
+        {ready && <>
+          <label className="gate-field gate-span-2">
+            <span className="gate-field-label">{t("coCompanyEmail")}</span>
+            <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }}
+              autoComplete="email" style={{ ...inp, direction: "ltr" }} />
+          </label>
+          <label className="gate-field gate-span-2">
+            <span className="gate-field-label">{t("coPassword")}</span>
+            <input type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
+              autoComplete="new-password" style={{ ...inp, direction: "ltr" }} />
+          </label>
+        </>}
+      </div>
+      {err && <p className="gate-err">⚠️ {err}</p>}
+      <button type="button" style={{ ...primaryBtn, marginTop: 16, opacity: busy ? .6 : 1 }} disabled={busy}
+        onClick={submitStart}>{busy ? t("coBusy") : t("getStarted")}</button>
+      <button type="button" style={{ ...secondaryBtn, marginTop: 10 }} onClick={() => { setMode("welcome"); setErr(""); }}>{t("prev")}</button>
+    </div>);
+
+  if (mode === "signin") return shell(
+    <div className="gate-step">
+      <h2 className="gate-h2">{t("signIn")}</h2>
+      <p className="gate-lead">{t("cloudSignInLead")}</p>
+      {!ready && <p className="gate-lead" style={{ color: C.inkSoft }}>{t("cloudUnavailable")}</p>}
+      <div className="gate-form-grid">
+        <label className="gate-field gate-span-2">
+          <span className="gate-field-label">{t("coCompanyEmail")}</span>
+          <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }}
+            autoComplete="email" autoFocus style={{ ...inp, direction: "ltr" }} />
+        </label>
+        <label className="gate-field gate-span-2">
+          <span className="gate-field-label">{t("coPassword")}</span>
+          <input type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
+            autoComplete="current-password" style={{ ...inp, direction: "ltr" }} />
+        </label>
+      </div>
+      {err && <p className="gate-err">⚠️ {err}</p>}
+      <button type="button" style={{ ...primaryBtn, marginTop: 16, opacity: busy ? .6 : 1 }} disabled={busy || !ready}
+        onClick={submitSignIn}>{busy ? t("coBusy") : t("signIn")}</button>
+      <button type="button" style={{ ...secondaryBtn, marginTop: 10 }} onClick={() => { setMode("welcome"); setErr(""); }}>{t("prev")}</button>
+    </div>);
+
+  return shell(
+    <div className="gate-step">
+      <h2 className="gate-h2">{t("welcomeTitle")}</h2>
+      <p className="gate-lead">{t("welcomeCloudLead")}</p>
+      {!ready && <p className="gate-lead" style={{ color: C.inkSoft }}>{t("cloudUnavailable")}</p>}
+      <div className="gate-actions">
+        <button type="button" style={primaryBtn} onClick={() => { setErr(""); setMode("start"); }}>{t("getStarted")}</button>
+        <button type="button" style={secondaryBtn} onClick={() => { setErr(""); setMode("signin"); }}>{t("haveAccount")}</button>
+      </div>
+      {onSkip && <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700,
+        cursor: "pointer", fontFamily: "var(--body)", fontSize: 13.5, marginTop: 14, padding: 4 }}
+        onClick={onSkip}>{t("useDeviceOnly")}</button>}
+      {onWalkthrough && <button type="button" style={{ ...secondaryBtn, marginTop: 10 }}
+        onClick={() => setAskWalk(true)}>{t("walkthroughBtn")}</button>}
+    </div>);
 }
 
 function FarmSetupGate({ lang, setLang, t, settings, onSave, onWalkthrough }) {
@@ -6573,7 +6790,6 @@ function FarmSetupGate({ lang, setLang, t, settings, onSave, onWalkthrough }) {
         <input value={address} onChange={(e) => setAddress(e.target.value)}
           placeholder={t("addressHint")} style={inp} />
       </label>
-      <div className="gate-span-2"><EmailSoonBox t={t} /></div>
     </div>
     {err && <p className="gate-err">⚠️ {err}</p>}
     <button type="button" style={{ ...primaryBtn, marginTop: 18, opacity: busy ? .6 : 1 }} disabled={busy}
@@ -6796,7 +7012,6 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
           <span className="gate-field-label">{t("farmAddress")} — {t("optional")}</span>
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("addressHint")} style={inp} />
         </label>
-        <div className="gate-span-2"><EmailSoonBox t={t} /></div>
       </div>
       <button type="button" style={{ ...primaryBtn, marginTop: 18, opacity: busy ? .6 : 1 }}
         onClick={() => finishCreate(savedPin, savedSalt)}>{busy ? "…" : t("startNow")}</button>
@@ -7481,12 +7696,11 @@ function FarmApp() {
   const [co, setCo] = useState(() => getCompanyCloud());
   const [coEmail, setCoEmail] = useState("");
   const [coPass, setCoPass] = useState("");
-  const [coName, setCoName] = useState("");
   const [coCompany, setCoCompany] = useState("");
   const [coInvite, setCoInvite] = useState("");
+  const [coJoinOpen, setCoJoinOpen] = useState(false);
   const [coMsg, setCoMsg] = useState("");
   const [coBusy, setCoBusy] = useState(false);
-  const [coMode, setCoMode] = useState("signin");
   const [moneyView, setMoneyView] = useState("both");
   const [theme, setTheme] = useState("light");
   const [navFarmOpen, setNavFarmOpen] = useState(true);
@@ -7496,6 +7710,7 @@ function FarmApp() {
   const toggleSet = (k) => setSetOpen((s) => ({ ...s, [k]: !s[k] }));
   const [sideHidden, setSideHidden] = useState(false);
   const [hideDeviceBanner, setHideDeviceBanner] = useState(false);
+  const [cloudSkip, setCloudSkip] = useState(false);
   const [favKeys, setFavKeys] = useState(["n2", "n12", "n6", "n3"]);
   const [seenVersion, setSeenVersion] = useState(null);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -7870,8 +8085,13 @@ function FarmApp() {
   const commit = async (newEntries = [], patch = null, profile = null) => {
     const author = profile || me;
     const now = iso(Date.now());
-    const stamped = newEntries.map((e, i) => ({ id: e.id || `${Date.now().toString(36)}-${i}-${author?.id || "x"}`,
-      at: now, loggedAt: now, byId: author?.id || null, byName: author ? author.name : "—", ...e }));
+    const stamped = newEntries.map((e, i) => ({
+      id: e.id || `${Date.now().toString(36)}-${i}-${author?.id || "x"}`,
+      at: now, ...e,
+      loggedAt: e.loggedAt || now,
+      byId: author?.id || null,
+      byName: author ? author.name : "—",
+    }));
     const { replace, ...patchRest } = patch || {};
     setBusy(true);
     setData((prev) => {
@@ -8369,13 +8589,13 @@ function FarmApp() {
       setCoMsg("⚠️ " + t("coErr") + (code ? ` (${code})` : ""));
     } finally { setCoBusy(false); }
   };
-  const onCoSignUp = () => coRun(async () => {
-    await companySignUp(coEmail, coPass, coName);
-    setCoPass("");
-  });
   const onCoSignIn = () => coRun(async () => {
-    await companySignIn(coEmail, coPass);
+    const cred = await companySignIn(coEmail, coPass);
     setCoPass("");
+    const s = await companyWaitBound(10000, cred && cred.uid);
+    if (s.companyId) {
+      try { applyRemoteFarm(await companyPullFarm()); } catch (e2) { /* keep local */ }
+    }
   });
   const onCoSignOut = () => coRun(() => companySignOut());
   const onCoCreate = () => coRun(async () => {
@@ -8421,6 +8641,12 @@ function FarmApp() {
     return { rows, totalQty, amQty, pmQty, active: !!(f.from || f.to || f.sess !== "all") };
   }, [milkLogAll, milkLogFilt]);
 
+  useEffect(() => {
+    if (me || !data || !co.companyId) return;
+    const rows = data.profiles || [];
+    if (rows.length === 1 && !rows[0].pin) chooseProfile(rows[0]);
+  }, [me, data, co.companyId]);
+
   if (!data) return <div className={`splash theme-${theme}`}><style key={theme}>{makeCss()}</style>
     <div className="splash-inner">
       <div className="splash-logo">{S.logo ? <img src={S.logo} alt="" /> : <AppMark size={88} light word lang={lang} />}</div>
@@ -8428,10 +8654,26 @@ function FarmApp() {
       <div className="splash-spin" aria-hidden="true" />
       <div className="splash-msg">{t("loading")}</div>
     </div></div>;
-  if (!me) return <ProfileGate lang={lang} setLang={setLang} t={t} profiles={data.profiles || []} preId={preId}
-    farmName={(data.settings && data.settings.farmName) || ""} logo={(data.settings && data.settings.logo) || ""}
-    settings={data.settings || {}}
-    clearPre={() => setPreId(null)} onPick={chooseProfile} onCreate={createProfile} onResetPass={resetProfilePass} />;
+  if (!me) {
+    const hasPeople = ((data.profiles || []).length > 0);
+    const showCloud = !co.companyId && !cloudSkip && (isFirebaseReady() || !hasPeople);
+    if (showCloud) {
+      return <CloudGate lang={lang} setLang={setLang} t={t} data={data}
+        farmName={(data.settings && data.settings.farmName) || ""}
+        logo={(data.settings && data.settings.logo) || ""}
+        onFarm={applyRemoteFarm}
+        onWalkthrough={async () => { setCloudSkip(true); await applyWalkthrough(); }}
+        onSkip={() => setCloudSkip(true)}
+        onEnter={(profile, farmObj) => {
+          if (farmObj) { setData(farmObj); setDraftS(farmObj.settings); }
+          if (profile) chooseProfile(profile);
+        }} />;
+    }
+    return <ProfileGate lang={lang} setLang={setLang} t={t} profiles={data.profiles || []} preId={preId}
+      farmName={(data.settings && data.settings.farmName) || ""} logo={(data.settings && data.settings.logo) || ""}
+      settings={data.settings || {}}
+      clearPre={() => setPreId(null)} onPick={chooseProfile} onCreate={createProfile} onResetPass={resetProfilePass} />;
+  }
   if (needsFarmSetup(S)) return <FarmSetupGate lang={lang} setLang={setLang} t={t} settings={S}
     onSave={saveFarmSetup} onWalkthrough={applyWalkthrough} />;
 
@@ -8690,6 +8932,7 @@ function FarmApp() {
                   status={<StatusPill status="paid">{t("paidS")}</StatusPill>}
                   title={`${catIcon(cat, S.categories)} ${catLabel(cat, lang, S.categories)}`}
                   subtitle={`${dmy(e.at)} · ${e.vendor || e.supplier || "—"}`}
+                  who={<WhoHint e={e} lang={lang} />}
                   meta={fmtC(amt, S.rate, lang)}
                   onClick={openSource || undefined}
                   actions={
@@ -8708,7 +8951,7 @@ function FarmApp() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <Th>{t("colDate")}</Th><Th>{t("category")}</Th><Th>{t("vendor")}</Th>
-                <Th align="end">{t("amount")}</Th><Th>{t("colStatus")}</Th><Th align="center">{t("actions")}</Th>
+                <Th align="end">{t("amount")}</Th><Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th><Th align="center">{t("actions")}</Th>
               </tr></thead>
               <tbody>
                 {rows.map((e) => {
@@ -8740,6 +8983,7 @@ function FarmApp() {
                     <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
                     <Td align="end" mono strong>{fmtC(amt, S.rate, lang)}</Td>
                     <Td><StatusPill status="paid">{t("paidS")}</StatusPill></Td>
+                    <Td align="center"><WhoHint e={e} lang={lang} /></Td>
                     <Td align="center">
                       <span style={{ display: "inline-flex", gap: 5 }}>
                         {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
@@ -8997,21 +9241,13 @@ function FarmApp() {
 
         {isFirebaseReady() && !co.user && (
           <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <Chip active={coMode === "signin"} onClick={() => setCoMode("signin")}>{t("coSignIn")}</Chip>
-              <Chip active={coMode === "signup"} onClick={() => setCoMode("signup")}>{t("coSignUp")}</Chip>
-            </div>
-            {coMode === "signup" && (
-              <input value={coName} onChange={(e) => setCoName(e.target.value)} placeholder={t("coName")}
-                style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
-            )}
-            <input type="email" value={coEmail} onChange={(e) => setCoEmail(e.target.value)} placeholder={t("coEmail")}
+            <input type="email" value={coEmail} onChange={(e) => setCoEmail(e.target.value)} placeholder={t("coCompanyEmail")}
               autoComplete="email" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
             <input type="password" value={coPass} onChange={(e) => setCoPass(e.target.value)} placeholder={t("coPassword")}
-              autoComplete={coMode === "signup" ? "new-password" : "current-password"}
+              autoComplete="current-password"
               style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
-            <button type="button" disabled={coBusy || !coEmail || !coPass} onClick={coMode === "signup" ? onCoSignUp : onCoSignIn}
-              style={{ ...primaryBtn, opacity: coBusy ? .65 : 1 }}>{coMode === "signup" ? t("coSignUp") : t("coSignIn")}</button>
+            <button type="button" disabled={coBusy || !coEmail || !coPass} onClick={onCoSignIn}
+              style={{ ...primaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coSignIn")}</button>
           </div>
         )}
 
@@ -9022,24 +9258,31 @@ function FarmApp() {
               <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>✓ {t("coReady")}</div>
                 <div style={{ fontSize: 13, color: C.inkSoft }}>{co.company.name}</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12.5, color: C.inkSoft }}>{t("coInvite")}:</span>
-                  <span style={{ fontFamily: "var(--mono)", fontWeight: 700, letterSpacing: ".08em" }}>{co.company.inviteCode}</span>
-                  <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "6px 10px", fontSize: 12.5 }} onClick={copyInvite}>📋 {t("cloudCopy")}</button>
-                </div>
-                <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 6 }}>{t("coInviteHint")}</div>
+                {(coInvite || (co.company && co.company.inviteCode)) && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12.5, color: C.inkSoft }}>{t("coInvite")}:</span>
+                    <span style={{ fontFamily: "var(--mono)", fontWeight: 700, letterSpacing: ".08em" }}>{co.company.inviteCode}</span>
+                    <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "6px 10px", fontSize: 12.5 }} onClick={copyInvite}>📋 {t("cloudCopy")}</button>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12.5, color: C.inkSoft }}>{t("cloudSub")}</div>
-                <input value={coCompany} onChange={(e) => setCoCompany(e.target.value)} placeholder={t("coCompany")}
-                  style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
-                <button type="button" disabled={coBusy} onClick={onCoCreate} style={{ ...primaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coCreate")}</button>
-                <div style={{ textAlign: "center", fontSize: 12, color: C.inkSoft }}>— {lang === "ar" ? "أو" : "or"} —</div>
-                <input value={coInvite} onChange={(e) => setCoInvite(e.target.value.toUpperCase())} placeholder={t("coInvite")}
-                  style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr", letterSpacing: ".1em", fontFamily: "var(--mono)" }} />
-                <button type="button" disabled={coBusy || !coInvite} onClick={onCoJoin}
-                  style={{ ...secondaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coJoin")}</button>
+                <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
+                  fontFamily: "var(--body)", fontSize: 12.5, padding: "4px 0", textAlign: "start" }}
+                  onClick={() => setCoJoinOpen((v) => !v)}>
+                  {coJoinOpen ? "▾" : "▸"} {t("coJoin")}
+                </button>
+                {coJoinOpen && <>
+                  <input value={coInvite} onChange={(e) => setCoInvite(e.target.value.toUpperCase())} placeholder={t("coInvite")}
+                    style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr", letterSpacing: ".1em", fontFamily: "var(--mono)" }} />
+                  <button type="button" disabled={coBusy || !coInvite} onClick={onCoJoin}
+                    style={{ ...secondaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coJoin")}</button>
+                  <input value={coCompany} onChange={(e) => setCoCompany(e.target.value)} placeholder={t("coCompany")}
+                    style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
+                  <button type="button" disabled={coBusy} onClick={onCoCreate}
+                    style={{ ...secondaryBtn, opacity: coBusy ? .65 : 1 }}>{t("coCreate")}</button>
+                </>}
               </div>
             )}
             <button type="button" disabled={coBusy} onClick={onCoSignOut}
@@ -9377,7 +9620,10 @@ function FarmApp() {
   const renderCashRowCell = (key, r) => {
     if (key === "date") return <Td key={key} mono>{r.day}</Td>;
     if (key === "ref") return <Td key={key} mono tone={C.inkSoft}>{r.ref}</Td>;
-    if (key === "statement") return <Td key={key}><CashParts parts={r.parts} /></Td>;
+    if (key === "statement") return <Td key={key}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <CashParts parts={r.parts} />
+      {r.source ? <WhoHint e={r.source} lang={lang} /> : null}
+    </span></Td>;
     if (key === "in") return <Td key={key} align="end" mono strong tone={r.debit ? C.green : C.inkSoft}>{r.debit ? fmtC(r.debit, S.rate, lang) : "—"}</Td>;
     if (key === "out") return <Td key={key} align="end" mono strong tone={r.credit ? C.red : C.inkSoft}>{r.credit ? fmtC(r.credit, S.rate, lang) : "—"}</Td>;
     return <Td key={key} align="end" mono strong tone={r.balance >= 0 ? C.fieldDeep : C.red}>{fmtC(r.balance, S.rate, lang)}</Td>;
@@ -9518,6 +9764,7 @@ function FarmApp() {
                 {r.dir === "out" ? t("cashFilterOut") : t("cashFilterIn")}</StatusPill>}
               title={r.day}
               subtitle={<CashParts parts={r.parts} />}
+              who={r.source ? <WhoHint e={r.source} lang={lang} /> : null}
               meta={`${r.debit ? `+${fmtC(r.debit, S.rate, lang)}` : ""}${r.credit ? `${r.debit ? " · " : ""}−${fmtC(r.credit, S.rate, lang)}` : ""}`}
               onClick={() => openCashSource(r)}
             />
@@ -9953,7 +10200,8 @@ function FarmApp() {
             <DataCard key={r.key || r.day} kind="day"
               status={<StatusPill status="day">{t("dayMilkTotal")}</StatusPill>}
               title={dmy(r.day)}
-              subtitle={`${hhmm(new Date(r.loggedAt || r.at))} · ${r.byName || "—"}`}
+              subtitle={hhmm(new Date(r.loggedAt || r.at))}
+              who={<WhoHint e={r} lang={lang} />}
               meta={`🌅 ${n1(r.am || 0)} · 🌙 ${n1(r.pm || 0)} · ${n1(r.total || 0)} ${milkUnitLb(r.unit || milkUnit, t)}`}
               onClick={() => { setEntryDate(r.day); setBatch({}); }}
             />
@@ -9982,7 +10230,7 @@ function FarmApp() {
                     <Td align="end" mono>{n1(r.pm || 0)}</Td>
                     <Td align="end" mono strong>{n1(r.total || 0)}</Td>
                     <Td tone={C.inkSoft}>{milkUnitLb(r.unit || milkUnit, t)}</Td>
-                    <Td tone={C.inkSoft}>{r.byName || "—"}</Td>
+                    <Td align="center"><WhoHint e={r} lang={lang} /></Td>
                   </tr>
                 ))}
               </tbody>
@@ -10507,7 +10755,12 @@ function FarmApp() {
           const e = entries.find((x) => x.id === sheet.id);
           if (!e || !e.receipt) return null;
           const title = e.type === "med" ? t("meds") : catLabel(e.category, lang, S.categories);
-          const sub = `${dayKey(e.at)} · ${fmtC(e.amount ?? e.cost, S.rate, lang)} · ${e.byName || ""}`;
+          const sub = (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              {`${dayKey(e.at)} · ${fmtC(e.amount ?? e.cost, S.rate, lang)}`}
+              <WhoHint e={e} lang={lang} />
+            </span>
+          );
           return <ReceiptSheet src={e.receipt} lang={lang} t={t} title={title} sub={sub}
             onClose={() => setSheet(null)}
             onBack={sheet.back ? () => setSheet(sheet.back) : undefined} backLabel={t("backBtn")}
@@ -10738,14 +10991,19 @@ function FarmApp() {
               : <>
                 <div style={{ display: "grid", gap: 10 }}>
                   {workers.filter((w) => w.type === "daily").map((w) => { const rec = att[w.id], on = rec && rec.present;
-                    return <button key={w.id} onClick={() => commit([{ type: "attend", workerId: w.id, present: !on }])}
+                    return <div key={w.id} role="button" tabIndex={0}
+                      onClick={() => commit([{ type: "attend", workerId: w.id, present: !on }])}
+                      onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault();
+                        commit([{ type: "attend", workerId: w.id, present: !on }]); } }}
                       style={{ display: "flex", alignItems: "center", gap: 13, background: C.card,
                         border: `1.5px solid ${on ? C.green : C.line}`, borderRadius: 6, padding: "12px 14px", cursor: "pointer", textAlign: "start" }}>
                       <span style={{ width: 40, height: 40, borderRadius: 5, background: on ? C.green : "#ECE9E0",
                         color: on ? "#fff" : C.inkSoft, display: "grid", placeItems: "center", fontSize: 22, fontWeight: 800 }}>{on ? "✓" : "✗"}</span>
                       <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 16.5, fontWeight: 700 }}>{w.name}</span>
-                        <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft, fontWeight: 500 }}>{rec ? `👤 ${stamp(rec, lang)}` : t("never")}</span></span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.green : C.inkSoft }}>{on ? t("present") : t("absent")}</span></button>; })}
+                        <span style={{ display: "flex", alignItems: "center", minHeight: 16 }}>
+                          {rec ? <WhoHint e={rec} lang={lang} /> : <span style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 500 }}>{t("never")}</span>}
+                        </span></span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.green : C.inkSoft }}>{on ? t("present") : t("absent")}</span></div>; })}
                   <button style={secondaryBtn} onClick={() => setSheet({ k: "addWorker", back: { k: "workers" } })}>➕ {t("addWorker")}</button>
                 </div>
                 <div style={{ marginTop: 14, background: C.field, color: "#fff", borderRadius: 6, padding: 15,
@@ -11718,7 +11976,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .data-display-cards{display:grid}
 .data-display-table{display:none}
 .data-card{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px;min-height:44px;color:${C.ink};
-  box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:visible}
 .data-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .data-card-copy{min-width:0;flex:1}
 .data-card-title{font-weight:700;font-size:15px;line-height:1.3}
@@ -11726,6 +11984,18 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .data-card-meta{font-size:12.5px;color:${C.inkSoft};margin-top:8px;font-family:var(--mono)}
 .data-card-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .data-card-actions .dk-pill,.data-card-actions button{min-height:44px;min-width:44px}
+.data-card-head-end{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.who-hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+  padding:0;margin:0;border:none;background:transparent;cursor:help;flex-shrink:0;vertical-align:middle;
+  color:inherit;box-shadow:none;appearance:none;-webkit-appearance:none}
+.who-hint:hover,.who-hint:active{filter:none;transform:none;opacity:1;box-shadow:none}
+.who-hint-dot{width:7px;height:7px;border-radius:50%;background:${C.inkSoft};opacity:.5;display:block}
+.who-hint:hover .who-hint-dot,.who-hint:focus-visible .who-hint-dot,.who-hint.is-on .who-hint-dot{opacity:.9;background:${C.field}}
+.who-hint-tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);white-space:nowrap;
+  font-size:11.5px;font-weight:600;font-family:var(--body);line-height:1.25;padding:5px 8px;border-radius:6px;
+  background:${C.ink};color:${C.card};box-shadow:0 6px 16px ${C.shadow};opacity:0;visibility:hidden;
+  pointer-events:none;z-index:80;transition:opacity .12s ease,visibility .12s ease}
+.who-hint:hover .who-hint-tip,.who-hint:focus-visible .who-hint-tip,.who-hint.is-on .who-hint-tip{opacity:1;visibility:visible}
 .status-row{border-inline-start-width:4px;border-inline-start-style:solid}
 .status-row--success,.data-card--success{border-inline-start-color:#10B981}
 .status-row--warning,.data-card--warning{border-inline-start-color:#F59E0B}
@@ -11793,6 +12063,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   .data-display-cards{display:none!important}
   .data-display-table{display:block!important}
   .status-pill::after{content:none}
+  .who-hint-tip{display:none!important}
 }
 `;
 

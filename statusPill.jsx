@@ -31,7 +31,7 @@ export function DataList({ cards, table, empty }) {
 }
 
 export function DataCard({
-  status, kind, tone, title, subtitle, meta, actions, children, onClick, className = "",
+  status, kind, tone, title, subtitle, meta, actions, children, onClick, className = "", who,
 }) {
   const resolved = tone || statusToneOf(kind || (typeof status === "string" ? status : undefined));
   const statusNode = status == null ? null
@@ -49,7 +49,7 @@ export function DataCard({
           {title != null && <div className="data-card-title">{title}</div>}
           {subtitle != null && <div className="data-card-sub">{subtitle}</div>}
         </div>
-        {statusNode}
+        {(who || statusNode) ? <div className="data-card-head-end">{who}{statusNode}</div> : null}
       </div>
       {meta != null && <div className="data-card-meta">{meta}</div>}
       {children}

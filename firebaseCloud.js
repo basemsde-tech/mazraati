@@ -27,6 +27,7 @@ let unsubFarm = null;
 
 const companyCloud = {
   ready: false,
+  bound: false,
   user: null,
   profile: null,
   companyId: null,
@@ -95,7 +96,8 @@ async function bindUser(user, onFarm) {
   companyCloud.companyId = null;
   companyCloud.company = null;
   companyCloud.error = null;
-  if (!user) { emit(); return; }
+  companyCloud.bound = false;
+  if (!user) { companyCloud.bound = true; emit(); return; }
   try {
     const profile = await loadProfile(user.uid);
     companyCloud.profile = profile;
@@ -107,7 +109,25 @@ async function bindUser(user, onFarm) {
   } catch (e) {
     companyCloud.error = e.message || String(e);
   }
+  companyCloud.bound = true;
   emit();
+}
+
+/** Wait until auth+profile have been read after sign-in or sign-up. Pass uid to ignore a stale bound state. */
+export function companyWaitBound(ms = 10000, uid = null) {
+  return new Promise((resolve) => {
+    let done = false;
+    const ok = (s) => s.bound && (!uid || (s.user && s.user.uid === uid));
+    const finish = (s) => {
+      if (done) return;
+      done = true;
+      unsub();
+      clearTimeout(tm);
+      resolve({ ...s });
+    };
+    const unsub = subscribeCompanyCloud((s) => { if (ok(s)) finish(s); });
+    const tm = setTimeout(() => finish(getCompanyCloud()), ms);
+  });
 }
 
 /** Call once from the app. onFarm(jsonString) when remote farm changes. */
@@ -129,6 +149,8 @@ export function startCompanyCloud(onFarm) {
 
 export async function companySignUp(email, password, displayName) {
   ensureInit();
+  companyCloud.bound = false;
+  emit();
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
   if (displayName) {
     try { await updateProfile(cred.user, { displayName: displayName.trim() }); } catch (e) { /* optional */ }
@@ -144,6 +166,8 @@ export async function companySignUp(email, password, displayName) {
 
 export async function companySignIn(email, password) {
   ensureInit();
+  companyCloud.bound = false;
+  emit();
   const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
   return cred.user;
 }
