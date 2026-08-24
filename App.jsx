@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   isFirebaseReady, startCompanyCloud, subscribeCompanyCloud, getCompanyCloud,
   companySignUp, companySignIn, companySignOut, createCompany, joinCompany,
@@ -9,6 +10,10 @@ import {
   buildWalkthroughFarm, walkthroughCounts, walkthroughHoldActive, setWalkthroughHold,
   savePreWalkthrough, readPreWalkthrough, clearPreWalkthrough,
 } from "./walkthroughFarm.mjs";
+import {
+  milkUnitOf, milkOtherUnit, parseMilkQty, milkToLiters, milkFromLiters,
+  milkConvertQty, milkPack, milkRecordLiters, milkEqAmount,
+} from "./milkUnits.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -17,9 +22,23 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.10", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.11", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.11": {
+    ar: [
+      "تعويض المصروف يُخصم من هذا البيع ثم من كامل حساب الزبون — بلا سقف أسبوعي أو نصف شهري، والزائد رصيد لصالحه",
+      "صندوق النقد يحصي النقد الفعلي فقط؛ الحسم من الحساب يظهر كمقاصة بلا حركة درج",
+      "إضافة الحليب تحوّل الكغ ↔ الليتر مباشرة (1 ل ≈ 1.03 كغ) وتُحفظ القيمتان",
+      "اختيار التاريخ زر واضح وتقويم داخل التطبيق — سهل على الجهاز اللوحي",
+    ],
+    en: [
+      "Expense reimbursements come off this sale then the whole customer account — no weekly cap, leftover becomes credit",
+      "Cash Box counts physical cash only; account offsets show as non-cash so the drawer still reconciles",
+      "Milk addition converts kg ↔ litres live (1 L ≈ 1.03 kg) and stores both values",
+      "Dates open from a clear button with an in-app calendar — easier on tablet",
+    ],
+  },
   "2.9.10": {
     ar: [
       "في حركات الحساب: إجمالي الحساب يبقى المبيعات، والتعويضات تُخصم منه وتظهر في الحسومات",
@@ -978,6 +997,7 @@ const T = {
     oversellWarn: "الكمية أكبر من المخزون المتاح", milkBalance: "مخزون الحليب",
     milkLogHint: "أدخل حليب الصباح والمساء معًا ثم احفظ.",
     addMilkStock: "إضافة حليب للمخزون", milkUnit: "الوحدة", milkUnitL: "ليتر", milkUnitKg: "كغ",
+    milkDensityHint: "1 ل ≈ 1.03 كغ",
     milkStockLog: "سجل الحليب", milkLogEmpty: "لا إضافات حليب في هذه الفترة.",
     milkSessionAll: "كل الحلبات", milkLogPreview: "معاينة المجموع", milkSession: "الحلبة",
     milkStockTitle: "المخزون", milkFresh: "طازج", milkOk: "جيد", milkAging: "يبدأ يقدّم", milkOld: "قديم",
@@ -1029,9 +1049,13 @@ const T = {
     reimbursements: "تعويضات مصاريف الزبون", reimbursement: "تعويض مصروف", expenseName: "نوع / اسم المصروف",
     chooseOrAddExpenseType: "اختر نوعًا محفوظًا أو اكتب نوعًا جديدًا — سيُحفظ تلقائيًا للاستخدام لاحقًا.",
     addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
-    netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "أدخل اسم المصروف لكل مبلغ تعويض.",
-    reimburseOverGross: "لا يمكن أن يتجاوز مجموع التعويضات مستحقات الزبون مع هذا البيع.",
-    reimburseFromBalance: "يُخصم التعويض من رصيد الزبون المستحق ويُسجَّل مصروف مزرعة — دون صرف من الصندوق.",
+    netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "اختر نوع المصروف لكل مبلغ تعويض.",
+    reimburseOverGross: "ما يزيد عن هذا البيع يُخصم من باقي الحساب، والزائد رصيد لصالح الزبون.",
+    reimburseFromBalance: "يُخصم التعويض من هذا البيع ثم من كامل حساب الزبون (أسبوعي أو نصف شهري) ويُسجَّل مصروف مزرعة.",
+    reimburseMemo: "ملاحظة (اختياري)", reimburseOnSale: "من هذا البيع", reimburseOnAccount: "من رصيد الحساب",
+    resultingBalance: "رصيد الحساب بعد القيد", netDueNow: "المطلوب الآن",
+    expSourceAll: "كل المصادر", expSourceReimburse: "تعويض الزبون", expSourceCash: "نقد الصندوق",
+    cashOffset: "مقاصة حساب", cashOffsetHint: "بنود المقاصة تظهر في السجل ولا تُحتسب في قبض/صرف الدرج.",
     paidByCustomer: "دفعه الزبون",
     milkUseAddReason: "سبب جديد", milkUseReasonHint: "اكتب سببًا واحفظه — يظهر في القائمة في المرات التالية.",
     milkUseHistory: "سجل استخدام المزرعة", milkUseEmpty: "لا استخدام مزرعة في هذه الفترة.", reimburseReadOnly: "التعويضات المرتبطة محفوظة وتظهر هنا للقراءة فقط.",
@@ -1071,8 +1095,9 @@ const T = {
     animalDirectory: "دليل الحيوانات", totalHeads: "إجمالي الرؤوس",
     hideDueBills: "إخفاء الفواتير المستحقة", showDueBills: "إظهار الفواتير المستحقة",
     expenseOverview: "نظرة سريعة", showInsights: "إظهار تحليل المصروف", hideInsights: "إخفاء تحليل المصروف",
-    milkSaleUnit: "وحدة بيع الحليب", milkUnitMismatch: "وحدة البيع تختلف عن وحدة مخزون الحليب؛ لن يتم تحويل الكمية تلقائياً",
-    fromDate: "من تاريخ", toDate: "إلى تاريخ", statusAll: "الكل", inRange: "ضمن الفترة المحددة",
+    milkSaleUnit: "وحدة بيع الحليب", milkUnitMismatch: "وحدة البيع تُحوَّل تلقائياً من/إلى المخزون (1 ل ≈ 1.03 كغ).",
+    fromDate: "من تاريخ", toDate: "إلى تاريخ", dateClear: "مسح التاريخ", pickDate: "اختر التاريخ",
+    statusAll: "الكل", inRange: "ضمن الفترة المحددة",
     owingInRange: "المستحق في هذه الفترة", txCount: "عدد الحركات", editTx: "تعديل الحركة",
     deleteTx: "حذف الحركة", confirmDelete: "تأكيد الحذف", deleted: "تم الحذف",
     deleteWarn: "سيُحذف هذا البيع نهائيًا مع دفعاته وتعويضات المصاريف المرتبطة به من المبيعات وصندوق النقد.",
@@ -1424,6 +1449,7 @@ const T = {
     oversellWarn: "More than milk available in stock", milkBalance: "Milk stock",
     milkLogHint: "Enter morning and evening milk together, then save.",
     addMilkStock: "Add milk to stock", milkUnit: "Unit", milkUnitL: "Litre", milkUnitKg: "kg",
+    milkDensityHint: "1 L ≈ 1.03 kg",
     milkStockLog: "Milk stock log", milkLogEmpty: "No milk additions in this period.",
     milkSessionAll: "All milkings", milkLogPreview: "Total preview", milkSession: "Milking",
     milkStockTitle: "Stock", milkFresh: "Fresh", milkOk: "Good", milkAging: "Aging", milkOld: "Old",
@@ -1475,9 +1501,13 @@ const T = {
     reimbursements: "Customer expense reimbursements", reimbursement: "Expense reimbursement", expenseName: "Expense type / name",
     chooseOrAddExpenseType: "Choose a saved type or enter a new one — it will be saved automatically for future sales.",
     addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
-    netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Enter an expense name for every reimbursement amount.",
-    reimburseOverGross: "Reimbursements cannot exceed the customer's outstanding balance including this sale.",
-    reimburseFromBalance: "The reimbursement comes off what the customer owes and is logged as a farm expense — no cash leaves the box.",
+    netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Choose an expense category for every reimbursement amount.",
+    reimburseOverGross: "Anything above this sale comes off the rest of the account; leftover becomes customer credit.",
+    reimburseFromBalance: "The reimbursement comes off this sale first, then the whole customer account (weekly or fortnightly), and is logged as a farm expense.",
+    reimburseMemo: "Note (optional)", reimburseOnSale: "Off this sale", reimburseOnAccount: "Off account balance",
+    resultingBalance: "Account balance after posting", netDueNow: "Due now",
+    expSourceAll: "All sources", expSourceReimburse: "Customer reimbursement", expSourceCash: "Cash-box paid",
+    cashOffset: "Account offset", cashOffsetHint: "Offset lines appear in the register and are not counted in drawer in/out.",
     paidByCustomer: "Paid by customer",
     milkUseAddReason: "New reason", milkUseReasonHint: "Type a reason to save it — it stays on the list next time.",
     milkUseHistory: "Farm-use log", milkUseEmpty: "No farm-use milk in this period.", reimburseReadOnly: "Linked reimbursements are preserved and shown here read-only.",
@@ -1517,8 +1547,9 @@ const T = {
     animalDirectory: "Animal directory", totalHeads: "Total heads",
     hideDueBills: "Hide due bills", showDueBills: "Show due bills",
     expenseOverview: "At a glance", showInsights: "Show spending insights", hideInsights: "Hide spending insights",
-    milkSaleUnit: "Milk sale unit", milkUnitMismatch: "Sale unit differs from milk stock; quantity is not converted automatically",
-    fromDate: "From", toDate: "To", statusAll: "All", inRange: "in the selected range",
+    milkSaleUnit: "Milk sale unit", milkUnitMismatch: "Sale unit is converted to stock automatically (1 L ≈ 1.03 kg).",
+    fromDate: "From", toDate: "To", dateClear: "Clear date", pickDate: "Pick a date",
+    statusAll: "All", inRange: "in the selected range",
     owingInRange: "Owing in this range", txCount: "Transactions", editTx: "Edit transaction",
     deleteTx: "Delete transaction", confirmDelete: "Confirm delete", deleted: "Deleted",
     deleteWarn: "This sale, its payments, and linked expense reimbursements will be removed from Sales and Cash Box.",
@@ -1707,6 +1738,14 @@ const DOW = {
   ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
   en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
 };
+const DOW_SHORT = {
+  ar: ["أحد", "إثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
+  en: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
+};
+const MONTHS = {
+  ar: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"],
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+};
 const asDate = (v) => {
   if (!v && v !== 0) return null;
   const src = (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v))
@@ -1890,12 +1929,11 @@ function datePresetBounds(kind) {
   if (kind === "month") return { from: dayKey(new Date(y, m, 1)), to: dayKey(now) };
   return { from: "", to: "" };
 }
-function saleSaveReason(t, { cid, qty, price, amount, priceMode, reimburseOver, discountOver }) {
+function saleSaveReason(t, { cid, qty, price, amount, priceMode, discountOver }) {
   if (!cid) return t("needCustomer");
   if (!(Number(qty) > 0)) return t("needQty");
   if (priceMode === "unit" && !(Number(price) > 0)) return t("needPrice");
   if (!(Number(amount) > 0)) return t("needAmount");
-  if (reimburseOver) return t("reimburseOverGross");
   if (discountOver) return t("discountOverNet");
   return "";
 }
@@ -2185,7 +2223,8 @@ function milkLotsRaw(list) {
       if (k in perSeen) return;
       perSeen[k] = 1;
       lots.push({
-        id: e.id, key: k, at: e.at, liters: e.liters || 0, session: e.session || "am",
+        id: e.id, key: k, at: e.at, liters: milkRecordLiters(e), unit: e.unit,
+        session: e.session || "am",
         animalId: e.animalId, byName: e.byName, loggedAt: e.loggedAt, type: "milk",
       });
     } else if (e.type === "milkBulk") {
@@ -2194,7 +2233,8 @@ function milkLotsRaw(list) {
       if (k in bulkSeen) return;
       bulkSeen[k] = 1;
       lots.push({
-        id: e.id, key: k, at: e.at, liters: e.liters || 0, session: sess,
+        id: e.id, key: k, at: e.at, liters: milkRecordLiters(e), unit: e.unit,
+        session: sess,
         species: e.species, byName: e.byName, loggedAt: e.loggedAt, type: "milkBulk",
       });
     }
@@ -2281,9 +2321,9 @@ function foldMilkBulkLog(list) {
         out.push({
           ...later,
           session: "day",
-          liters: (am.liters || 0) + (pm.liters || 0),
-          amLiters: am.liters || 0,
-          pmLiters: pm.liters || 0,
+          liters: milkRecordLiters(am) + milkRecordLiters(pm),
+          amLiters: milkRecordLiters(am),
+          pmLiters: milkRecordLiters(pm),
           unit: later.unit || am.unit || pm.unit,
         });
         return;
@@ -2306,11 +2346,11 @@ function milkDeductions(list, asOf) {
     if (e.type === "sale" && (e.product || "milk") === "milk") {
       if (e.id && seen[e.id]) return;
       if (e.id) seen[e.id] = 1;
-      sold += e.qty || 0;
+      sold += milkRecordLiters(e);
     } else if (e.type === "milkUse") {
       if (e.id && seen[e.id]) return;
       if (e.id) seen[e.id] = 1;
-      used += e.qty || 0;
+      used += milkRecordLiters(e);
     }
   });
   return { sold, used, total: sold + used };
@@ -2358,10 +2398,10 @@ function milkSessionLiters(list, day, session) {
   const hasAmPm = dayList.some((e) => e.type === "milkBulk" && (e.session === "am" || e.session === "pm"));
   if (!hasAmPm) {
     const dayBulk = dayList.find((e) => e.type === "milkBulk" && (e.session === "day" || !e.session));
-    if (dayBulk) return session === "day" ? (dayBulk.liters || 0) : 0;
+    if (dayBulk) return session === "day" ? milkRecordLiters(dayBulk) : 0;
   }
   const bulk = dayList.find((e) => e.type === "milkBulk" && e.session === session);
-  if (bulk) return bulk.liters || 0;
+  if (bulk) return milkRecordLiters(bulk);
   if (session === "day") {
     return milkSessionLiters(list, day, "am") + milkSessionLiters(list, day, "pm");
   }
@@ -2369,7 +2409,7 @@ function milkSessionLiters(list, day, session) {
   dayList.filter((e) => e.type === "milk" && e.session === session).forEach((e) => {
     if (seen[e.animalId]) return;
     seen[e.animalId] = 1;
-    sum += e.liters || 0;
+    sum += milkRecordLiters(e);
   });
   return sum;
 }
@@ -2384,13 +2424,13 @@ function milkDayProduced(list, day) {
 function milkSoldLiters(list, day) {
   const seen = {}; let sold = 0;
   (list || []).filter((e) => e.type === "sale" && (e.product || "milk") === "milk" && dayKey(e.at) === day)
-    .forEach((e) => { if (seen[e.id]) return; seen[e.id] = 1; sold += e.qty || 0; });
+    .forEach((e) => { if (seen[e.id]) return; seen[e.id] = 1; sold += milkRecordLiters(e); });
   return sold;
 }
 function milkUsedLiters(list, day) {
   const seen = {}; let used = 0;
   (list || []).filter((e) => e.type === "milkUse" && dayKey(e.at) === day)
-    .forEach((e) => { if (seen[e.id]) return; seen[e.id] = 1; used += e.qty || 0; });
+    .forEach((e) => { if (seen[e.id]) return; seen[e.id] = 1; used += milkRecordLiters(e); });
   return used;
 }
 function milkDayBalance(list, day) {
@@ -2524,18 +2564,18 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   const rows = moves.map((e, i) => {
     const deduct = +cashDeductAmount(e).toFixed(2);
     if (deduct > 0.0001) {
-      inN += deduct; outN += deduct;
       const who = cust(e.customerId);
       const item = e.name || e.note || t("reimbursement");
       const pref = "DC";
       const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
       const parts = [
+        { text: t("cashOffset"), tone: "muted" },
+        { text: " · " },
         { text: t("cashDeductedFrom"), tone: "out" },
         { text: " " },
         { text: who, tone: "name" },
         { text: ` · ${t("cashPaidFor")} `, tone: "muted" },
         { text: item, tone: "name" },
-        { text: ` · ${t("paidByCustomer")}`, tone: "muted" },
       ];
       return {
         id: e.id, at: e.at, day: dayKey(e.at), ref, parts, dir: "deduct",
@@ -3344,25 +3384,117 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
     </div>
   );
 }
-function DatePick({ value, onChange, max, min, readOnly, disabled, className, style, ariaLabel, compact }) {
+function DatePick({ value, onChange, max, min, readOnly, disabled, className, style, ariaLabel, compact, allowClear }) {
   const locked = !!(readOnly || disabled);
+  const lang = dateLangOf();
+  const L = T[lang] || T.ar;
+  const wrapRef = useRef(null);
+  const popRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 8, left: 8, width: 300 });
+  const selected = (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) ? value : "";
+  const today = dayKey(Date.now());
+  const seed = selected || ((max && max < today) ? max : today);
+  const [viewYm, setViewYm] = useState(seed.slice(0, 7));
+  const shiftMonth = (n) => {
+    const [y, m] = viewYm.split("-").map(Number);
+    const d = new Date(y, m - 1 + n, 1);
+    setViewYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const place = useCallback(() => {
+    const btn = wrapRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const w = Math.min(320, Math.max(276, Math.min(window.innerWidth - 16, 320)));
+    const rtl = document.documentElement.dir === "rtl";
+    let left = rtl ? r.right - w : r.left;
+    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+    const estH = 380;
+    let top = r.bottom + 6;
+    if (top + estH > window.innerHeight - 8 && r.top > estH + 8) top = Math.max(8, r.top - estH - 6);
+    setPos({ top, left, width: w });
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    setViewYm(seed.slice(0, 7));
+    place();
+    const onDoc = (e) => {
+      if (wrapRef.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place, seed]);
+  const pick = (dk) => {
+    if (locked || !onChange) return;
+    if (max && dk > max) return;
+    if (min && dk < min) return;
+    onChange(dk);
+    setOpen(false);
+  };
+  const [vy, vm] = viewYm.split("-").map(Number);
+  const first = new Date(vy, vm - 1, 1);
+  const daysIn = new Date(vy, vm, 0).getDate();
+  const lead = first.getDay();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysIn; d++) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+  const cal = open && !locked ? createPortal(
+    <div ref={popRef} className="date-cal" role="dialog" aria-label={ariaLabel || L.pickDate}
+      style={{ top: pos.top, left: pos.left, width: pos.width }}>
+      <div className="date-cal-head">
+        <button type="button" className="date-cal-nav" aria-label={L.prev || "‹"} onClick={() => shiftMonth(-1)}>‹</button>
+        <div className="date-cal-title">{MONTHS[lang][vm - 1]} {vy}</div>
+        <button type="button" className="date-cal-nav" aria-label={L.next || "›"} onClick={() => shiftMonth(1)}>›</button>
+      </div>
+      <div className="date-cal-dow">
+        {DOW_SHORT[lang].map((lb) => <span key={lb}>{lb}</span>)}
+      </div>
+      <div className="date-cal-grid">
+        {cells.map((d, i) => {
+          if (!d) return <span key={`e${i}`} className="date-cal-day muted" />;
+          const dk = `${viewYm}-${String(d).padStart(2, "0")}`;
+          const off = (min && dk < min) || (max && dk > max);
+          const on = dk === selected;
+          const isToday = dk === today;
+          return <button type="button" key={dk} disabled={off}
+            className={`date-cal-day${on ? " on" : ""}${isToday ? " today" : ""}${off ? " off" : ""}`}
+            onClick={() => !off && pick(dk)}>{d}</button>;
+        })}
+      </div>
+      <div className="date-cal-foot">
+        <button type="button" onClick={() => {
+          const dk = today;
+          if ((min && dk < min) || (max && dk > max)) { setViewYm(today.slice(0, 7)); return; }
+          pick(today);
+        }}>{L.today}</button>
+        {allowClear && selected ? <button type="button" onClick={() => { onChange(""); setOpen(false); }}>{L.dateClear}</button> : null}
+      </div>
+    </div>,
+    document.body
+  ) : null;
   return (
-    <label className={`date-pick${compact ? " compact" : ""}${locked ? " locked" : ""}${className ? ` ${className}` : ""}`}
+    <div ref={wrapRef} className={`date-pick${compact ? " compact" : ""}${locked ? " locked" : ""}${className ? ` ${className}` : ""}`}
       style={style}>
-      <span className="date-pick-show">{value ? dmy(value) : "—"}</span>
-      <input type="date" value={value || ""} max={max || undefined} min={min || undefined}
-        readOnly={!!readOnly} disabled={!!disabled} aria-label={ariaLabel}
-        tabIndex={locked ? -1 : undefined}
-        onChange={(e) => {
-          if (locked || !onChange) return;
-          const v = e.target.value;
-          if (v) {
-            if (max && v > max) return;
-            if (min && v < min) return;
-          }
-          onChange(v);
-        }} />
-    </label>
+      <button type="button" className={`date-pick-btn${open ? " open" : ""}`} disabled={locked}
+        aria-label={ariaLabel || L.pickDate} aria-expanded={open}
+        onClick={() => { if (!locked) setOpen((o) => !o); }}>
+        <span className="date-pick-ico" aria-hidden="true"><IcoCalendar /></span>
+        <span className={`date-pick-val${selected ? "" : " ph"}`}>{selected ? dmy(selected, lang) : (ariaLabel || "—")}</span>
+        <span className="date-pick-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
+      </button>
+      {cal}
+    </div>
   );
 }
 function PriceModeToggle({ t, mode, onChange }) {
@@ -3433,6 +3565,12 @@ function IcoSearch() {
   return <svg className="sf-svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
     <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
     <path d="M20 20l-3.4-3.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+function IcoCalendar() {
+  return <svg className="sf-svg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M8 3.5v4M16 3.5v4M3.5 10h17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>;
 }
 function IcoSliders() {
@@ -3574,8 +3712,8 @@ function DateFilterPills({ t, from, to, onChange }) {
       <Chip active={custom} onClick={() => onChange(from || today.from, to || today.to)}>{t("customRange")}</Chip>
     </div>
     {(from || to || custom) && <div className="sf-dates">
-      <DatePick compact value={from || ""} onChange={(v) => onChange(v, to || "")} ariaLabel={t("fromDate")} />
-      <DatePick compact value={to || ""} onChange={(v) => onChange(from || "", v)} ariaLabel={t("toDate")} />
+      <DatePick compact allowClear value={from || ""} onChange={(v) => onChange(v, to || "")} ariaLabel={t("fromDate")} />
+      <DatePick compact allowClear value={to || ""} onChange={(v) => onChange(from || "", v)} ariaLabel={t("toDate")} />
     </div>}
   </div>;
 }
@@ -4276,8 +4414,15 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
   </Sheet>;
 }
 
-function milkUnitOf(u) { return u === "kg" ? "kg" : "L"; }
 function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
+function milkEqHint(qty, unit, t) {
+  const n = parseMilkQty(qty);
+  if (!(n > 0)) return null;
+  const other = milkOtherUnit(unit);
+  const equiv = milkEqAmount(n, unit);
+  const shown = (Math.round(equiv * 10) / 10).toFixed(1);
+  return <div className="milk-unit-eq">{`(~${shown} ${milkUnitLb(other, t)})`}</div>;
+}
 function saleQtyUnit(sale, lang, t) {
   if ((sale?.product || "milk") === "milk") return milkUnitLb(sale?.unit, t);
   const pr = PRODUCTS.find((p) => p[0] === sale?.product) || PROD_OTHER;
@@ -4391,23 +4536,44 @@ function CashierPayPrompt({ t, lang, S, amount, err, onConfirm }) {
 }
 
 function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose, unit = "L" }) {
-  const [am, setAm] = useState(existing.am || 0);
-  const [pm, setPm] = useState(existing.pm || 0);
+  const [am, setAm] = useState(() => milkFromLiters(existing.am || 0, unit));
+  const [pm, setPm] = useState(() => milkFromLiters(existing.pm || 0, unit));
   const [u, setU] = useState(milkUnitOf(unit));
-  useEffect(() => { setAm(existing.am || 0); setPm(existing.pm || 0); }, [date, existing.am, existing.pm]);
-  useEffect(() => { setU(milkUnitOf(unit)); }, [unit]);
+  useEffect(() => {
+    setAm(milkFromLiters(existing.am || 0, u));
+    setPm(milkFromLiters(existing.pm || 0, u));
+  }, [date, existing.am, existing.pm]);
+  useEffect(() => {
+    const next = milkUnitOf(unit);
+    setU((prev) => {
+      if (prev === next) return prev;
+      setAm((v) => milkConvertQty(v, prev, next));
+      setPm((v) => milkConvertQty(v, prev, next));
+      return next;
+    });
+  }, [unit]);
+  const pickUnit = (next) => {
+    const to = milkUnitOf(next);
+    if (u === to) return;
+    setAm((v) => milkConvertQty(v, u, to));
+    setPm((v) => milkConvertQty(v, u, to));
+    setU(to);
+  };
   const total = am + pm;
   const suffix = milkUnitLb(u, t);
   return <Sheet title={`🥛 ${t("addMilkStock")}`} sub={dayLabel(date, lang)} onClose={onClose}>
     <DayPicker date={date} setDate={setDate} lang={lang} t={t} />
-    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      <Chip active={u === "L"} onClick={() => setU("L")}>{t("milkUnitL")}</Chip>
-      <Chip active={u === "kg"} onClick={() => setU("kg")}>{t("milkUnitKg")}</Chip>
+    <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+      <Chip active={u === "L"} onClick={() => pickUnit("L")}>{t("milkUnitL")}</Chip>
+      <Chip active={u === "kg"} onClick={() => pickUnit("kg")}>{t("milkUnitKg")}</Chip>
     </div>
+    <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 12 }}>
+      {t("milkDensityHint")}</div>
     {[["am", `🌅 ${t("morningMilk")}`, am, setAm], ["pm", `🌙 ${t("eveningMilk")}`, pm, setPm]].map(([k, label, v, set]) => (
       <div key={k} style={{ background: C.card, borderRadius: 6, border: `1px solid ${C.line}`, padding: 15, marginBottom: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{label}</div>
-        <Stepper big value={v} onChange={set} step={5} suffix={suffix} decimals={1} />
+        <Stepper big value={v} onChange={(n) => set(Math.max(0, n))} step={5} suffix={suffix} decimals={2} />
+        {milkEqHint(v, u, t)}
       </div>))}
     <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 14, marginBottom: 12,
       display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -4423,7 +4589,9 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", saved
   const [reason, setReason] = useState("home");
   const [customName, setCustomName] = useState("");
   const [useDate, setUseDate] = useState(date || dayKey(Date.now()));
-  const avail = stock?.available || 0;
+  const availL = stock?.available || 0;
+  const avail = milkFromLiters(availL, unit);
+  const needL = milkToLiters(qty, unit);
   const u = milkUnitLb(unit, t);
   const presets = [
     ["home", t("milkUseHome")], ["calves", t("milkUseCalves")], ["waste", t("milkUseWaste")],
@@ -4431,7 +4599,7 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", saved
   const customs = (savedReasons || []).map((name) => String(name || "").trim()).filter(Boolean);
   const pick = customName.trim();
   const chosenCustom = reason.startsWith("custom:") ? reason.slice(7) : "";
-  const canSave = qty > 0 && qty <= avail + 0.001 && (reason !== "new" || pick);
+  const canSave = qty > 0 && needL <= availL + 0.001 && (reason !== "new" || pick);
   return <Sheet title={`🥛 ${t("milkUse")}`} onClose={onClose}>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13.5 }}>
@@ -4440,7 +4608,8 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", saved
     </div>
     <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("qty")}</div>
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <Stepper big value={qty} onChange={setQty} step={1} suffix={u} decimals={1} />
+      <Stepper big value={qty} onChange={(n) => setQty(Math.max(0, n))} step={1} suffix={u} decimals={2} />
+      {milkEqHint(qty, unit, t)}
     </div>
     <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("lossReason")}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -4470,13 +4639,15 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", saved
         if (!canSave) return;
         const label = reason === "new" ? pick : chosenCustom;
         const code = label ? "custom" : reason;
-        onSave({ qty, reason: code, reasonLabel: label || "", at: dayStamp(useDate) });
+        onSave({ qty: milkToLiters(qty, unit), ...milkPack(qty, unit),
+          reason: code, reasonLabel: label || "", at: dayStamp(useDate) });
       }}>✓ {t("save")}</button>
   </Sheet>;
 }
 
 function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
   const u = milkUnitLb(unit, t);
+  const show = (n) => n1(milkFromLiters(n, unit));
   const tone = { fresh: C.green, ok: C.field, aging: C.amber, old: C.red };
   const label = { fresh: t("milkFresh"), ok: t("milkOk"), aging: t("milkAging"), old: t("milkOld") };
   const s = stock || { available: 0, produced: 0, sold: 0, used: 0, lots: [] };
@@ -4491,7 +4662,7 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
       background: C.field, color: "#fff", borderRadius: 8, padding: "14px 16px" }}>
       <div>
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 28 }}>{n1(s.available)} {u}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 28 }}>{show(s.available)} {u}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{useBtn}{kit}</div>
     </div>;
@@ -4501,13 +4672,13 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
       display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
       <div>
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26 }}>{n1(s.available)} {u}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26 }}>{show(s.available)} {u}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ fontSize: 12, opacity: .9, textAlign: "end", fontWeight: 600, lineHeight: 1.45 }}>
-          <div>{t("milkProduced")} {n1(s.produced)} {u}</div>
-          <div>{t("milkSoldToday")} {n1(s.sold)} {u}</div>
-          <div>{t("milkUsed")} {n1(s.used)} {u}</div>
+          <div>{t("milkProduced")} {show(s.produced)} {u}</div>
+          <div>{t("milkSoldToday")} {show(s.sold)} {u}</div>
+          <div>{t("milkUsed")} {show(s.used)} {u}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{useBtn}{kit}</div>
       </div>
@@ -4523,7 +4694,7 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
         borderInlineStart: `4px solid ${tone[lot.fresh] || C.line}`,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{n1(lot.remaining)} {u}</span>
+          <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{show(lot.remaining)} {u}</span>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: tone[lot.fresh] }}>{label[lot.fresh]}</span>
         </div>
         <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 4 }}>
@@ -5668,7 +5839,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   };
   const saleReimbursements = () => {
     const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
-      .map((r) => ({ name: r.name.trim(), amount: fromCents(toCents(r.amount)) }));
+      .map((r) => ({ name: String(r.name || "").trim(), amount: fromCents(toCents(r.amount)) }));
     if (reimbursements.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
     return reimbursements;
   };
@@ -5676,8 +5847,12 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     if (block) return setErr(block);
     if (!saleReimbursements()) return;
     setErr("");
+    if (toCents(netAmount) < 1) return saveSale(0);
     setTill(true);
   };
+  const resultBalC = priorDueC + toCents(amount) - reimbC - discC;
+  const onSaleC = Math.min(reimbC, toCents(amount));
+  const onAcctC = Math.max(0, reimbC - toCents(amount));
   const saveSale = (payNow) => {
     if (block) return setErr(block);
     const reimbursements = saleReimbursements();
@@ -5688,7 +5863,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
   };
   const milkAvail = milkStock(entries || [], date).available;
-  const oversell = product === "milk" && milkSaleUnit === stockUnit && qty > milkAvail + 0.001;
+  const milkNeed = product === "milk" ? milkToLiters(qty, milkSaleUnit) : 0;
+  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
@@ -5701,7 +5877,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkAvail)} {milkUnitLb(stockUnit, t)}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkFromLiters(milkAvail, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}</span>
     </div>
     <Step n="1" label={t("pickCustomer")} />
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
@@ -5794,13 +5970,26 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9 }}>
         <span style={{ fontWeight: 600 }}>{t("discount")}</span><span>− <Money usd={fromCents(discC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
       </div>
+      {onAcctC > 0 && <>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9, fontSize: 13 }}>
+          <span>{t("reimburseOnSale")}</span><span>− <Money usd={fromCents(onSaleC)} rate={S.rate} lang={lang} size={15} tone="#fff" /></span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9, fontSize: 13 }}>
+          <span>{t("reimburseOnAccount")}</span><span>− <Money usd={fromCents(onAcctC)} rate={S.rate} lang={lang} size={15} tone="#fff" /></span>
+        </div>
+      </>}
       <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
         justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
+        <span style={{ fontWeight: 800 }}>{t("netDueNow")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
       </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .92, fontSize: 13.5 }}>
+        <span>{t("resultingBalance")}</span>
+        <Money usd={fromCents(Math.abs(resultBalC))} rate={S.rate} lang={lang} size={16} tone="#fff" />
+      </div>
+      {resultBalC < 0 && <div style={{ fontSize: 12.5, opacity: .9 }}>{t("credit")}</div>}
     </div>
-    {reimburseOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("reimburseOverGross")}</div>}
+    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
+      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>{t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("discountOverNet")}</div>}
     <Step n="6" label={t("discount")} />
@@ -5815,10 +6004,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkAvail)} {milkUnitLb(stockUnit, t)})</div>}
-    {product === "milk" && milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4,
-      padding: "10px 12px", marginBottom: 10, fontWeight: 600, color: "#7A5312", fontSize: 13 }}>
-      ⚠️ {t("milkUnitMismatch")}</div>}
+      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkFromLiters(milkAvail, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)})</div>}
     {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
     <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
@@ -6000,12 +6186,10 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
     {milkLeft != null && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, fontWeight: 700, fontSize: 13.5, display: "flex", justifyContent: "space-between" }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkSaleUnit === stockUnit && milkQty > milkLeft + 0.001 ? C.red : C.field }}>
-        {n1(milkLeft)} {milkUnitLb(stockUnit, t)}{milkQty > 0 ? ` · −${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}` : ""}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkToLiters(milkQty, milkSaleUnit) > (milkLeft || 0) + 0.001 ? C.red : C.field }}>
+        {n1(milkFromLiters(milkLeft, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}{milkQty > 0 ? ` · −${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}` : ""}</span>
     </div>}
-    {milkSaleUnit !== stockUnit && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
-      fontWeight: 600, color: "#7A5312", fontSize: 13 }}>⚠️ {t("milkUnitMismatch")}</div>}
-    {milkLeft != null && milkSaleUnit === stockUnit && milkQty > milkLeft + 0.001 && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
+    {milkLeft != null && milkToLiters(milkQty, milkSaleUnit) > (milkLeft || 0) + 0.001 && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
       fontWeight: 600, color: "#7A5312", fontSize: 13 }}>⚠️ {t("oversellWarn")}</div>}
     <div style={{ display: "grid", gap: 10 }}>
       {regulars.map((c) => {
@@ -6207,7 +6391,8 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
       <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} /></div>
     <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
       style={{ ...inp, marginBottom: 12 }} />
-    {reimburseOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("reimburseOverGross")}</div>}
+    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
+      fontWeight: 600, color: "#7A5312" }}>{t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("discountOverNet")}</div>}
     {(() => {
       const block = saleSaveReason(t, { cid: true, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
@@ -6787,8 +6972,8 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     loss: ["💀", `${t("losses")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)}`],
     birth: ["🐣", `${t("births")} · ${a ? animalLabel(a) : "—"}${e.males !== undefined ? ` · ♂${e.males} ♀${e.females}` : ""}${e.dead ? ` · 💀${e.dead}` : ""}`, `${nf(e.count)}`],
-    milkBulk: ["🥛", `${t("dayMilkTotal")}${e.session === "am" ? ` · ${t("morning")}` : e.session === "pm" ? ` · ${t("evening")}` : (e.amLiters != null || e.pmLiters != null) ? ` · ${t("morning")} ${n1(e.amLiters || 0)} · ${t("evening")} ${n1(e.pmLiters || 0)}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, `${n1(e.liters)} ${milkUnitLb(e.unit, t)}`],
-    milkUse: ["🥛", `${t("milkUse")} · ${milkUseLabel(e, t)}`, `${n1(e.qty)} ${milkUnitLb(e.unit, t)}`],
+    milkBulk: ["🥛", `${t("dayMilkTotal")}${e.session === "am" ? ` · ${t("morning")}` : e.session === "pm" ? ` · ${t("evening")}` : (e.amLiters != null || e.pmLiters != null) ? ` · ${t("morning")} ${n1(milkFromLiters(e.amLiters || 0, e.unit))} · ${t("evening")} ${n1(milkFromLiters(e.pmLiters || 0, e.unit))}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, `${n1(milkFromLiters(milkRecordLiters(e), e.unit))} ${milkUnitLb(e.unit, t)}`],
+    milkUse: ["🥛", `${t("milkUse")} · ${milkUseLabel(e, t)}`, `${n1(milkFromLiters(milkRecordLiters(e), e.unit))} ${milkUnitLb(e.unit, t)}`],
     weight: ["⚖️", `${t("weighIn")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.kg)} ${t("kg")}`],
     status: ["🔄", `${a ? animalLabel(a) : "—"} · ${statusLabel(e.status, lang)}`, ""],
     service: ["🍼", `${t("recordService")} · ${a ? animalLabel(a) : "—"}`, e.served || ""],
@@ -7998,6 +8183,7 @@ function FarmApp() {
   const [cashTable, setCashTable] = useState(() => sanitizeCashTablePrefs(null));
   const cashTableRef = useRef(cashTable);
   const [expCat, setExpCat] = useState("all");
+  const [expSource, setExpSource] = useState("all");
   const [expSort, setExpSort] = useState("newest");
   const [expBillsOpen, setExpBillsOpen] = useState(false);
   const [expInsightsOpen, setExpInsightsOpen] = useState(false);
@@ -8487,6 +8673,7 @@ function FarmApp() {
 
   /* ------------------------------ derived ------------------------------ */
   const S = (data && data.settings) || { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0 };
+  const milkUnit = milkUnitOf(milkUnitDraft ?? S.milkUnit);
   const animals = (data && data.animals) || [];
   const workers = (data && data.workers) || [];
   const obligations = (data && data.obligations) || [];
@@ -8628,26 +8815,15 @@ function FarmApp() {
       const statement = (r.parts || []).map((p) => p.text).join("");
       return `${r.day} ${r.ref} ${statement} ${r.debit || ""} ${r.credit || ""}`.toLowerCase().includes(q);
     });
-    const totalIn = +rows.reduce((a, r) => a + r.debit, 0).toFixed(2);
-    const totalOut = +rows.reduce((a, r) => a + r.credit, 0).toFixed(2);
+    const totalIn = +rows.filter((r) => !r.nonCash).reduce((a, r) => a + r.debit, 0).toFixed(2);
+    const totalOut = +rows.filter((r) => !r.nonCash).reduce((a, r) => a + r.credit, 0).toFixed(2);
     return { rows, totalIn, totalOut, filtered: cashDir !== "all" || !!q };
   }, [cashBox, cashDir, cashQ]);
   const cashFlow = useMemo(() => {
     const groups = {};
     cashBox.rows.forEach((r) => {
+      if (r.nonCash) return;
       const e = r.source || {};
-      if (r.nonCash || e.type === "saleReimburse" || (e.type === "expense" && isCustomerPaidExpense(e))) {
-        const deductKey = t("deductions");
-        const outKey = e.name || e.note || catLabel(e.category || "other", lang, S.categories) || t("reimbursement");
-        [["in", deductKey, r.debit], ["out", outKey, r.credit]].forEach(([dir, key, amt]) => {
-          if (!(amt > 0)) return;
-          const id = `${dir}:${key}`;
-          if (!groups[id]) groups[id] = { id, label: key, dir, amount: 0, count: 0 };
-          groups[id].amount += amt;
-          groups[id].count += 1;
-        });
-        return;
-      }
       let key;
       if (r.dir === "in") key = t("cashCustomerReceipts");
       else if (e.type === "supplierPay") {
@@ -8986,7 +9162,7 @@ function FarmApp() {
         return true;
       })
       .slice().sort((a, b) => cmpTx(a, b, (f.sort || "newest") === "oldest" ? "oldest" : "newest"));
-    const totalQty = +rows.reduce((s, r) => s + (r.qty || 0), 0).toFixed(2);
+    const totalQty = +rows.reduce((s, r) => s + milkRecordLiters(r), 0).toFixed(2);
     return { rows, totalQty };
   }, [entries, milkLogFilt]);
 
@@ -9094,12 +9270,14 @@ function FarmApp() {
       <SearchFilterBar t={t} q={expQ} onQ={setExpQ} qPlaceholder={t("searchExpenses")}
         extra={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "10px 16px", fontSize: 14, minHeight: 44 }}
           onClick={() => setSheet({ k: "expense" })}>＋ {t("logExpense")}</button>}
-        activeCount={(expRange !== "today" ? 1 : 0) + (expCat !== "all" ? 1 : 0) + ((expSort || "newest") !== "newest" ? 1 : 0)}
-        onReset={() => { setExpRange("today"); setExpFrom(""); setExpTo(""); setExpCat("all"); setExpSort("newest"); }}
+        activeCount={(expRange !== "today" ? 1 : 0) + (expCat !== "all" ? 1 : 0) + (expSource !== "all" ? 1 : 0) + ((expSort || "newest") !== "newest" ? 1 : 0)}
+        onReset={() => { setExpRange("today"); setExpFrom(""); setExpTo(""); setExpCat("all"); setExpSource("all"); setExpSort("newest"); }}
         chips={[
           expRange !== "today" ? { key: "range", label: expPeriodLabel, onRemove: () => { setExpRange("today"); setExpFrom(""); setExpTo(""); } } : null,
           expCat !== "all" ? { key: "cat", label: (expCatOpts.find((o) => o.key === expCat) || {}).label || expCat,
             onRemove: () => setExpCat("all") } : null,
+          expSource !== "all" ? { key: "src", label: expSource === "reimburse" ? t("expSourceReimburse") : t("expSourceCash"),
+            onRemove: () => setExpSource("all") } : null,
           (expSort || "newest") !== "newest" ? { key: "sort", label: sortChipLabel(t, expSort), onRemove: () => setExpSort("newest") } : null,
         ].filter(Boolean)}>
         <FilterGroup label={t("customRange")}>
@@ -9108,8 +9286,8 @@ function FarmApp() {
             <Chip key={k} active={expRange === k || (k === "month" && expRange === "thisMonth")} onClick={() => setExpRange(k)}>{lb}</Chip>))}
         </FilterGroup>
         {expRange === "custom" && <FilterGroup>
-          <DatePick compact value={expFrom} onChange={setExpFrom} ariaLabel={t("fromDate")} />
-          <DatePick compact value={expTo} onChange={setExpTo} ariaLabel={t("toDate")} />
+          <DatePick compact allowClear value={expFrom} onChange={setExpFrom} ariaLabel={t("fromDate")} />
+          <DatePick compact allowClear value={expTo} onChange={setExpTo} ariaLabel={t("toDate")} />
         </FilterGroup>}
         {expCatOpts.length > 0 && <FilterGroup label={t("category")}>
           <select className="sf-select" value={expCat} aria-label={t("category")}
@@ -9118,6 +9296,11 @@ function FarmApp() {
             {expCatOpts.map((o) => <option key={o.key} value={o.key}>{o.icon} {o.label}</option>)}
           </select>
         </FilterGroup>}
+        <FilterGroup label={t("expSourceAll")}>
+          <Chip active={expSource === "all"} onClick={() => setExpSource("all")}>{t("expSourceAll")}</Chip>
+          <Chip active={expSource === "reimburse"} onClick={() => setExpSource("reimburse")}>{t("expSourceReimburse")}</Chip>
+          <Chip active={expSource === "cash"} onClick={() => setExpSource("cash")}>{t("expSourceCash")}</Chip>
+        </FilterGroup>
         <FilterGroup label={t("sortBy")}>
           <SortPair t={t} sort={expSort} onChange={setExpSort} />
         </FilterGroup>
@@ -9254,6 +9437,9 @@ function FarmApp() {
           const rows = [...expScoped].filter((e) => {
             const cat = e.type === "med" ? "medicine" : (e.category || "other");
             if (expCat !== "all" && cat !== expCat) return false;
+            const isReimb = e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) || e.origin === "customer_reimbursement";
+            if (expSource === "reimburse" && !isReimb) return false;
+            if (expSource === "cash" && isReimb) return false;
             if (!expQ.trim()) return true;
             const q = expQ.toLowerCase();
             const label = e.type === "med" ? t("medicine") : catLabel(e.category, lang, S.categories);
@@ -9802,21 +9988,23 @@ function FarmApp() {
     const k = `bulk:${sess}`;
     if (k in batch) return batch[k];
     const e = entries.find((x) => x.type === "milkBulk" && x.session === sess && dayKey(x.at) === entryDate);
-    if (e) return e.liters;
+    if (e) return milkFromLiters(milkRecordLiters(e), milkUnit);
     /* migrate legacy single-day totals into the morning field */
     if (sess === "am") {
       const hasAmPm = entries.some((x) => x.type === "milkBulk" && (x.session === "am" || x.session === "pm") && dayKey(x.at) === entryDate);
       if (!hasAmPm) {
         const dayE = entries.find((x) => x.type === "milkBulk" && (x.session === "day" || !x.session) && dayKey(x.at) === entryDate);
-        if (dayE) return dayE.liters;
+        if (dayE) return milkFromLiters(milkRecordLiters(dayE), milkUnit);
       }
     }
     return 0;
   };
   const saveBulk = () => {
+    const amP = milkPack(bulkFor("am"), milkUnit);
+    const pmP = milkPack(bulkFor("pm"), milkUnit);
     const es = [
-      { type: "milkBulk", session: "am", liters: +bulkFor("am") || 0, at: sessionStamp(entryDate, "am") },
-      { type: "milkBulk", session: "pm", liters: +bulkFor("pm") || 0, at: sessionStamp(entryDate, "pm") },
+      { type: "milkBulk", session: "am", ...amP, at: sessionStamp(entryDate, "am") },
+      { type: "milkBulk", session: "pm", ...pmP, at: sessionStamp(entryDate, "pm") },
     ];
     const at = dayStamp(entryDate);
     batchRows.filter(producesEggs).forEach((a) => {
@@ -10019,8 +10207,8 @@ function FarmApp() {
               onClick={() => setCashRange(k === "week" ? "week" : k === "month" ? "month" : k)}>{lb}</Chip>))}
         </FilterGroup>
         {cashRange === "custom" && <FilterGroup>
-          <DatePick compact value={cashFrom} onChange={setCashFrom} ariaLabel={t("fromDate")} />
-          <DatePick compact value={cashTo} onChange={setCashTo} ariaLabel={t("toDate")} />
+          <DatePick compact allowClear value={cashFrom} onChange={setCashFrom} ariaLabel={t("fromDate")} />
+          <DatePick compact allowClear value={cashTo} onChange={setCashTo} ariaLabel={t("toDate")} />
         </FilterGroup>}
         <FilterGroup label={t("cashFilterAll")}>
           {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
@@ -10374,30 +10562,53 @@ function FarmApp() {
     </div>
   );
 
-  const milkUnit = milkUnitOf(milkUnitDraft ?? S.milkUnit);
   const milkU = milkUnitLb(milkUnit, t);
   const liveStock = milkStock(entries);
-  const draftAm = +bulkFor("am") || 0;
-  const draftPm = +bulkFor("pm") || 0;
+  const draftAm = parseMilkQty(bulkFor("am"));
+  const draftPm = parseMilkQty(bulkFor("pm"));
   const draftTotal = draftAm + draftPm;
+  const draftAmL = milkToLiters(draftAm, milkUnit);
+  const draftPmL = milkToLiters(draftPm, milkUnit);
   const draftStock = (() => {
     const savedDay = milkDayProduced(entries, entryDate);
-    const delta = draftTotal - savedDay;
+    const delta = (draftAmL + draftPmL) - savedDay;
     if (Math.abs(delta) < 0.001) return liveStock;
     const fake = [
-      { type: "milkBulk", session: "am", liters: draftAm, at: dayStamp(entryDate), id: "__draft_am__", byName: me?.name },
-      { type: "milkBulk", session: "pm", liters: draftPm, at: dayStamp(entryDate), id: "__draft_pm__", byName: me?.name },
+      { type: "milkBulk", session: "am", liters: draftAmL, kg: milkPack(draftAm, milkUnit).kg, unit: milkUnit,
+        at: dayStamp(entryDate), id: "__draft_am__", byName: me?.name },
+      { type: "milkBulk", session: "pm", liters: draftPmL, kg: milkPack(draftPm, milkUnit).kg, unit: milkUnit,
+        at: dayStamp(entryDate), id: "__draft_pm__", byName: me?.name },
       ...(entries || []).filter((e) => !(e.type === "milkBulk" && dayKey(e.at) === entryDate)
         && !(e.type === "milk" && dayKey(e.at) === entryDate)),
     ];
     return milkStock(fake);
   })();
 
+  const setMilkUnitKeepQty = (next) => {
+    const to = milkUnitOf(next);
+    const from = milkUnit;
+    if (from === to) return;
+    setBatch((p) => {
+      const n = { ...p };
+      ["am", "pm"].forEach((sess) => {
+        const k = `bulk:${sess}`;
+        if (!(k in p)) return;
+        const raw = p[k];
+        if (raw === "" || raw == null) { n[k] = ""; return; }
+        n[k] = String(milkConvertQty(raw, from, to));
+      });
+      return n;
+    });
+    setMilkUnitDraft(to);
+  };
+
   const commitDayMilk = () => {
     const unit = milkUnit;
+    const amP = milkPack(draftAm, unit);
+    const pmP = milkPack(draftPm, unit);
     const es = [
-      { type: "milkBulk", session: "am", liters: +draftAm || 0, unit, at: sessionStamp(entryDate, "am") },
-      { type: "milkBulk", session: "pm", liters: +draftPm || 0, unit, at: sessionStamp(entryDate, "pm") },
+      { type: "milkBulk", session: "am", ...amP, at: sessionStamp(entryDate, "am") },
+      { type: "milkBulk", session: "pm", ...pmP, at: sessionStamp(entryDate, "pm") },
     ];
     const patch = { settings: { ...S, milkMode: "total", milkUnit: unit } };
     const log = unit !== milkUnitOf(S.milkUnit)
@@ -10435,13 +10646,16 @@ function FarmApp() {
                   style={{ width: "100%", textAlign: "center", padding: "14px 8px", borderRadius: 8,
                     border: `1.5px solid ${C.field}`, background: C.card,
                     fontFamily: "var(--mono)", fontWeight: 800, fontSize: 34, color: C.ink, outline: "none" }} />
+                {milkEqHint(bulkFor(sess), milkUnit, t)}
               </div>
             ))}
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
-            <Chip active={milkUnit === "L"} onClick={() => setMilkUnitDraft("L")}>{t("milkUnitL")}</Chip>
-            <Chip active={milkUnit === "kg"} onClick={() => setMilkUnitDraft("kg")}>{t("milkUnitKg")}</Chip>
+            <Chip active={milkUnit === "L"} onClick={() => setMilkUnitKeepQty("L")}>{t("milkUnitL")}</Chip>
+            <Chip active={milkUnit === "kg"} onClick={() => setMilkUnitKeepQty("kg")}>{t("milkUnitKg")}</Chip>
           </div>
+          <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginTop: -8 }}>
+            {t("milkDensityHint")}</div>
 
           <MilkStockCard stock={draftStock} lang={lang} t={t} unit={milkUnit} simple
             onUse={() => setSheet({ k: "milkUse" })} />
@@ -10541,9 +10755,9 @@ function FarmApp() {
         </div>
 
         <div style={{ padding: "12px 14px" }} className="adapt-grid">
-          <Kpi label={t("milkLogPreview")} value={`${n1(milkLogView.totalQty)} ${milkU}`} tone={C.field} />
-          <Kpi label={t("morningMilk")} value={`${n1(milkLogView.amQty)} ${milkU}`} />
-          <Kpi label={t("eveningMilk")} value={`${n1(milkLogView.pmQty)} ${milkU}`} />
+          <Kpi label={t("milkLogPreview")} value={`${n1(milkFromLiters(milkLogView.totalQty, milkUnit))} ${milkU}`} tone={C.field} />
+          <Kpi label={t("morningMilk")} value={`${n1(milkFromLiters(milkLogView.amQty, milkUnit))} ${milkU}`} />
+          <Kpi label={t("eveningMilk")} value={`${n1(milkFromLiters(milkLogView.pmQty, milkUnit))} ${milkU}`} />
           <Kpi label={t("txCount")} value={nf(milkLogView.rows.length)} tone={C.inkSoft} />
         </div>
 
@@ -10555,7 +10769,7 @@ function FarmApp() {
               title={dmy(r.day)}
               subtitle={hhmm(new Date(r.loggedAt || r.at))}
               who={<WhoHint e={r} lang={lang} />}
-              meta={`🌅 ${n1(r.am || 0)} · 🌙 ${n1(r.pm || 0)} · ${n1(r.total || 0)} ${milkUnitLb(r.unit || milkUnit, t)}`}
+              meta={`🌅 ${n1(milkFromLiters(r.am || 0, milkUnit))} · 🌙 ${n1(milkFromLiters(r.pm || 0, milkUnit))} · ${n1(milkFromLiters(r.total || 0, milkUnit))} ${milkU}`}
               onClick={() => { setEntryDate(r.day); setBatch({}); }}
             />
           ))}
@@ -10579,10 +10793,10 @@ function FarmApp() {
                     onClick={() => { setEntryDate(r.day); setBatch({}); }}>
                     <Td mono>{dmy(r.day)}</Td>
                     <Td mono tone={C.inkSoft}>{hhmm(new Date(r.loggedAt || r.at))}</Td>
-                    <Td align="end" mono>{n1(r.am || 0)}</Td>
-                    <Td align="end" mono>{n1(r.pm || 0)}</Td>
-                    <Td align="end" mono strong>{n1(r.total || 0)}</Td>
-                    <Td tone={C.inkSoft}>{milkUnitLb(r.unit || milkUnit, t)}</Td>
+                    <Td align="end" mono>{n1(milkFromLiters(r.am || 0, milkUnit))}</Td>
+                    <Td align="end" mono>{n1(milkFromLiters(r.pm || 0, milkUnit))}</Td>
+                    <Td align="end" mono strong>{n1(milkFromLiters(r.total || 0, milkUnit))}</Td>
+                    <Td tone={C.inkSoft}>{milkU}</Td>
                     <Td align="center"><WhoHint e={r} lang={lang} /></Td>
                   </tr>
                 ))}
@@ -10963,8 +11177,8 @@ function FarmApp() {
             {["today", "week", "month", "custom"].map((r) => <Chip key={r} active={range === r} onClick={() => setRange(r)}>{t(r)}</Chip>)}
           </FilterGroup>
           {range === "custom" && <FilterGroup>
-            <DatePick compact value={from} onChange={setFrom} ariaLabel={t("fromDate")} />
-            <DatePick compact value={to} onChange={setTo} ariaLabel={t("toDate")} />
+            <DatePick compact allowClear value={from} onChange={setFrom} ariaLabel={t("fromDate")} />
+            <DatePick compact allowClear value={to} onChange={setTo} ariaLabel={t("toDate")} />
           </FilterGroup>}
         </SearchFilterBar>
         <ReportBody {...{ kind: report, lang, t, sums, prevSums, S, days, scoped: report === "log" ? scoped : financialScoped, animals, workers, customers,
@@ -11052,14 +11266,16 @@ function FarmApp() {
           const am = entries.find((x) => x.type === "milkBulk" && x.session === "am" && dayKey(x.at) === k);
           const pm = entries.find((x) => x.type === "milkBulk" && x.session === "pm" && dayKey(x.at) === k);
           return <BulkMilkSheet lang={lang} t={t} date={entryDate} setDate={setEntryDate} unit={milkUnit}
-            existing={{ am: am ? am.liters : 0, pm: pm ? pm.liters : 0 }}
+            existing={{ am: am ? milkRecordLiters(am) : 0, pm: pm ? milkRecordLiters(pm) : 0 }}
             lastAm={am} lastPm={pm}
             onClose={() => setSheet(null)}
             onSave={(v) => {
               const u = milkUnitOf(v.unit || milkUnit);
+              const amP = milkPack(v.am, u);
+              const pmP = milkPack(v.pm, u);
               commit([
-                { type: "milkBulk", session: "am", liters: v.am, unit: u, at: sessionStamp(k, "am") },
-                { type: "milkBulk", session: "pm", liters: v.pm, unit: u, at: sessionStamp(k, "pm") },
+                { type: "milkBulk", session: "am", ...amP, at: sessionStamp(k, "am") },
+                { type: "milkBulk", session: "pm", ...pmP, at: sessionStamp(k, "pm") },
                 { type: "setting", field: "milkUnit", value: u },
               ], { settings: { ...S, milkUnit: u, milkMode: "total" } });
               setSheet(null);
@@ -11071,8 +11287,9 @@ function FarmApp() {
           onClose={() => setSheet(null)}
           onSave={(v) => {
             const saved = rememberNames(S.milkUseReasons, v.reasonLabel ? [v.reasonLabel] : []);
-            commit([{ type: "milkUse", qty: v.qty, reason: v.reason, reasonLabel: v.reasonLabel || "",
-              unit: milkUnit, at: v.at }],
+            commit([{ type: "milkUse", qty: v.qty, liters: v.liters, kg: v.kg,
+              reason: v.reason, reasonLabel: v.reasonLabel || "",
+              unit: v.unit || milkUnit, at: v.at }],
               namesChanged(saved, S.milkUseReasons) ? { settings: { ...S, milkUseReasons: saved } } : null);
             setSheet(null);
           }} />}
@@ -11513,7 +11730,7 @@ function FarmApp() {
                 amount: amt, paidAmount: 0, payStatus: "paid", paidBy: "customer",
                 customerId, saleId, saleReimburseId: reimbId,
                 vendor: customerNameById(customers, customerId, t) || "",
-                note: r.name, currency, rateUsed, at, loggedAt,
+                note: r.name, origin: "customer_reimbursement", currency, rateUsed, at, loggedAt,
               });
             });
             if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at, loggedAt });
@@ -12222,14 +12439,39 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sf-group-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .sf-span{flex:1 1 100%;min-width:0;display:grid;gap:8px}
 .sf-dates{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.date-pick{position:relative;display:block;min-height:44px;border:1px solid ${C.line};border-radius:10px;
-  background:${C.paper};overflow:hidden;margin-bottom:12px;cursor:pointer}
-.date-pick.compact{margin-bottom:0;flex:1 1 160px;min-width:0}
-.date-pick.locked{opacity:.85;cursor:default}
-.date-pick-show{display:flex;align-items:center;min-height:44px;padding:0 12px;font-family:var(--body);
-  font-weight:700;font-size:14.5px;color:${C.ink};pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.date-pick input[type=date]{position:absolute;inset:0;opacity:.02;width:100%;height:100%;cursor:pointer;
-  border:none;background:transparent;font-size:16px;color:transparent}
+.date-pick{display:block;margin-bottom:12px;min-width:0}
+.date-pick.compact{margin-bottom:0;flex:1 1 160px}
+.date-pick.locked{opacity:.85}
+.date-pick-btn{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:1.5px solid ${C.line};
+  border-radius:12px;background:${C.paper};padding:0 10px 0 12px;cursor:pointer;font-family:var(--body);
+  color:${C.ink};text-align:start}
+.date-pick-btn.open{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}22}
+.date-pick.locked .date-pick-btn{cursor:default}
+.date-pick-ico{display:grid;place-items:center;color:${C.inkSoft};flex-shrink:0}
+.date-pick-val{flex:1;min-width:0;font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.date-pick-val.ph{font-weight:500;color:${C.inkSoft}}
+.date-pick-caret{color:${C.inkSoft};font-size:12px;flex-shrink:0}
+.date-cal{position:fixed;z-index:120;background:${C.card};border:1px solid ${C.line};border-radius:14px;
+  box-shadow:0 16px 40px ${C.shadow};padding:10px 10px 8px;animation:dateCalIn .16s ease}
+@keyframes dateCalIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.date-cal-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.date-cal-title{flex:1;text-align:center;font-weight:800;font-size:15px;color:${C.ink}}
+.date-cal-nav{width:40px;height:40px;border:1px solid ${C.line};border-radius:10px;background:${C.paper};
+  cursor:pointer;font-size:18px;color:${C.ink}}
+.date-cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px}
+.date-cal-dow span{text-align:center;font-size:11px;font-weight:700;color:${C.inkSoft};padding:4px 0}
+.date-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.date-cal-day{min-height:40px;border:none;background:transparent;border-radius:10px;cursor:pointer;
+  font-family:var(--mono);font-weight:700;font-size:13.5px;color:${C.ink}}
+.date-cal-day:hover:not(:disabled){background:${C.paper}}
+.date-cal-day.on{background:${C.field};color:#fff}
+.date-cal-day.today:not(.on){box-shadow:inset 0 0 0 1.5px ${C.field}}
+.date-cal-day.off,.date-cal-day:disabled{opacity:.32;cursor:default}
+.date-cal-day.muted{min-height:40px}
+.date-cal-foot{display:flex;gap:8px;margin-top:8px}
+.date-cal-foot button{flex:1;min-height:40px;border-radius:10px;border:1px solid ${C.line};background:${C.paper};
+  font-family:var(--body);font-weight:700;cursor:pointer;color:${C.ink}}
+.app.theme-dark .date-pick-btn,.app.theme-dark .date-cal,.app.theme-dark .date-cal-nav,.app.theme-dark .date-cal-foot button{background:${C.card};color:${C.ink}}
 .sf-dates .date-pick,.sf-group-body .date-pick{flex:1 1 160px;margin-bottom:0;min-width:0}
 .spick-row{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
 .spick{position:relative;flex:1;min-width:0}
