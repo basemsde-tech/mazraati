@@ -14,6 +14,9 @@ import {
   milkUnitOf, milkOtherUnit, parseMilkQty, milkToLiters, milkFromLiters,
   milkConvertQty, milkPack, milkRecordLiters, milkEqAmount,
 } from "./milkUnits.mjs";
+import {
+  DEDUCTION_REIMBURSEMENT, isDeductionReimbursement, deductionCents, deductionMemo,
+} from "./settlement.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -22,9 +25,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.13", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.14", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.14": {
+    ar: [
+      "الحسومات تُقيَّد رصيدًا على إجمالي المبيعات لا كدفعة نقد منفصلة — الصافي = الإجمالي − الحسومات − المحصّل",
+      "كل تعويض يظهر في كشف الحساب بالوصف، ويُجمَع في ملخص التسوية بلون أخضر",
+    ],
+    en: [
+      "Deductions credit the sales balance instead of a separate cash payout — net due = gross − deductions − collected",
+      "Each reimbursement shows on the account ledger with its description, rolled into a green settlement line",
+    ],
+  },
   "2.9.13": {
     ar: [
       "تعويض المصروف يُسجَّل مع قبض الدفعة ويُخصم من المبلغ المقبوض فقط — لا من الفاتورة — وبحد المبلغ",
@@ -658,6 +671,7 @@ const catColor = (k, custom) => catMeta(k, custom).color;
 /* Cent-based money — avoid float drift on pay / due / status. */
 const toCents = (n) => Math.round((+(n || 0)) * 100);
 const fromCents = (c) => +((c || 0) / 100).toFixed(2);
+const isOwing = (n) => toCents(n) > 0;
 const rememberNames = (existing, extras, max = 100) => {
   const saved = [];
   const seen = new Set();
@@ -1063,7 +1077,7 @@ const T = {
     addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
     netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "اختر نوع المصروف لكل مبلغ تعويض.",
     reimburseOverGross: "لا يمكن أن يتجاوز التعويض مبلغ هذه الدفعة.",
-    reimburseFromBalance: "يُخصم التعويض من هذه الدفعة فقط (لا من الفاتورة ولا من رصيد الحساب) ويُسجَّل مصروف مزرعة. الحد هو مبلغ الدفعة.",
+    reimburseFromBalance: "يُقيَّد التعويض رصيدًا على حساب الزبون (لا يُدفع نقدًا منفصلًا) ويُسجَّل مصروف مزرعة. لا يتجاوز مبلغ هذه الدفعة.",
     cashToDrawer: "النقد الداخل",
     reimburseMemo: "ملاحظة (اختياري)", reimburseOnSale: "من هذا البيع", reimburseOnAccount: "من رصيد الحساب",
     resultingBalance: "رصيد الحساب بعد القيد", netDueNow: "المطلوب الآن",
@@ -1073,7 +1087,9 @@ const T = {
     milkUseAddReason: "سبب جديد", milkUseReasonHint: "اكتب سببًا واحفظه — يظهر في القائمة في المرات التالية.",
     milkUseHistory: "سجل استخدام المزرعة", milkUseEmpty: "لا استخدام مزرعة في هذه الفترة.", reimburseReadOnly: "التعويضات المرتبطة محفوظة وتظهر هنا للقراءة فقط.",
     creditsCollected: "الرصيد الدائن / المحصّل", actualPaid: "المدفوع فعليًا",
-    accountTotal: "إجمالي الحساب", deductions: "الحسومات", noDeductions: "لا حسومات في هذه الفترة.",
+    accountTotal: "إجمالي الحساب", deductions: "الحسومات والتعويضات", noDeductions: "لا حسومات في هذه الفترة.",
+    deductHint: "الحسومات تعويضات من المزرعة تُقيَّد مباشرة على رصيد الحساب بدل دفعها نقدًا على حدة.",
+    settlementNet: "صافي المستحق",
     accountReimburse: "تعويض على الحساب",
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
     partial: "متبقي", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
@@ -1516,7 +1532,7 @@ const T = {
     addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
     netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Choose an expense category for every reimbursement amount.",
     reimburseOverGross: "Reimbursement cannot exceed this payment.",
-    reimburseFromBalance: "The reimbursement comes off this payment only — not the invoice or the account — and is logged as a farm expense. It cannot exceed the payment amount.",
+    reimburseFromBalance: "The reimbursement is credited to this customer’s sales balance instead of a separate cash payout, and is logged as a farm expense. It cannot exceed the payment amount.",
     cashToDrawer: "Cash in",
     reimburseMemo: "Note (optional)", reimburseOnSale: "Off this sale", reimburseOnAccount: "Off account balance",
     resultingBalance: "Account balance after posting", netDueNow: "Due now",
@@ -1526,7 +1542,9 @@ const T = {
     milkUseAddReason: "New reason", milkUseReasonHint: "Type a reason to save it — it stays on the list next time.",
     milkUseHistory: "Farm-use log", milkUseEmpty: "No farm-use milk in this period.", reimburseReadOnly: "Linked reimbursements are preserved and shown here read-only.",
     creditsCollected: "Credits / Collected", actualPaid: "Actual paid",
-    accountTotal: "Account total", deductions: "Deductions", noDeductions: "No deductions in this range.",
+    accountTotal: "Account total", deductions: "Reimbursements & deductions", noDeductions: "No deductions in this range.",
+    deductHint: "Deductions represent farm reimbursements credited directly to the account balance instead of paid separately.",
+    settlementNet: "Net due",
     accountReimburse: "Account reimbursement",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
     partial: "Remainder", amountPaid: "Amount paid", outstanding: "Outstanding",
@@ -2701,7 +2719,14 @@ function buildLedger(entries, customers) {
     const extraReimbC = Math.max(0, ownReimbC - saleC);
     if (extraReimbC > 0) reimbPoolC[s.customerId] = (reimbPoolC[s.customerId] || 0) + extraReimbC;
   });
-  /* Leftover reimbursement reduces other invoices as a deduction, not as cash collected. */
+  const paymentDeductions = (entries || []).filter((e) => isDeductionReimbursement(e)
+    && e.type === "expense" && deductionCents(e) > 0)
+    .slice().sort((a, b) => cmpTx(a, b, "oldest"));
+  paymentDeductions.forEach((e) => {
+    if (!e.customerId) return;
+    reimbPoolC[e.customerId] = (reimbPoolC[e.customerId] || 0) + deductionCents(e);
+  });
+  /* Leftover reimbursement (sale overflow + payment credits) reduces other invoices as a deduction, not as cash collected. */
   sales.forEach((s) => {
     const takeC = Math.min(netBySaleC[s.id], reimbPoolC[s.customerId] || 0);
     if (takeC > 0) {
@@ -2741,23 +2766,26 @@ function buildLedger(entries, customers) {
     return { ...s, grossAmount: fromCents(grossC), reimbAmount: fromCents(reimbC),
       discountAmount: fromCents(discountC), discountNote: s.discountNote || "",
       netAmount: fromCents(netC), reimbRows: [...reimbRows, ...extraRow], paidAmount, due, no: `INV-${String(i + 1).padStart(4, "0")}`,
-      status: due <= 0.009 ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
-      lateDays: Math.max(0, Math.floor((Date.now() - parseWhen(s.at)) / 864e5)) };
+      status: dueC <= 0 ? "paid" : paidC > 0 ? "partial" : "unpaid",
+      lateDays: dueC <= 0 ? 0 : Math.max(0, Math.floor((Date.now() - parseWhen(s.at)) / 864e5)) };
   });
+  Object.keys(poolC).forEach((cid) => { if (!(poolC[cid] > 0)) delete poolC[cid]; });
+  Object.keys(reimbPoolC).forEach((cid) => { if (!(reimbPoolC[cid] > 0)) delete reimbPoolC[cid]; });
   const byCustomer = {};
-  const blank = () => ({ gross: 0, net: 0, sold: 0, reimbursed: 0, discounted: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
+  const blank = () => ({ gross: 0, net: 0, sold: 0, reimbursed: 0, discounted: 0, deductions: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
   (customers || []).forEach((c) => { byCustomer[c.id] = blank(); });
   list.forEach((s) => {
     const b = byCustomer[s.customerId] || (byCustomer[s.customerId] = blank());
     b.gross = fromCents(toCents(b.gross) + toCents(s.grossAmount));
     b.reimbursed = fromCents(toCents(b.reimbursed) + toCents(s.reimbAmount));
     b.discounted = fromCents(toCents(b.discounted) + toCents(s.discountAmount));
+    b.deductions = fromCents(toCents(b.reimbursed) + toCents(b.discounted));
     b.net = fromCents(toCents(b.net) + toCents(s.netAmount));
     b.sold = b.net;
     b.paid = fromCents(toCents(b.paid) + toCents(s.paidAmount));
     b.due = fromCents(toCents(b.due) + toCents(s.due));
     b.count += 1;
-    if (s.due > 0) b.oldest = Math.max(b.oldest, s.lateDays);
+    if (isOwing(s.due)) b.oldest = Math.max(b.oldest, s.lateDays);
   });
   Object.keys(poolC).forEach((cid) => {
     if (!byCustomer[cid]) byCustomer[cid] = blank();
@@ -2769,7 +2797,12 @@ function buildLedger(entries, customers) {
       byCustomer[cid].credit = fromCents(toCents(byCustomer[cid].credit) + reimbPoolC[cid]);
     }
   });
-  return { list, byCustomer, pays, reimbursements };
+  Object.keys(byCustomer).forEach((cid) => {
+    const b = byCustomer[cid];
+    if (!isOwing(b.due)) { b.due = 0; b.oldest = 0; }
+    if (!(toCents(b.credit) > 0)) b.credit = 0;
+  });
+  return { list, byCustomer, pays, reimbursements, paymentDeductions };
 }
 function buildSupplierLedger(entries, suppliers) {
   const src = withImpliedSupplierPays(entries);
@@ -2844,13 +2877,15 @@ function computeSums(list, S, workers, days, includePayroll = true) {
     reimbBySaleC[e.saleId] = (reimbBySaleC[e.saleId] || 0) + Math.max(0, toCents(e.amount));
   });
   const grossInvoiced = fromCents(sales.reduce((sum, sale) => sum + toCents(sale.amount), 0));
+  const payDeductC = list.filter((e) => isDeductionReimbursement(e) && e.type === "expense")
+    .reduce((sum, e) => sum + deductionCents(e), 0);
   const reimbursed = fromCents(sales.reduce((sum, sale) =>
-    sum + Math.min(toCents(sale.amount), reimbBySaleC[sale.id] || 0), 0));
+    sum + Math.min(toCents(sale.amount), reimbBySaleC[sale.id] || 0), 0) + payDeductC);
   const discounted = fromCents(sales.reduce((sum, sale) => {
     const afterReimb = Math.max(0, toCents(sale.amount) - (reimbBySaleC[sale.id] || 0));
     return sum + Math.min(afterReimb, Math.max(0, toCents(sale.discountAmount)));
   }, 0));
-  const invoiced = fromCents(toCents(grossInvoiced) - toCents(reimbursed) - toCents(discounted));
+  const invoiced = fromCents(Math.max(0, toCents(grossInvoiced) - toCents(reimbursed) - toCents(discounted)));
   const collected = list.filter((e) => e.type === "payment").reduce((a, b) => a + b.amount, 0);
   const byProduct = {};
   sales.forEach((s) => {
@@ -2866,7 +2901,7 @@ function computeSums(list, S, workers, days, includePayroll = true) {
      this list also has sales they already reduced invoiced AR — skip them here. */
   const skipCustomerPaidCosts = list.some((e) => e.type === "sale");
   list.filter((e) => e.type === "expense").forEach((e) => {
-    if (skipCustomerPaidCosts && isCustomerPaidExpense(e)) return;
+    if (skipCustomerPaidCosts && (isCustomerPaidExpense(e) || isDeductionReimbursement(e))) return;
     add(e.category || "other", expenseAccrued(e));
   });
   /* a medicine record is both a health note and a cost — recorded once, counted once */
@@ -2898,7 +2933,7 @@ function computeSums(list, S, workers, days, includePayroll = true) {
   const stillborn = birthRows.reduce((a, b) => a + (b.dead || 0), 0);
   const twinning = birthRows.length ? birthRows.filter((b) => (b.count || 1) > 1).length / birthRows.length : 0;
   return { milk: milk.total, byMilk: milk.byAnimal, milkBulk: milk.hasBulk, eggs: eggs.total, byEggs: eggs.byAnimal,
-    grossInvoiced, reimbursed, discounted, invoiced, collected, byProduct, estValue, byCategory, laborPayroll,
+    grossInvoiced, reimbursed, discounted, deductions: fromCents(toCents(reimbursed) + toCents(discounted)), invoiced, collected, byProduct, estValue, byCategory, laborPayroll,
     medCost, feedCost, feedByType, feedQty, buyCost, laborCost, shifts,
     income, costs, profit: income - costs, losses, births, birthMales, birthFemales, stillborn, twinning, birthRows };
 }
@@ -3048,6 +3083,8 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     [t("generated"), `${dmy(Date.now(), lang)} ${hhmm(Date.now())}`],
     [t("preparedBy"), me.name], [t("rate"), S.rate, "LBP / USD"], [],
     [t("colItem"), t("amount")],
+    [t("accountTotal"), money(sums.grossInvoiced)],
+    [t("deductions"), money(-(sums.deductions || 0))],
     [t("salesIncome"), money(sums.invoiced)],
     [t("feed"), money(-sums.feedCost)],
     [t("labour"), money(-sums.laborCost)],
@@ -3088,7 +3125,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
       const pr = PRODUCTS.find((p) => p[0] === iv.product) || PROD_OTHER;
       return [dmy(iv.at), hhmm(iv.at), customerNameById(customers, iv.customerId, t), lang === "ar" ? pr[2] : pr[3],
         `${iv.qty} ${saleQtyUnit(iv, lang, t)}`, money(iv.price), money(iv.grossAmount), money(iv.reimbAmount),
-        money(iv.discountAmount || 0), money(iv.netAmount), money(iv.paidAmount), money(iv.due),
+        money(iv.discountAmount || 0), money(iv.netAmount), money(iv.paidAmount), isOwing(iv.due) ? money(iv.due) : "",
         iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid"), iv.byName];
     })] });
 
@@ -3098,8 +3135,8 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     ...(customers || []).map((c) => {
       const b = (ledger && ledger.byCustomer[c.id]) || { sold: 0, paid: 0, due: 0, oldest: 0, count: 0 };
       return [customerLabel(c, t), c.phone || "", c.priceL ? money(c.priceL) : "", c.defaultQty || "", b.count, money(b.sold),
-        money(b.gross || b.sold), money(b.reimbursed), money(b.paid), money(b.due),
-        b.due > 0 ? b.oldest : 0, b.due <= 0 ? t("paidS") : t("unpaid")];
+        money(b.gross || b.sold), money(b.reimbursed), money(b.paid), isOwing(b.due) ? money(b.due) : "",
+        isOwing(b.due) ? b.oldest : 0, isOwing(b.due) ? t("unpaid") : t("paidS")];
     }), [], [t("outstanding"), "", "", "", "", "", "", "", "", money(outstanding)]] });
 
   sheets.push({ name: t("shMed"), cols: [12, 8, 20, 14, 10, 16],
@@ -3317,8 +3354,8 @@ function Row({ k, v, tone }) {
     <span style={{ fontFamily: "var(--mono)", fontWeight: 600, color: tone || C.ink, textAlign: "end", fontSize: 13.5 }}>{v}</span>
   </div>;
 }
-function Kpi({ label, value, tone, sub }) {
-  return <div className="kpi-card" style={{ background: C.card, borderRadius: 14, padding: "14px 15px", boxShadow: sh1,
+function Kpi({ label, value, tone, sub, hint }) {
+  return <div className="kpi-card" title={hint || undefined} style={{ background: C.card, borderRadius: 14, padding: "14px 15px", boxShadow: sh1,
     border: `1px solid ${C.line}`, borderInlineStart: `4px solid ${tone || C.field}` }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, letterSpacing: ".02em" }}>{label}</div>
     <div className="kpi-val" style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 23, color: C.ink,
@@ -3876,6 +3913,9 @@ function fmtC(usd, rate, lang, forceView) {
   const unit = lang === "ar" ? "ل.ل" : "LBP";
   if (v === "lbp") return `${liraShort((usd || 0) * rate, lang)} ${unit}`;
   return `$${nm(usd)} · ${liraShort((usd || 0) * rate, lang)} ${unit}`;
+}
+function fmtDue(usd, rate, lang, forceView) {
+  return isOwing(usd) ? fmtC(usd, rate, lang, forceView) : "—";
 }
 
 function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact }) {
@@ -6045,7 +6085,7 @@ function reimburseTypeOptions(S, entries) {
 }
 
 function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose }) {
-  const open = ledger.list.filter((x) => x.customerId === customer.id && x.due > 0);
+  const open = ledger.list.filter((x) => x.customerId === customer.id && isOwing(x.due));
   const b = ledger.byCustomer[customer.id] || { due: 0 };
   const [amount, setAmount] = useState(b.due);
   const [saleId, setSaleId] = useState("");
@@ -6075,7 +6115,10 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 12, boxShadow: sh1,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
-      <span>{t("due")}</span><Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.red} />
+      <span>{t("due")}</span>
+      {isOwing(b.due)
+        ? <Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.red} />
+        : <span style={{ fontFamily: "var(--mono)", color: C.inkSoft }}>—</span>}
     </div>
     <Step n="1" label={`${t("paymentAmount")} — ${t("payCurrency")}`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 15, marginBottom: 12, boxShadow: sh1 }}>
@@ -6201,7 +6244,7 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
             <span>
               <span style={{ display: "block", fontWeight: 800, fontSize: 16.5 }}>{p[1]} {c.name}</span>
               <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft, fontWeight: 600 }}>
-                {fmtC(priceOf(c), S.rate, lang)} / {rowUnit}{b.due > 0 ? ` · ${t("due")} ${fmtC(b.due, S.rate, lang)}` : ""}</span>
+                {fmtC(priceOf(c), S.rate, lang)} / {rowUnit}{isOwing(b.due) ? ` · ${t("due")} ${fmtC(b.due, S.rate, lang)}` : ""}</span>
             </span>
             <span><Money usd={r.qty * priceOf(c)} rate={S.rate} lang={lang} size={18} tone={C.field} /></span>
           </div>
@@ -6410,7 +6453,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
 /* The account banner: who this is, and what they owe, above everything else.
    The balance is the one number the farmer opens this screen for. */
 function AccountHead({ customer, no, b, lang, t, S }) {
-  const owing = b.due > 0;
+  const owing = isOwing(b.due);
   const price = customer.priceL > 0 ? customer.priceL
     : (customer.product === "eggs" ? S.eggPrice : S.milkPrice);
   const bits = [`${t("accountNo")} ${no}`];
@@ -6431,8 +6474,10 @@ function AccountHead({ customer, no, b, lang, t, S }) {
       alignItems: "flex-end", gap: 8, minWidth: 140 }} className="account-balance">
       <StatusPill status={owing ? (b.oldest > 30 ? "overdue" : "owing") : "paid"}>
         {owing ? t("outstanding") : t("paidS")}</StatusPill>
-      <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
-      {b.due > 0 && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
+      {owing
+        ? <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
+        : <span style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 26, color: C.inkSoft }}>—</span>}
+      {owing && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
         {b.oldest} {t("daysLate")}</div>}
     </div>
   </div>;
@@ -6465,22 +6510,46 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const deductItems = [
     ...(ledger.reimbursements || []).filter((r) => r.customerId === customer.id && inR(r.at))
       .map((r) => ({ id: r.id, at: r.at, label: `${t("reimbursement")} · ${r.name || "—"}`, amount: r.amount, by: r })),
+    ...(ledger.paymentDeductions || []).filter((r) => r.customerId === customer.id && inR(r.at))
+      .map((r) => ({ id: r.id, at: r.at, label: `${t("reimbursement")} · ${deductionMemo(r) || "—"}`, amount: fromCents(deductionCents(r)), by: r })),
     ...rows.filter((x) => toCents(x.discountAmount) > 0.009)
       .map((x) => ({ id: `${x.id}-disc`, at: x.at, label: `${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""} · ${x.no}`,
         amount: x.discountAmount })),
   ].sort((a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest"));
-  const bDeduct = fromCents(toCents(b.reimbursed) + toCents(b.discounted));
+  const bDeduct = fromCents(toCents(b.deductions || 0) || (toCents(b.reimbursed) + toCents(b.discounted)));
+
+  const Settlement = ({ gross, deduct, paid, due }) => (
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "12px 14px" }}
+      title={t("deductHint")}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("balance")}</div>
+      <div style={{ display: "grid", gap: 6, fontSize: 13.5, fontWeight: 600 }}>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span>{t("accountTotal")}</span><span style={{ fontFamily: "var(--mono)" }}>{fmtC(gross, S.rate, lang)}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", color: C.green }}>
+          <span>{t("deductions")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(deduct) ? `− ${fmtC(deduct, S.rate, lang)}` : "—"}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", color: C.field }}>
+          <span>{t("collected")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(paid) ? `− ${fmtC(paid, S.rate, lang)}` : "—"}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 7, borderTop: `1px solid ${C.line}`,
+          fontWeight: 800 }}>
+          <span>{t("settlementNet")}</span>
+          <span style={{ fontFamily: "var(--mono)", color: isOwing(due) ? C.red : C.inkSoft }}>{fmtDue(due, S.rate, lang)}</span>
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600, marginTop: 8, lineHeight: 1.4 }}>{t("deductHint")}</div>
+    </div>
+  );
 
   const Overview = (
     <div style={{ display: "grid", gap: 12 }}>
       <div className="adapt-grid">
         <Kpi label={t("accountTotal")} value={fmtC(b.gross || b.sold, S.rate, lang)} />
-        {bDeduct > 0 && <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.amber} />}
+        <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.green} hint={t("deductHint")} />
         <Kpi label={t("collected")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
-        <Kpi label={t("due")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
+        <Kpi label={t("due")} value={fmtDue(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
         <Kpi label={t("txCount")} value={nf(all.length)} tone={C.inkSoft} />
       </div>
-      {b.credit > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
+      <Settlement gross={b.gross || b.sold} deduct={bDeduct} paid={b.paid} due={b.due} />
+      {toCents(b.credit) > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
         border: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
         <StatusPill status="paid">{t("credit")}</StatusPill>
         {fmtC(b.credit, S.rate, lang)}</div>}
@@ -6492,8 +6561,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         {(customer.defaultQty || 0) > 0 && <Row k={t("dailyQty")} v={nf(customer.defaultQty)} />}
         {all.length > 0 && <Row k={t("lastOrder")} v={`${dmy(all[all.length - 1].at)} · ${n1(all[all.length - 1].qty)}`} />}
         <Row k={t("since")} v={dmy(customer.at)} />
-        <Row k={t("oldestDebt")} v={b.due > 0 && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
-          tone={b.due > 0 && b.oldest > 30 ? C.red : b.due > 0 && b.oldest > 0 ? C.amber : C.green} />
+        <Row k={t("oldestDebt")} v={isOwing(b.due) && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
+          tone={isOwing(b.due) && b.oldest > 30 ? C.red : isOwing(b.due) && b.oldest > 0 ? C.amber : C.green} />
       </div>
       <div style={{ display: "grid", gap: 9 }}>
         <button style={primaryBtn} onClick={onNewSale}>🧾 {t("newSale")}</button>
@@ -6534,9 +6603,9 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
       <div className="adapt-grid">
         <Kpi label={`${t("accountTotal")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rGross, S.rate, lang)} />
-        <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.amber} />
+        <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.green} hint={t("deductHint")} />
         <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.green} />
-        <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtC(rDue, S.rate, lang)} tone={rDue > 0 ? C.red : C.green} />
+        <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtDue(rDue, S.rate, lang)} tone={isOwing(rDue) ? C.red : C.inkSoft} />
         <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.inkSoft} />
       </div>
 
@@ -6551,7 +6620,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               title={iv.no}
               subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
               who={<WhoHint e={iv} lang={lang} />}
-              meta={`${t("accountTotal")} ${fmtC(iv.grossAmount, S.rate, lang)}${deductAmt(iv) > 0.009 ? ` · ${t("deductions")} −${fmtC(deductAmt(iv), S.rate, lang)}` : ""} · ${t("colDue")} ${iv.due ? fmtC(iv.due, S.rate, lang) : "—"}`}
+              meta={`${t("accountTotal")} ${fmtC(iv.grossAmount, S.rate, lang)}${deductAmt(iv) > 0.009 ? ` · ${t("deductions")} −${fmtC(deductAmt(iv), S.rate, lang)}` : ""} · ${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}`}
               actions={
                 <>
                   <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
@@ -6581,7 +6650,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                     { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                    iv.due > 0 && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
+                    isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
                     onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
                   <Td mono>{dmy(iv.at)}</Td>
@@ -6590,7 +6659,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   <Td align="end" mono>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</Td>
                   <Td align="end" mono tone={C.inkSoft}>{fmtC(iv.price, S.rate, lang)}</Td>
                   <Td align="end" mono strong>{fmtC(iv.grossAmount, S.rate, lang)}</Td>
-                  <Td align="end" mono tone={deductAmt(iv) > 0.009 ? C.amber : C.inkSoft}>
+                  <Td align="end" mono tone={deductAmt(iv) > 0.009 ? C.green : C.inkSoft}>
                     {deductAmt(iv) > 0.009 ? `−${fmtC(deductAmt(iv), S.rate, lang)}` : "—"}
                     {iv.reimbAmount > 0 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
                       color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
@@ -6601,12 +6670,12 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                       {t("discount")}{iv.discountNote ? ` · ${iv.discountNote}` : ""}
                     </span>}
                   </Td>
-                  <Td align="end" mono>{iv.paidAmount ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong>{iv.due ? fmtC(iv.due, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono>{isOwing(iv.paidAmount) ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong>{fmtDue(iv.due, S.rate, lang)}</Td>
                   <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill>
                     {iv.status !== "unpaid" && paidOn && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 3,
                       fontFamily: "var(--mono)" }}>{dmy(paidOn.at)}</div>}
-                    {iv.due > 0 && iv.lateDays > 0 && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>
+                    {isOwing(iv.due) && iv.lateDays > 0 && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>
                       {iv.lateDays} {t("daysLate")}</div>}
                   </Td>
                   <Td tone={C.inkSoft}>{iv.note || "—"}</Td>
@@ -6622,9 +6691,9 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             <tfoot><tr style={{ background: C.paper }}>
               <Td strong colSpan={5}>{t("total")}</Td>
               <Td align="end" mono strong>{fmtC(rGross, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={C.amber}>{rDeduct > 0.009 ? `−${fmtC(rDeduct, S.rate, lang)}` : "—"}</Td>
+              <Td align="end" mono strong tone={C.green}>{rDeduct > 0.009 ? `−${fmtC(rDeduct, S.rate, lang)}` : "—"}</Td>
               <Td align="end" mono strong tone={C.green}>{fmtC(rPaid, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={rDue > 0 ? C.red : C.inkSoft}>{fmtC(rDue, S.rate, lang)}</Td>
+              <Td align="end" mono strong tone={isOwing(rDue) ? C.red : C.inkSoft}>{fmtDue(rDue, S.rate, lang)}</Td>
               <Td colSpan={4} />
             </tr></tfoot>
           </table>}
@@ -6641,7 +6710,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(d.at)}</b> · {d.label}
                 {d.by && <WhoHint e={d.by} lang={lang} />}</span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.amber }}>−{nf(d.amount)}</span>
+              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.green }}>−{nf(d.amount)}</span>
             </div>))}
         </div>
       </div>}
@@ -6767,7 +6836,7 @@ function CustomerManageSheet({ customer, no, lang, t, S, ledger, onArchive, onDe
   const system = isWalkInCustomer(customer);
   return <Sheet title={`⚙️ ${t("manageAccount")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <Row k={t("accountNo")} v={no} />
-    <Row k={t("due")} v={fmtC(b.due || 0, S.rate, lang)} tone={moneyColor("due", b.due)} />
+    <Row k={t("due")} v={fmtDue(b.due || 0, S.rate, lang)} tone={moneyColor("due", b.due)} />
     {system && <div style={{ fontSize: 13, color: C.inkSoft, fontWeight: 600, margin: "10px 0 4px" }}>{t("walkInHint")}</div>}
     <button style={{ ...secondaryBtn, marginTop: 14, marginBottom: 10 }} onClick={onExport}>💾 {t("exportArchive")}</button>
     {!system && <button style={{ ...secondaryBtn, marginBottom: 10 }} onClick={onArchive}>📦 {t("archiveAccount")}</button>}
@@ -6786,7 +6855,7 @@ function ArchivedAccountsSheet({ customers, ledger, lang, t, S, onRestore, onExp
             <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 17, marginBottom: 4 }}>{c.name}</div>
             <div style={{ fontSize: 12.5, color: C.inkSoft, marginBottom: 10 }}>
               {c.archivedAt ? dmy(c.archivedAt) : "—"}{c.archivedBy ? ` · ${c.archivedBy}` : ""}
-              {b.due > 0 && <> · <span style={{ color: C.red }}>{fmtC(b.due, S.rate, lang)} {t("due")}</span></>}
+              {isOwing(b.due) && <> · <span style={{ color: C.red }}>{fmtC(b.due, S.rate, lang)} {t("due")}</span></>}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button style={{ ...secondaryBtn, flex: 1, padding: "9px", fontSize: 13 }} onClick={() => onExport(c)}>💾 {t("exportArchive")}</button>
@@ -7611,6 +7680,8 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
     return <Card><Title>💵 {t("pl")}</Title>
       <div style={{ background: C.bg, borderRadius: 6, padding: 13, marginBottom: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: C.green, marginBottom: 7 }}>▲ {t("income")}</div>
+        {sums.grossInvoiced > 0 && bar(t("accountTotal"), sums.grossInvoiced, C.field, "gross")}
+        {(sums.deductions || 0) > 0 && bar(t("deductions"), sums.deductions, C.green, "deduct")}
         {PRODUCTS.filter(([k]) => sums.byProduct[k] > 0).map(([k, ic, ar, en]) => bar(`${ic} ${lang === "ar" ? ar : en}`, sums.byProduct[k], C.green, k))}
         {sums.invoiced === 0 && <div style={{ fontSize: 13.5, color: C.inkSoft, fontWeight: 500 }}>{t("noSales")}</div>}
       </div>
@@ -7908,7 +7979,13 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         ...((x.discountAmount || 0) > 0.009 ? [{ at: x.at, k: "d",
           label: `${x.no} · ${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""}`,
           d: 0, m: x.discountAmount, c: 0 }] : [])];
-    }), ...ledger.pays.filter((p) => p.customerId === doc.id).map((p) => ({ at: p.at, k: "p",
+    }),
+      ...(ledger.paymentDeductions || []).filter((e) => e.customerId === doc.id).map((e) => ({
+        at: e.at, k: "r",
+        label: `${t("reimbursement")} · ${e.note || e.name || "—"}`,
+        d: 0, m: e.amount, c: 0,
+      })),
+      ...ledger.pays.filter((p) => p.customerId === doc.id && toCents(p.amount) > 0).map((p) => ({ at: p.at, k: "p",
       label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, m: 0, c: p.amount }))]
       .sort((a, b2) => cmpTx(a, b2, "oldest"));
     const totalDebit = fromCents(rows.reduce((sum, r) => sum + toCents(r.d), 0));
@@ -7936,22 +8013,22 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
           <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.d ? cellAmt(r.d) : ""}</td>
           <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.m ? cellAmt(r.m) : ""}</td>
           <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.c ? cellAmt(r.c) : ""}</td>
-          <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{cellAmt(fromCents(runC))}</td>
+          <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{runC === 0 ? "—" : cellAmt(fromCents(runC))}</td>
         </tr>; })}
         <tr>
           <td style={docThSum} colSpan={2}>{t("balance")}</td>
           <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totalDebit)}</td>
           <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totalDeduct)}</td>
           <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totalCredit)}</td>
-          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)", color: finalBalance > 0 ? C.red : C.green }}>{cellAmt(finalBalance)}</td>
+          <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)", color: toCents(finalBalance) > 0 ? C.red : C.green }}>{toCents(finalBalance) === 0 ? "—" : cellAmt(finalBalance)}</td>
         </tr>
       </tbody></table>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
         <div className="account-balance" style={{ minWidth: 220, textAlign: "end" }}>
-          <StatusPill status={finalBalance > 0 ? "owing" : "paid"}>
-            {finalBalance >= 0 ? t("due") : t("credit")}</StatusPill>
+          <StatusPill status={toCents(finalBalance) > 0 ? "owing" : "paid"}>
+            {toCents(finalBalance) > 0 ? t("due") : toCents(finalBalance) < 0 ? t("credit") : t("paidS")}</StatusPill>
           <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20, marginTop: 4, color: C.ink }}>
-            {money(Math.abs(finalBalance))}</div>
+            {toCents(finalBalance) === 0 ? "—" : money(Math.abs(finalBalance))}</div>
         </div>
       </div>
       {mkFoot(t("signOwner"), t("signCustomer"))}
@@ -8025,12 +8102,12 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(iv.paidAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>
       <tr>
-        <td style={{ ...docTd, fontWeight: 800, background: iv.due > 0 ? "#FFECEC" : "#E0EFED" }} colSpan={3}>
-          {t("outstanding")}</td>
+        <td style={{ ...docTd, fontWeight: 800, background: isOwing(iv.due) ? "#FFECEC" : "#E0EFED" }} colSpan={3}>
+          {isOwing(iv.due) ? t("outstanding") : t("paidS")}</td>
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
-          background: iv.due > 0 ? "#FFECEC" : "#E0EFED", color: iv.due > 0 ? C.red : C.green }}>{nm(iv.due)}</td>}
+          background: isOwing(iv.due) ? "#FFECEC" : "#E0EFED", color: isOwing(iv.due) ? C.red : C.green }}>{isOwing(iv.due) ? nm(iv.due) : "—"}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800,
-          background: iv.due > 0 ? "#FFECEC" : "#E0EFED", color: iv.due > 0 ? C.red : C.green }}>{nf(iv.due * (iv.rateUsed || S.rate))}</td>}
+          background: isOwing(iv.due) ? "#FFECEC" : "#E0EFED", color: isOwing(iv.due) ? C.red : C.green }}>{isOwing(iv.due) ? nf(iv.due * (iv.rateUsed || S.rate)) : "—"}</td>}
       </tr>
     </tbody></table>
     {tpl.showRate !== false && S.rate > 0 && <div style={{ fontSize: 10.5, color: "#666", marginTop: 10 }}>
@@ -8099,7 +8176,7 @@ function PrintReport({ lang, t, sums, prevSums, S, days, me, animals, workers, c
         return <tr key={iv.id}><td style={td}>{iv.no}</td><td style={td}>{dmy(iv.at)}</td>
           <td style={td}>{iv.customerName || "—"}</td><td style={td}>{lang === "ar" ? pr[2] : pr[3]}</td>
           <td style={td}>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</td><td style={{ ...td, textAlign: "end" }}>{money(iv.amount)}</td>
-          <td style={{ ...td, textAlign: "end" }}>{money(iv.due)}</td>
+          <td style={{ ...td, textAlign: "end" }}>{isOwing(iv.due) ? money(iv.due) : "—"}</td>
           <td style={td}>{iv.status === "paid" ? t("paidS") : iv.status === "partial" ? t("partial") : t("unpaid")}</td></tr>; })}
       <tr><td style={{ ...td, background: "#EDEAE2", fontWeight: 800 }} colSpan={5}>{t("outstanding")}</td>
         <td style={{ ...td, background: "#EDEAE2", textAlign: "end", fontWeight: 800 }} colSpan={3}>{money(outstanding)}</td></tr>
@@ -10876,7 +10953,7 @@ function FarmApp() {
               onDeleteTx={(iv) => setSheet({ k: "confirmDeleteEntry", id: iv.id, back: { k: null } })}
               onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
               onDoc={(iv) => setSheet({ k: "docgen", id: iv.id, cid: selCustomer.id,
-                kinds: iv.due > 0 || iv.paidAmount <= 0 ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
+                kinds: isOwing(iv.due) || !isOwing(iv.paidAmount) ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
               onManage={() => setSheet({ k: "customerManage", cid: selCustomer.id })} />
           </DeskCard>
         : <DeskCard pad={0} title={`🤝 ${t("customers")} · ${activeCustomers.length}`}
@@ -11736,7 +11813,8 @@ function FarmApp() {
                 amount: amt, paidAmount: amt, payStatus: "paid",
                 customerId: cust.id, paymentId: payId,
                 vendor: customerNameById(customers, cust.id, t) || "",
-                note: r.name, name: r.name, origin: "payment_reimbursement",
+                note: r.name, name: r.name, memo: r.name, origin: "payment_reimbursement",
+                kind: DEDUCTION_REIMBURSEMENT, deductions: amt,
                 currency, rateUsed, at, loggedAt,
               });
             });
