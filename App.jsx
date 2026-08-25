@@ -22,21 +22,9 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.12", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.11", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
-  "2.9.12": {
-    ar: [
-      "الخصم في البيع خيار مخفي: مبلغ أو نسبة",
-      "رصيد الزبون يظهر في القائمة والحساب حتى لو صفر",
-      "تعويض الزبون في المصاريف وصندوق النقد مصروف مزرعة أحمر — بلا اسم الزبون",
-    ],
-    en: [
-      "Sale discount is an optional extra: amount or percent",
-      "Customer credit shows on the list and account even when it is $0",
-      "Customer deductions post in Expenses and Cash Box as a red farm expense — no customer name",
-    ],
-  },
   "2.9.11": {
     ar: [
       "تعويض المصروف يُخصم من هذا البيع ثم من كامل حساب الزبون — بلا سقف أسبوعي أو نصف شهري، والزائد رصيد لصالحه",
@@ -700,8 +688,7 @@ const moneyStatus = (billC, paidC) => {
 };
 /* Cash that left the box for a non-supplier expense. Supplier bills use supplierPay. */
 const expenseCounted = (e) => {
-  if (e.supplierId) return 0;
-  if (isCustomerPaidExpense(e)) return fromCents(toCents(e.amount));
+  if (e.supplierId || isCustomerPaidExpense(e)) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
   if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
@@ -1119,8 +1106,7 @@ const T = {
     deletePaymentWarn: "ستُحذف دفعة الصندوق هذه ويُحدَّث حساب الزبون. تبقى فاتورة البيع إن وُجدت.",
     deleteMedWarn: "سيُحذف علاج الدواء من المصاريف وصندوق النقد.",
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
-    discount: "خصم", discountNote: "سبب الخصم", addDiscount: "إضافة خصم", hideDiscount: "إخفاء الخصم",
-    discountValue: "مبلغ", discountPercent: "نسبة ٪",
+    discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
     quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ثم الصندوق: كامل أو جزئي",
     walkIn: "زبون عابر", walkInHint: "بيع لمرة واحدة — لا حاجة لاسم",
@@ -1572,8 +1558,7 @@ const T = {
     deletePaymentWarn: "This cash receipt will be removed and the customer balance updated. The sale invoice stays if it exists.",
     deleteMedWarn: "This medicine cost will be removed from Expenses and Cash Box.",
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
-    discount: "Discount", discountNote: "Discount note", addDiscount: "Add discount", hideDiscount: "Hide discount",
-    discountValue: "Amount", discountPercent: "Percent %",
+    discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
     quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — then cashier: full or partial",
     walkIn: "Walk-in", walkInHint: "One-off sale — no name needed",
@@ -2533,13 +2518,18 @@ function initials(name) {
   return p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[1][0];
 }
 
-/* Cash box: money in (customer payments) and out (expenses, supplier pays, medicine).
-   Customer reimbursements post as the linked farm expense — a red cash-out. */
+/* Cash box: real money in (payments) and out (paid expenses / supplier pays / medicine).
+   Customer reimbursements also appear as deducted/paid, without changing cash on hand. */
 function cashMoveAmount(e) {
   if (e.type === "payment") return +(e.amount || 0);
   if (e.type === "supplierPay") return +(e.amount || 0);
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
+  return 0;
+}
+function cashDeductAmount(e) {
+  if (e.type === "saleReimburse" && toCents(e.amount) > 0) return +(e.amount || 0);
+  if (isCustomerPaidExpense(e) && !e.saleReimburseId && toCents(e.amount) > 0) return +(e.amount || 0);
   return 0;
 }
 function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom, from, to } = {}) {
@@ -2549,7 +2539,8 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   const byId = Object.fromEntries(src.filter((e) => e.type === "expense").map((e) => [e.id, e]));
   const moves = src.filter((e) => {
     const amt = cashMoveAmount(e);
-    if (!(amt > 0.0001)) return false;
+    const deduct = cashDeductAmount(e);
+    if (!(amt > 0.0001) && !(deduct > 0.0001)) return false;
     const k = dayKey(e.at);
     if (from && k < from) return false;
     if (to && k > to) return false;
@@ -2571,6 +2562,26 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   let bal = opening;
   let inN = 0, outN = 0;
   const rows = moves.map((e, i) => {
+    const deduct = +cashDeductAmount(e).toFixed(2);
+    if (deduct > 0.0001) {
+      const who = cust(e.customerId);
+      const item = e.name || e.note || t("reimbursement");
+      const pref = "DC";
+      const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
+      const parts = [
+        { text: t("cashOffset"), tone: "muted" },
+        { text: " · " },
+        { text: t("cashDeductedFrom"), tone: "out" },
+        { text: " " },
+        { text: who, tone: "name" },
+        { text: ` · ${t("cashPaidFor")} `, tone: "muted" },
+        { text: item, tone: "name" },
+      ];
+      return {
+        id: e.id, at: e.at, day: dayKey(e.at), ref, parts, dir: "deduct",
+        debit: deduct, credit: deduct, balance: bal, source: e, nonCash: true,
+      };
+    }
     const amt = +cashMoveAmount(e).toFixed(2);
     const isIn = e.type === "payment";
     if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
@@ -2609,13 +2620,13 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       ].filter(Boolean);
     } else {
       const label = catLabel(e.category, lang, custom);
-      const who = isCustomerPaidExpense(e) ? "" : (e.vendor || e.party || "");
+      const who = e.vendor || e.party || "";
       parts = [
         { text: t("cashPaidFor"), tone: "out" },
         { text: " · " },
         { text: label, tone: "name" },
         who ? { text: ` · ${who}`, tone: "muted" } : null,
-        e.note && e.note !== label ? { text: ` — ${e.note}`, tone: "muted" } : null,
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     }
     return {
@@ -3492,43 +3503,6 @@ function PriceModeToggle({ t, mode, onChange }) {
     <Chip active={mode === "total"} onClick={() => onChange("total")}>{t("priceFull")}</Chip>
   </div>;
 }
-function DiscountFold({ t, lang, S, afterReimbC, discount, setDiscount, discountNote, setDiscountNote, cur, setCur }) {
-  const [open, setOpen] = useState(toCents(discount) > 0);
-  const [mode, setMode] = useState("value");
-  const [pct, setPct] = useState(() => (afterReimbC > 0 && toCents(discount) > 0
-    ? Math.round((toCents(discount) / afterReimbC) * 1000) / 10 : 0));
-  const applyPct = (p) => {
-    const n = Math.max(0, Math.min(100, +p || 0));
-    setPct(n);
-    setDiscount(fromCents(Math.round(afterReimbC * n / 100)));
-  };
-  if (!open) {
-    return <button type="button" className="dk-pill" style={{ marginBottom: 12 }}
-      onClick={() => setOpen(true)}>+ {t("addDiscount")}</button>;
-  }
-  return <div style={{ marginBottom: 12 }}>
-    <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-      <Chip active={mode === "value"} onClick={() => setMode("value")}>{t("discountValue")}</Chip>
-      <Chip active={mode === "pct"} onClick={() => {
-        setMode("pct");
-        if (afterReimbC > 0) applyPct((toCents(discount) / afterReimbC) * 100);
-      }}>{t("discountPercent")}</Chip>
-      <button type="button" className="dk-pill" onClick={() => {
-        setOpen(false); setDiscount(0); setDiscountNote(""); setPct(0);
-      }}>{t("hideDiscount")}</button>
-    </div>
-    {mode === "pct"
-      ? <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
-          <Stepper big value={pct} onChange={applyPct} step={1} suffix="%" decimals={1} />
-        </div>
-      : <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
-          <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
-            step={1} currency={cur} setCurrency={setCur} />
-        </div>}
-    <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
-      style={{ ...inp, marginBottom: 0 }} />
-  </div>;
-}
 function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
   const isMed = entry.type === "med";
   const [amount, setAmount] = useState(isMed ? (entry.cost || 0) : (entry.amount || 0));
@@ -3742,6 +3716,35 @@ function DateFilterPills({ t, from, to, onChange }) {
       <DatePick compact allowClear value={to || ""} onChange={(v) => onChange(from || "", v)} ariaLabel={t("toDate")} />
     </div>}
   </div>;
+}
+function SalePriceToggle({ t, S, lang, priceMode, onMode, qty, unitPrice, amount, onUnit, onTotal, step, currency, setCurrency }) {
+  return <>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <Chip active={priceMode === "unit"} onClick={() => onMode("unit")}>{t("pricePerUnit")}</Chip>
+      <Chip active={priceMode === "total"} onClick={() => onMode("total")}>{t("priceFull")}</Chip>
+    </div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
+      {priceMode === "unit"
+        ? <>
+          <MoneyStepper usd={unitPrice} onChange={onUnit} rate={S.rate} lang={lang} t={t} step={step}
+            currency={currency} setCurrency={setCurrency} />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+            paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+            <span style={{ color: C.inkSoft }}>{t("calculatedTotal")}</span>
+            <Money usd={amount} rate={S.rate} lang={lang} tone={C.field} />
+          </div>
+        </>
+        : <>
+          <MoneyStepper usd={amount} onChange={onTotal} rate={S.rate} lang={lang} t={t} step={Math.max(1, step)}
+            currency={currency} setCurrency={setCurrency} />
+          {qty > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
+            paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
+            <span style={{ color: C.inkSoft }}>{t("calculatedUnit")}</span>
+            <Money usd={unitPrice} rate={S.rate} lang={lang} tone={C.field} />
+          </div>}
+        </>}
+    </div>
+  </>;
 }
 function Step({ n, label }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 8px" }}>
@@ -5850,7 +5853,6 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const resultBalC = priorDueC + toCents(amount) - reimbC - discC;
   const onSaleC = Math.min(reimbC, toCents(amount));
   const onAcctC = Math.max(0, reimbC - toCents(amount));
-  const creditNow = cid ? fromCents((ledger && ledger.byCustomer && ledger.byCustomer[cid] || {}).credit) : 0;
   const saveSale = (payNow) => {
     if (block) return setErr(block);
     const reimbursements = saleReimbursements();
@@ -5886,11 +5888,6 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
         search: `${x.name || ""} ${x.phone || ""}`,
       }))}
       onAdd={onAddCustomer} addLabel={t("addCustomer")} />
-    {cid ? <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "10px 12px",
-      marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
-      <span>{t("credit")}</span>
-      <Money usd={creditNow} rate={S.rate} lang={lang} size={18} tone={creditNow > 0 ? C.green : C.inkSoft} />
-    </div> : null}
     <Step n="2" label={t("product")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
@@ -5995,8 +5992,13 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>{t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("discountOverNet")}</div>}
-    <DiscountFold t={t} lang={lang} S={S} afterReimbC={afterReimbC} discount={discount} setDiscount={setDiscount}
-      discountNote={discountNote} setDiscountNote={setDiscountNote} cur={cur} setCur={setCur} />
+    <Step n="6" label={t("discount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
+      <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
+        step={1} currency={cur} setCurrency={setCur} />
+    </div>
+    <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
+      style={{ ...inp, marginBottom: 12 }} />
     <Step n="6" label={`${t("saleDate")} — ${dmy(date)}`} />
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
@@ -6384,8 +6386,11 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
         <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span>
         <Money usd={netAmount} rate={S.rate} lang={lang} size={24} tone="#fff" /></div>
     </div>
-    <DiscountFold t={t} lang={lang} S={S} afterReimbC={afterReimbC} discount={discount} setDiscount={setDiscount}
-      discountNote={discountNote} setDiscountNote={setDiscountNote} />
+    <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>{t("discount")}</div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
+      <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} /></div>
+    <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
+      style={{ ...inp, marginBottom: 12 }} />
     {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 600, color: "#7A5312" }}>{t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("discountOverNet")}</div>}
@@ -6431,7 +6436,6 @@ function AccountHead({ customer, no, b, lang, t, S }) {
       <StatusPill status={owing ? (b.oldest > 30 ? "overdue" : "owing") : "paid"}>
         {owing ? t("outstanding") : t("paidS")}</StatusPill>
       <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft }}>{t("credit")} {fmtC(b.credit || 0, S.rate, lang)}</div>
       {b.due > 0 && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
         {b.oldest} {t("daysLate")}</div>}
     </div>
@@ -6478,9 +6482,12 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         {bDeduct > 0 && <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.amber} />}
         <Kpi label={t("collected")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
         <Kpi label={t("due")} value={fmtC(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
-        <Kpi label={t("credit")} value={fmtC(b.credit || 0, S.rate, lang)} tone={(b.credit || 0) > 0 ? C.green : C.inkSoft} />
         <Kpi label={t("txCount")} value={nf(all.length)} tone={C.inkSoft} />
       </div>
+      {b.credit > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
+        border: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <StatusPill status="paid">{t("credit")}</StatusPill>
+        {fmtC(b.credit, S.rate, lang)}</div>}
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
         {customer.phone && <Row k={t("phone")} v={customer.phone} />}
         <Row k={t("product")} v={(() => { const p = PRODUCTS.find((x) => x[0] === (customer.product || "milk"));
@@ -6534,7 +6541,6 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.amber} />
         <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.green} />
         <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtC(rDue, S.rate, lang)} tone={rDue > 0 ? C.red : C.green} />
-        <Kpi label={t("credit")} value={fmtC(b.credit || 0, S.rate, lang)} tone={(b.credit || 0) > 0 ? C.green : C.inkSoft} />
         <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.inkSoft} />
       </div>
 
@@ -6959,7 +6965,7 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     eggs: ["🥚", `${backdated(e) ? "📅 " : ""}${t("collect")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)} ${t("eggsUnit")}`],
     med: [m ? m.i : "💉", `${m ? (lang === "ar" ? m.ar : m.en) : ""}${e.name ? ` (${e.name})` : ""} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
-    expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
+    expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${isCustomerPaidExpense(e) ? ` · ${t("paidByCustomer")}` : ""}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
     sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? customerLabel(c, t) : "—"}`, fmtC(e.amount, rate, lang)],
     saleReimburse: ["↩️", `${t("reimbursement")} · ${e.name || "—"} · ${c ? customerLabel(c, t) : "—"}`, `−${fmtC(e.amount, rate, lang)}`],
     payment: ["💵", `${t("recordPayment")} · ${c ? customerLabel(c, t) : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
@@ -9456,12 +9462,11 @@ function FarmApp() {
                 }
                 : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
               const receiptId = e.sourceExpenseId || e.id;
-                  const isReimb = e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) || e.origin === "customer_reimbursement";
-                  return (
+              return (
                 <DataCard key={e.id} kind="paid"
-                  status={<StatusPill status="paid">{t("paidS")}</StatusPill>}
+                  status={<StatusPill status="paid">{e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) ? t("paidByCustomer") : t("paidS")}</StatusPill>}
                   title={`${catIcon(cat, S.categories)} ${catLabel(cat, lang, S.categories)}`}
-                  subtitle={`${dmy(e.at)}${!isReimb && (e.vendor || e.supplier) ? ` · ${e.vendor || e.supplier}` : e.note ? ` · ${e.note}` : ""}`}
+                  subtitle={`${dmy(e.at)} · ${e.vendor || e.supplier || "—"}`}
                   who={<WhoHint e={e} lang={lang} />}
                   meta={fmtC(amt, S.rate, lang)}
                   onClick={openSource || undefined}
@@ -9510,9 +9515,9 @@ function FarmApp() {
                       {e.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
                         {e.feedType ? `${t(e.feedType)} · ` : ""}{expenseQtyLabel(e, t)}</span> : null}
                       {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
-                    <Td tone={C.inkSoft}>{isCustomerPaidExpense(e) || e.paidSource === "customerReimburse" ? (e.note || "—") : (e.vendor || e.supplier || "—")}</Td>
+                    <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
                     <Td align="end" mono strong>{fmtC(amt, S.rate, lang)}</Td>
-                    <Td><StatusPill status="paid">{t("paidS")}</StatusPill></Td>
+                    <Td><StatusPill status="paid">{e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) ? t("paidByCustomer") : t("paidS")}</StatusPill></Td>
                     <Td align="center"><WhoHint e={e} lang={lang} /></Td>
                     <Td align="center">
                       <span style={{ display: "inline-flex", gap: 5 }}>
@@ -10296,9 +10301,9 @@ function FarmApp() {
         <DataList
           empty={null}
           cards={cashView.rows.map((r) => (
-            <DataCard key={r.id} kind={r.dir === "out" ? "out" : "in"}
-              status={<StatusPill status={r.dir === "out" ? "out" : "in"}>
-                {r.dir === "out" ? t("cashFilterOut") : t("cashFilterIn")}</StatusPill>}
+            <DataCard key={r.id} kind={r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in"}
+              status={<StatusPill status={r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in"}>
+                {r.dir === "deduct" ? t("cashDeductPaid") : r.dir === "out" ? t("cashFilterOut") : t("cashFilterIn")}</StatusPill>}
               title={r.day}
               subtitle={<CashParts parts={r.parts} />}
               who={r.source ? <WhoHint e={r.source} lang={lang} /> : null}
@@ -10361,7 +10366,7 @@ function FarmApp() {
                 </td></tr>
               ) : cashView.rows.map((r) => (
                 <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
-                  className={statusRowClass(r.dir === "out" ? "out" : "in")}
+                  className={statusRowClass(r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in")}
                   onContextMenu={(ev) => openCtx(ev, [
                     { key: "open", icon: "✏️", label: t("ctxEdit"), run: () => openCashSource(r) },
                     { key: "del", icon: "🗑️", label: t("ctxDelete"),
@@ -10932,14 +10937,13 @@ function FarmApp() {
                   cards={sortedCustomers.map((c) => {
                     const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
                     const due = (ledger.byCustomer[c.id] || {}).due || 0;
-                    const credit = (ledger.byCustomer[c.id] || {}).credit || 0;
                     const kind = due > 0.009 ? "owing" : "clear";
                     return (
                       <DataCard key={c.id} kind={kind}
                         status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("statusClear")}</StatusPill>}
                         title={customerLabel(c, t)}
                         subtitle={`${accNo(customers, c.id)}${isWalkInCustomer(c) ? ` · ${t("walkInHint")}` : c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
-                        meta={`${t("due")} ${fmtC(due, S.rate, lang)} · ${t("credit")} ${fmtC(credit, S.rate, lang)}`}
+                        meta={c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined}
                         onClick={() => openAccount(c.id)}
                         actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}>
                           {t("openAccount")} ›</button>}
@@ -10954,15 +10958,13 @@ function FarmApp() {
                       <Th>{t("customerName")}</Th>
                       <Th w={130}>{t("phone")}</Th>
                       <Th w={120}>{t("product")}</Th>
-                      <Th w={100} align="end">{t("due")}</Th>
-                      <Th w={100} align="end">{t("credit")}</Th>
+                      <Th w={100} align="end">{t("dailyQty")}</Th>
                       <Th w={90} align="center">{t("actions")}</Th>
                     </tr></thead>
                     <tbody>
                       {sortedCustomers.map((c) => {
                         const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
                         const due = (ledger.byCustomer[c.id] || {}).due || 0;
-                        const credit = (ledger.byCustomer[c.id] || {}).credit || 0;
                         return <tr key={c.id} onClick={() => openAccount(c.id)}
                           className={statusRowClass(due > 0.009 ? "owing" : "clear")}
                           onContextMenu={(e) => openCtx(e, [
@@ -10978,8 +10980,7 @@ function FarmApp() {
                           <Td strong>{customerLabel(c, t)}</Td>
                           <Td tone={C.inkSoft}>{c.phone || t("noPhone")}</Td>
                           <Td tone={C.inkSoft}>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                          <Td align="end" mono tone={due > 0.009 ? C.red : C.inkSoft}>{fmtC(due, S.rate, lang)}</Td>
-                          <Td align="end" mono tone={credit > 0.009 ? C.green : C.inkSoft}>{fmtC(credit, S.rate, lang)}</Td>
+                          <Td align="end" mono tone={C.inkSoft}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
                           <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}
                             className="dk-pill">{t("openAccount")} ›</button></Td>
                         </tr>;
@@ -11728,7 +11729,7 @@ function FarmApp() {
                 id: `exp-${uid()}`, type: "expense", category: cat, group: expGroupOf(cat),
                 amount: amt, paidAmount: 0, payStatus: "paid", paidBy: "customer",
                 customerId, saleId, saleReimburseId: reimbId,
-                vendor: "",
+                vendor: customerNameById(customers, customerId, t) || "",
                 note: r.name, origin: "customer_reimbursement", currency, rateUsed, at, loggedAt,
               });
             });
