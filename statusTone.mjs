@@ -59,8 +59,7 @@ export function statusRowClass(kind) {
 
 export function payStatusKind(row) {
   if (!row) return "unpaid";
-  const due = Number(row.due) || 0;
   if (row.overdue && row.status !== "paid") return "overdue";
-  if (due > 0.009 && (row.lateDays || 0) > 30) return "overdue";
+  if (row.due > 0 && (row.lateDays || 0) > 30) return "overdue";
   return row.status || "unpaid";
 }
