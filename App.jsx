@@ -22,9 +22,21 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.11", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.13", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.13": {
+    ar: [
+      "تعويض المصروف يُسجَّل مع قبض الدفعة ويُخصم من المبلغ المقبوض فقط — لا من الفاتورة — وبحد المبلغ",
+      "صندوق النقد يُظهر التعويض صف مصروف أحمر بالوصف المُدخل، والنقد الداخل هو ما بقي بعد الحسم",
+      "إنتاج الحليب بالكغ؛ الليتر معاينة فقط دون أزرار تبديل، واستخدام المزرعة يجمع بالكغ الصحيح",
+    ],
+    en: [
+      "Expense reimbursements sit on Record Payment and come off the cash received — not the invoice — capped at the payment",
+      "Cash Box shows each reimbursement as a red expense row with the name you typed; cash in is what remains",
+      "Milk is entered in kg with litres as a preview only — no unit toggles — and farm-use totals add kg correctly",
+    ],
+  },
   "2.9.11": {
     ar: [
       "تعويض المصروف يُخصم من هذا البيع ثم من كامل حساب الزبون — بلا سقف أسبوعي أو نصف شهري، والزائد رصيد لصالحه",
@@ -1050,8 +1062,9 @@ const T = {
     chooseOrAddExpenseType: "اختر نوعًا محفوظًا أو اكتب نوعًا جديدًا — سيُحفظ تلقائيًا للاستخدام لاحقًا.",
     addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
     netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "اختر نوع المصروف لكل مبلغ تعويض.",
-    reimburseOverGross: "ما يزيد عن هذا البيع يُخصم من باقي الحساب، والزائد رصيد لصالح الزبون.",
-    reimburseFromBalance: "يُخصم التعويض من هذا البيع ثم من كامل حساب الزبون (أسبوعي أو نصف شهري) ويُسجَّل مصروف مزرعة.",
+    reimburseOverGross: "لا يمكن أن يتجاوز التعويض مبلغ هذه الدفعة.",
+    reimburseFromBalance: "يُخصم التعويض من هذه الدفعة فقط (لا من الفاتورة ولا من رصيد الحساب) ويُسجَّل مصروف مزرعة. الحد هو مبلغ الدفعة.",
+    cashToDrawer: "النقد الداخل",
     reimburseMemo: "ملاحظة (اختياري)", reimburseOnSale: "من هذا البيع", reimburseOnAccount: "من رصيد الحساب",
     resultingBalance: "رصيد الحساب بعد القيد", netDueNow: "المطلوب الآن",
     expSourceAll: "كل المصادر", expSourceReimburse: "تعويض الزبون", expSourceCash: "نقد الصندوق",
@@ -1502,8 +1515,9 @@ const T = {
     chooseOrAddExpenseType: "Choose a saved type or enter a new one — it will be saved automatically for future sales.",
     addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
     netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Choose an expense category for every reimbursement amount.",
-    reimburseOverGross: "Anything above this sale comes off the rest of the account; leftover becomes customer credit.",
-    reimburseFromBalance: "The reimbursement comes off this sale first, then the whole customer account (weekly or fortnightly), and is logged as a farm expense.",
+    reimburseOverGross: "Reimbursement cannot exceed this payment.",
+    reimburseFromBalance: "The reimbursement comes off this payment only — not the invoice or the account — and is logged as a farm expense. It cannot exceed the payment amount.",
+    cashToDrawer: "Cash in",
     reimburseMemo: "Note (optional)", reimburseOnSale: "Off this sale", reimburseOnAccount: "Off account balance",
     resultingBalance: "Account balance after posting", netDueNow: "Due now",
     expSourceAll: "All sources", expSourceReimburse: "Customer reimbursement", expSourceCash: "Cash-box paid",
@@ -2519,7 +2533,8 @@ function initials(name) {
 }
 
 /* Cash box: real money in (payments) and out (paid expenses / supplier pays / medicine).
-   Customer reimbursements also appear as deducted/paid, without changing cash on hand. */
+   Payment reimbursements are farm expenses (cash out). Older sale reimbursements stay
+   as non-cash offsets so historical drawers still reconcile. */
 function cashMoveAmount(e) {
   if (e.type === "payment") return +(e.amount || 0);
   if (e.type === "supplierPay") return +(e.amount || 0);
@@ -2527,7 +2542,15 @@ function cashMoveAmount(e) {
   if (e.type === "med") return +(e.cost || 0);
   return 0;
 }
+function paymentTenderAmount(e, src) {
+  const cash = cashMoveAmount(e);
+  if (!e || e.type !== "payment") return cash;
+  const extra = (src || []).filter((x) => x.origin === "payment_reimbursement" && x.paymentId === e.id)
+    .reduce((s, x) => s + (toCents(x.amount) > 0 ? fromCents(toCents(x.amount)) : 0), 0);
+  return +(cash + extra).toFixed(2);
+}
 function cashDeductAmount(e) {
+  if (e.origin === "payment_reimbursement") return 0;
   if (e.type === "saleReimburse" && toCents(e.amount) > 0) return +(e.amount || 0);
   if (isCustomerPaidExpense(e) && !e.saleReimburseId && toCents(e.amount) > 0) return +(e.amount || 0);
   return 0;
@@ -2538,7 +2561,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   const src = withImpliedSupplierPays(entries);
   const byId = Object.fromEntries(src.filter((e) => e.type === "expense").map((e) => [e.id, e]));
   const moves = src.filter((e) => {
-    const amt = cashMoveAmount(e);
+    const amt = e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e);
     const deduct = cashDeductAmount(e);
     if (!(amt > 0.0001) && !(deduct > 0.0001)) return false;
     const k = dayKey(e.at);
@@ -2550,7 +2573,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   let opening = 0;
   if (from) {
     src.forEach((e) => {
-      const amt = cashMoveAmount(e);
+      const amt = e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e);
       if (!(amt > 0.0001)) return;
       if (dayKey(e.at) >= from) return;
       if (e.type === "payment") opening += amt;
@@ -2582,7 +2605,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
         debit: deduct, credit: deduct, balance: bal, source: e, nonCash: true,
       };
     }
-    const amt = +cashMoveAmount(e).toFixed(2);
+    const amt = +(e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e)).toFixed(2);
     const isIn = e.type === "payment";
     if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
     else { bal = +(bal - amt).toFixed(2); outN += amt; }
@@ -2619,14 +2642,15 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
         e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     } else {
-      const label = catLabel(e.category, lang, custom);
-      const who = e.vendor || e.party || "";
+      const payReimb = e.origin === "payment_reimbursement";
+      const label = payReimb ? (e.note || e.name || catLabel(e.category, lang, custom)) : catLabel(e.category, lang, custom);
+      const who = e.vendor || e.party || (payReimb ? cust(e.customerId) : "");
       parts = [
-        { text: t("cashPaidFor"), tone: "out" },
+        { text: payReimb ? t("reimbursement") : t("cashPaidFor"), tone: "out" },
         { text: " · " },
         { text: label, tone: "name" },
         who ? { text: ` · ${who}`, tone: "muted" } : null,
-        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+        !payReimb && e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     }
     return {
@@ -4423,8 +4447,13 @@ function milkEqHint(qty, unit, t) {
   const shown = (Math.round(equiv * 10) / 10).toFixed(1);
   return <div className="milk-unit-eq">{`(~${shown} ${milkUnitLb(other, t)})`}</div>;
 }
+function milkKgLine(e, t) {
+  const liters = milkRecordLiters(e);
+  const kg = milkFromLiters(liters, "kg");
+  return `${n1(kg)} ${t("kg")} (~${n1(liters)} ${t("L")})`;
+}
 function saleQtyUnit(sale, lang, t) {
-  if ((sale?.product || "milk") === "milk") return milkUnitLb(sale?.unit, t);
+  if ((sale?.product || "milk") === "milk") return t("kg");
   const pr = PRODUCTS.find((p) => p[0] === sale?.product) || PROD_OTHER;
   return lang === "ar" ? pr[4] : pr[5];
 }
@@ -4535,38 +4564,18 @@ function CashierPayPrompt({ t, lang, S, amount, err, onConfirm }) {
   </>;
 }
 
-function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose, unit = "L" }) {
-  const [am, setAm] = useState(() => milkFromLiters(existing.am || 0, unit));
-  const [pm, setPm] = useState(() => milkFromLiters(existing.pm || 0, unit));
-  const [u, setU] = useState(milkUnitOf(unit));
+function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose }) {
+  const u = "kg";
+  const [am, setAm] = useState(() => milkFromLiters(existing.am || 0, u));
+  const [pm, setPm] = useState(() => milkFromLiters(existing.pm || 0, u));
   useEffect(() => {
     setAm(milkFromLiters(existing.am || 0, u));
     setPm(milkFromLiters(existing.pm || 0, u));
   }, [date, existing.am, existing.pm]);
-  useEffect(() => {
-    const next = milkUnitOf(unit);
-    setU((prev) => {
-      if (prev === next) return prev;
-      setAm((v) => milkConvertQty(v, prev, next));
-      setPm((v) => milkConvertQty(v, prev, next));
-      return next;
-    });
-  }, [unit]);
-  const pickUnit = (next) => {
-    const to = milkUnitOf(next);
-    if (u === to) return;
-    setAm((v) => milkConvertQty(v, u, to));
-    setPm((v) => milkConvertQty(v, u, to));
-    setU(to);
-  };
   const total = am + pm;
   const suffix = milkUnitLb(u, t);
   return <Sheet title={`🥛 ${t("addMilkStock")}`} sub={dayLabel(date, lang)} onClose={onClose}>
     <DayPicker date={date} setDate={setDate} lang={lang} t={t} />
-    <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-      <Chip active={u === "L"} onClick={() => pickUnit("L")}>{t("milkUnitL")}</Chip>
-      <Chip active={u === "kg"} onClick={() => pickUnit("kg")}>{t("milkUnitKg")}</Chip>
-    </div>
     <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 12 }}>
       {t("milkDensityHint")}</div>
     {[["am", `🌅 ${t("morningMilk")}`, am, setAm], ["pm", `🌙 ${t("eveningMilk")}`, pm, setPm]].map(([k, label, v, set]) => (
@@ -4584,7 +4593,8 @@ function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSav
   </Sheet>;
 }
 
-function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", savedReasons = [] }) {
+function MilkUseSheet({ lang, t, stock, date, onSave, onClose, savedReasons = [] }) {
+  const unit = "kg";
   const [qty, setQty] = useState(0);
   const [reason, setReason] = useState("home");
   const [customName, setCustomName] = useState("");
@@ -4639,7 +4649,7 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, unit = "L", saved
         if (!canSave) return;
         const label = reason === "new" ? pick : chosenCustom;
         const code = label ? "custom" : reason;
-        onSave({ qty: milkToLiters(qty, unit), ...milkPack(qty, unit),
+        onSave({ ...milkPack(qty, unit), qty,
           reason: code, reasonLabel: label || "", at: dayStamp(useDate) });
       }}>✓ {t("save")}</button>
   </Sheet>;
@@ -5783,10 +5793,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [priceMode, setPriceMode] = useState("unit");
   const [till, setTill] = useState(false);
   const [cur, setCur] = useState("usd");
-  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
-  const [reimbRows, setReimbRows] = useState([{ id: uid(), name: "", amount: 0 }]);
   const [discount, setDiscount] = useState(0);
   const [discountNote, setDiscountNote] = useState("");
   const [err, setErr] = useState("");
@@ -5798,19 +5806,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     setTotal(fromCents(toCents((c?.defaultQty || 0) * next)));
   }, [cid, product]);
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
-  const unit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
-  const stockUnit = milkUnitOf(S.milkUnit);
-  const savedReimburseTypes = [];
-  const seenReimburseTypes = new Set();
-  [...(S.saleReimburseTypes || []), ...(entries || []).filter((e) => e.type === "saleReimburse").map((e) => e.name)]
-    .forEach((name) => {
-      const clean = String(name || "").trim();
-      const key = clean.toLocaleLowerCase();
-      if (clean && !seenReimburseTypes.has(key)) {
-        seenReimburseTypes.add(key);
-        savedReimburseTypes.push(clean);
-      }
-    });
+  const unit = product === "milk" ? milkUnitLb("kg", t) : (lang === "ar" ? pr[4] : pr[5]);
   const amount = priceMode === "total"
     ? fromCents(toCents(total))
     : qtyMoney(qty, price);
@@ -5823,47 +5819,25 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     else if (qty > 0.0001) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
-  const reimbAmount = fromCents(reimbC);
-  const afterReimbC = Math.max(0, toCents(amount) - reimbC);
-  const discC = Math.min(afterReimbC, Math.max(0, toCents(discount)));
-  const netAmount = fromCents(Math.max(0, afterReimbC - discC));
-  const priorDueC = cid ? toCents((ledger && ledger.byCustomer && ledger.byCustomer[cid] || {}).due) : 0;
-  const owingRoomC = priorDueC + toCents(amount);
-  const reimburseOver = reimbC > owingRoomC;
-  const discountOver = toCents(discount) > afterReimbC;
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
-  const updateReimb = (id, patch) => {
-    setErr("");
-    setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
-  };
-  const saleReimbursements = () => {
-    const reimbursements = reimbRows.filter((r) => toCents(r.amount) > 0)
-      .map((r) => ({ name: String(r.name || "").trim(), amount: fromCents(toCents(r.amount)) }));
-    if (reimbursements.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
-    return reimbursements;
-  };
+  const discC = Math.min(toCents(amount), Math.max(0, toCents(discount)));
+  const netAmount = fromCents(Math.max(0, toCents(amount) - discC));
+  const discountOver = toCents(discount) > toCents(amount);
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver });
   const goTill = () => {
     if (block) return setErr(block);
-    if (!saleReimbursements()) return;
     setErr("");
     if (toCents(netAmount) < 1) return saveSale(0);
     setTill(true);
   };
-  const resultBalC = priorDueC + toCents(amount) - reimbC - discC;
-  const onSaleC = Math.min(reimbC, toCents(amount));
-  const onAcctC = Math.max(0, reimbC - toCents(amount));
   const saveSale = (payNow) => {
     if (block) return setErr(block);
-    const reimbursements = saleReimbursements();
-    if (!reimbursements) return;
-    onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, reimbursements, payNow,
+    onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, payNow,
       discountAmount: fromCents(discC), discountNote: discountNote.trim(),
-      unit: product === "milk" ? milkSaleUnit : undefined,
+      unit: product === "milk" ? "kg" : undefined,
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
   };
   const milkAvail = milkStock(entries || [], date).available;
-  const milkNeed = product === "milk" ? milkToLiters(qty, milkSaleUnit) : 0;
+  const milkNeed = product === "milk" ? milkToLiters(qty, "kg") : 0;
   const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
@@ -5877,7 +5851,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkFromLiters(milkAvail, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
     </div>
     <Step n="1" label={t("pickCustomer")} />
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
@@ -5902,16 +5876,10 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
         </button>;
       })}
     </div>
-    {product === "milk" && <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("milkSaleUnit")}</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
-          onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
-      </div>
-    </div>}
     <Step n="3" label={`${t("qty")} (${unit})`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
       <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1} />
+      {product === "milk" && milkEqHint(qty, "kg", t)}
     </div>
     <Step n="4" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
@@ -5927,72 +5895,22 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
         <Money usd={priceMode === "unit" ? amount : unitPrice} rate={S.rate} lang={lang} tone={C.field} />
       </div>}
     </div>
-    <Step n="5" label={t("reimbursements")} />
-    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px", lineHeight: 1.45 }}>
-      {t("reimburseFromBalance")}
-      {cid ? ` · ${t("outstanding")} ${fmtC(fromCents(priorDueC), S.rate, lang)}` : ""}
-    </div>
-    <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-      <datalist id="sale-reimburse-types">
-        {savedReimburseTypes.map((name) => <option key={name.toLocaleLowerCase()} value={name} />)}
-      </datalist>
-      {reimbRows.map((r, i) => {
-        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : r.amount || "";
-        return <div key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.8fr) auto",
-          gap: 7, alignItems: "center" }}>
-          <input list="sale-reimburse-types" value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
-            placeholder={t("expenseName")} style={{ ...inp, padding: "10px 11px", fontSize: 14.5 }} />
-          <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
-            onChange={(e) => {
-              const raw = Math.max(0, +(e.target.value || 0));
-              const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
-              updateReimb(r.id, { amount: fromCents(toCents(usd)) });
-            }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
-            style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
-          {i === reimbRows.length - 1
-            ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, { id: uid(), name: "", amount: 0 }])}
-                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.field}`, background: C.paper,
-                  color: C.field, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
-            : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
-                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
-                  color: C.red, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
-        </div>;
-      })}
-    </div>
     <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14,
       display: "grid", gap: 7 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontWeight: 600 }}>{t("grossSubtotal")}</span><Money usd={amount} rate={S.rate} lang={lang} size={18} tone="#fff" />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9 }}>
-        <span style={{ fontWeight: 600 }}>{t("reimbursementTotal")}</span><span>− <Money usd={reimbAmount} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9 }}>
         <span style={{ fontWeight: 600 }}>{t("discount")}</span><span>− <Money usd={fromCents(discC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
       </div>
-      {onAcctC > 0 && <>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9, fontSize: 13 }}>
-          <span>{t("reimburseOnSale")}</span><span>− <Money usd={fromCents(onSaleC)} rate={S.rate} lang={lang} size={15} tone="#fff" /></span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9, fontSize: 13 }}>
-          <span>{t("reimburseOnAccount")}</span><span>− <Money usd={fromCents(onAcctC)} rate={S.rate} lang={lang} size={15} tone="#fff" /></span>
-        </div>
-      </>}
       <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
         justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{t("netDueNow")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
+        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .92, fontSize: 13.5 }}>
-        <span>{t("resultingBalance")}</span>
-        <Money usd={fromCents(Math.abs(resultBalC))} rate={S.rate} lang={lang} size={16} tone="#fff" />
-      </div>
-      {resultBalC < 0 && <div style={{ fontSize: 12.5, opacity: .9 }}>{t("credit")}</div>}
     </div>
-    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>{t("reimburseOverGross")}</div>}
     {discountOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
       fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("discountOverNet")}</div>}
-    <Step n="6" label={t("discount")} />
+    <Step n="5" label={t("discount")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
       <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
         step={1} currency={cur} setCurrency={setCur} />
@@ -6004,7 +5922,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkFromLiters(milkAvail, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)})</div>}
+      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkFromLiters(milkAvail, "kg"))} {t("kg")})</div>}
     {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
     <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
@@ -6025,7 +5943,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const [till, setTill] = useState(false);
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
-  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
+  const milkSaleUnit = "kg";
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => {
     if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); }
@@ -6081,10 +5999,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
         </button>;
       })}
     </div>
-    {product === "milk" && <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
-        onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
-    </div>}
+    {product === "milk" && milkEqHint(qty, "kg", t)}
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb} />
@@ -6114,7 +6029,22 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   </Sheet>;
 }
 
-function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
+function reimburseTypeOptions(S, entries) {
+  const saved = [];
+  const seen = new Set();
+  [
+    ...(S.saleReimburseTypes || []),
+    ...(entries || []).filter((e) => e.type === "saleReimburse" || e.origin === "payment_reimbursement")
+      .map((e) => e.name || e.note),
+  ].forEach((name) => {
+    const clean = String(name || "").trim();
+    const key = clean.toLocaleLowerCase();
+    if (clean && !seen.has(key)) { seen.add(key); saved.push(clean); }
+  });
+  return saved;
+}
+
+function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose }) {
   const open = ledger.list.filter((x) => x.customerId === customer.id && x.due > 0);
   const b = ledger.byCustomer[customer.id] || { due: 0 };
   const [amount, setAmount] = useState(b.due);
@@ -6123,6 +6053,25 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
+  const [reimbRows, setReimbRows] = useState([{ id: uid(), name: "", amount: 0 }]);
+  const [err, setErr] = useState("");
+  const types = reimburseTypeOptions(S, entries);
+  const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
+  const payC = Math.max(0, toCents(amount));
+  const reimburseOver = reimbC > payC;
+  const cashC = Math.max(0, payC - reimbC);
+  const updateReimb = (id, patch) => {
+    setErr("");
+    setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
+  };
+  const reimbursements = () => {
+    const rows = reimbRows.filter((r) => toCents(r.amount) > 0)
+      .map((r) => ({ name: String(r.name || "").trim(), amount: fromCents(toCents(r.amount)) }));
+    if (rows.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
+    if (reimburseOver) { setErr(t("reimburseOverGross")); return null; }
+    return rows;
+  };
+  const canSave = payC > 0 && !reimburseOver;
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 12, boxShadow: sh1,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
@@ -6153,11 +6102,66 @@ function PaymentForm({ lang, t, S, customer, ledger, onSave, onClose }) {
       {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => { setSaleId(iv.id); setAmount(iv.due); }}>
         {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
     </Scroller>
-    <Step n="5" label={`${t("notes2")} — ${t("optional")}`} />
+    <Step n="5" label={t("reimbursements")} />
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px", lineHeight: 1.45 }}>
+      {t("reimburseFromBalance")}
+    </div>
+    <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+      <datalist id="pay-reimburse-types">
+        {types.map((name) => <option key={name.toLocaleLowerCase()} value={name} />)}
+      </datalist>
+      {reimbRows.map((r, i) => {
+        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : r.amount || "";
+        return <div key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.8fr) auto",
+          gap: 7, alignItems: "center" }}>
+          <input list="pay-reimburse-types" value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
+            placeholder={t("expenseName")} style={{ ...inp, padding: "10px 11px", fontSize: 14.5 }} />
+          <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
+            onChange={(e) => {
+              const raw = Math.max(0, +(e.target.value || 0));
+              const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
+              updateReimb(r.id, { amount: fromCents(toCents(usd)) });
+            }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
+            style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
+          {i === reimbRows.length - 1
+            ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, { id: uid(), name: "", amount: 0 }])}
+                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.field}`, background: C.paper,
+                  color: C.field, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
+            : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
+                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
+                  color: C.red, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
+        </div>;
+      })}
+    </div>
+    <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14, display: "grid", gap: 7 }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <span style={{ fontWeight: 600 }}>{t("paymentAmount")}</span>
+        <Money usd={fromCents(payC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
+        <span style={{ fontWeight: 600 }}>{t("reimbursementTotal")}</span>
+        <span>− <Money usd={fromCents(reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
+      </div>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
+        justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 800 }}>{t("cashToDrawer")}</span>
+        <Money usd={fromCents(cashC)} rate={S.rate} lang={lang} size={26} tone="#fff" />
+      </div>
+    </div>
+    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
+      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>{t("reimburseOverGross")}</div>}
+    <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    <button style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({ amount, saleId, method, currency: cur, rateUsed: S.rate,
-        at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+    {(err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    <button style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
+      onClick={() => {
+        const rows = reimbursements();
+        if (!rows || !canSave) return;
+        onSave({
+          amount: fromCents(payC), cashAmount: fromCents(cashC), saleId, method, currency: cur, rateUsed: S.rate,
+          at: dayStamp(date), note: note.trim(), reimbursements: rows,
+        });
+      }}>✓ {t("save")}</button>
   </Sheet>;
 }
 
@@ -6165,8 +6169,7 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   const regulars = customers.filter((c) => (c.defaultQty || 0) > 0);
   const init = {}; regulars.forEach((c) => { init[c.id] = { qty: c.defaultQty, paid: false, skip: false }; });
   const [rows, setRows] = useState(init);
-  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(S.milkUnit));
-  const stockUnit = milkUnitOf(S.milkUnit);
+  const milkSaleUnit = "kg";
   const priceOf = (c) => (c.priceL > 0 ? c.priceL : (c.product === "eggs" ? S.eggPrice : S.milkPrice));
   const set = (id, patch) => setRows((r) => ({ ...r, [id]: { ...r[id], ...patch } }));
   const active = regulars.filter((c) => !rows[c.id]?.skip && (rows[c.id]?.qty || 0) > 0);
@@ -6176,13 +6179,8 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   if (regulars.length === 0) return <Sheet title={`🚚 ${t("dailyRound")}`} onClose={onClose}>
     <Empty icon="🚚" title={t("noRegulars")} sub={t("dailyRoundSub")} /></Sheet>;
   return <Sheet title={`🚚 ${t("dailyRound")}`} sub={t("dailyRoundSub")} onClose={onClose}>
-    {regulars.some((c) => (c.product || "milk") === "milk") && <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 7 }}>{t("milkSaleUnit")}</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
-          onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
-      </div>
-    </div>}
+    {regulars.some((c) => (c.product || "milk") === "milk") && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10 }}>
+      {t("milkDensityHint")}</div>}
     {milkLeft != null && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, fontWeight: 700, fontSize: 13.5, display: "flex", justifyContent: "space-between" }}>
       <span>🥛 {t("milkLeft")}</span>
@@ -6208,6 +6206,7 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
             <span><Money usd={r.qty * priceOf(c)} rate={S.rate} lang={lang} size={18} tone={C.field} /></span>
           </div>
           <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={rowUnit} />
+          {(c.product || "milk") === "milk" && milkEqHint(r.qty, "kg", t)}
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button type="button" onClick={() => set(c.id, { paid: !r.paid, skip: false })} style={{ flex: 1, background: r.paid ? C.green : C.card,
               color: r.paid ? "#fff" : C.ink, border: `1.5px solid ${r.paid ? C.green : C.line}`, borderRadius: 5,
@@ -6227,7 +6226,7 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
     </div>
     <button style={{ ...primaryBtn, opacity: active.length ? 1 : .45 }} onClick={() => active.length && onSave(
       active.map((c) => ({ customerId: c.id, product: c.product || "milk", qty: rows[c.id].qty, price: priceOf(c),
-        unit: (c.product || "milk") === "milk" ? milkSaleUnit : undefined,
+        unit: (c.product || "milk") === "milk" ? "kg" : undefined,
         amount: +(rows[c.id].qty * priceOf(c)).toFixed(2), paid: rows[c.id].paid })))}>✓ {t("save")}</button>
   </Sheet>;
 }
@@ -6312,7 +6311,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const [date, setDate] = useState(dayKey(sale.at));
   const [note, setNote] = useState(sale.note || "");
   const [product, setProduct] = useState(sale.product || "milk");
-  const [milkSaleUnit, setMilkSaleUnit] = useState(milkUnitOf(sale.unit));
+  const [milkSaleUnit] = useState("kg");
   const [discount, setDiscount] = useState(sale.discountAmount || 0);
   const [discountNote, setDiscountNote] = useState(sale.discountNote || "");
   const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
@@ -6347,10 +6346,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
         </button>;
       })}
     </div>
-    {product === "milk" && <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      {["L", "kg"].map((u) => <Chip key={u} active={milkSaleUnit === u}
-        onClick={() => setMilkSaleUnit(u)}>{milkUnitLb(u, t)}</Chip>)}
-    </div>}
+    {product === "milk" && milkEqHint(qty, "kg", t)}
     <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit} /></div>
@@ -6401,7 +6397,7 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
         <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
           onClick={() => !block && onSave({ qty, price: unitPrice, amount, product, priceMode,
             discountAmount: fromCents(discC), discountNote: discountNote.trim(),
-            unit: product === "milk" ? milkSaleUnit : undefined,
+            unit: product === "milk" ? "kg" : undefined,
             at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
       </>;
     })()}
@@ -6972,8 +6968,8 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     loss: ["💀", `${t("losses")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)}`],
     birth: ["🐣", `${t("births")} · ${a ? animalLabel(a) : "—"}${e.males !== undefined ? ` · ♂${e.males} ♀${e.females}` : ""}${e.dead ? ` · 💀${e.dead}` : ""}`, `${nf(e.count)}`],
-    milkBulk: ["🥛", `${t("dayMilkTotal")}${e.session === "am" ? ` · ${t("morning")}` : e.session === "pm" ? ` · ${t("evening")}` : (e.amLiters != null || e.pmLiters != null) ? ` · ${t("morning")} ${n1(milkFromLiters(e.amLiters || 0, e.unit))} · ${t("evening")} ${n1(milkFromLiters(e.pmLiters || 0, e.unit))}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, `${n1(milkFromLiters(milkRecordLiters(e), e.unit))} ${milkUnitLb(e.unit, t)}`],
-    milkUse: ["🥛", `${t("milkUse")} · ${milkUseLabel(e, t)}`, `${n1(milkFromLiters(milkRecordLiters(e), e.unit))} ${milkUnitLb(e.unit, t)}`],
+    milkBulk: ["🥛", `${t("dayMilkTotal")}${e.session === "am" ? ` · ${t("morning")}` : e.session === "pm" ? ` · ${t("evening")}` : (e.amLiters != null || e.pmLiters != null) ? ` · ${t("morning")} ${n1(milkFromLiters(e.amLiters || 0, "kg"))} · ${t("evening")} ${n1(milkFromLiters(e.pmLiters || 0, "kg"))}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, milkKgLine(e, t)],
+    milkUse: ["🥛", `${t("milkUse")} · ${milkUseLabel(e, t)}`, milkKgLine(e, t)],
     weight: ["⚖️", `${t("weighIn")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.kg)} ${t("kg")}`],
     status: ["🔄", `${a ? animalLabel(a) : "—"} · ${statusLabel(e.status, lang)}`, ""],
     service: ["🍼", `${t("recordService")} · ${a ? animalLabel(a) : "—"}`, e.served || ""],
@@ -8673,7 +8669,7 @@ function FarmApp() {
 
   /* ------------------------------ derived ------------------------------ */
   const S = (data && data.settings) || { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0 };
-  const milkUnit = milkUnitOf(milkUnitDraft ?? S.milkUnit);
+  const milkUnit = "kg";
   const animals = (data && data.animals) || [];
   const workers = (data && data.workers) || [];
   const obligations = (data && data.obligations) || [];
@@ -9154,7 +9150,7 @@ function FarmApp() {
 
   const milkUseLog = useMemo(() => {
     const f = milkLogFilt;
-    const rows = (entries || []).filter((e) => e.type === "milkUse" && (e.qty || 0) > 0.0001)
+    const rows = (entries || []).filter((e) => e.type === "milkUse" && milkRecordLiters(e) > 0.0001)
       .filter((e) => {
         const d = dayKey(e.at);
         if (f.from && d < f.from) return false;
@@ -9437,7 +9433,8 @@ function FarmApp() {
           const rows = [...expScoped].filter((e) => {
             const cat = e.type === "med" ? "medicine" : (e.category || "other");
             if (expCat !== "all" && cat !== expCat) return false;
-            const isReimb = e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) || e.origin === "customer_reimbursement";
+            const isReimb = e.paidSource === "customerReimburse" || isCustomerPaidExpense(e)
+              || e.origin === "customer_reimbursement" || e.origin === "payment_reimbursement";
             if (expSource === "reimburse" && !isReimb) return false;
             if (expSource === "cash" && isReimb) return false;
             if (!expQ.trim()) return true;
@@ -9673,15 +9670,10 @@ function FarmApp() {
         })()}
       </SetSection>
 
-      <SetSection open={setOpen.milk} onToggle={() => toggleSet("milk")} icon="🥛" title={t("setCatMilk")} tip={t("milkUnit")}
-        summary={milkUnitLb(D.milkUnit || S.milkUnit, t)}>
-        <SetLabel>{t("milkUnit")}</SetLabel>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <Chip active={(D.milkUnit || "L") !== "kg"} onClick={() => setDraftS({ ...D, milkUnit: "L" })}>{t("milkUnitL")}</Chip>
-          <Chip active={(D.milkUnit || "L") === "kg"} onClick={() => setDraftS({ ...D, milkUnit: "kg" })}>{t("milkUnitKg")}</Chip>
-        </div>
+      <SetSection open={setOpen.milk} onToggle={() => toggleSet("milk")} icon="🥛" title={t("setCatMilk")} tip={t("kg")}
+        summary={t("kg")}>
         <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "12px 14px", fontSize: 13.5, color: C.inkSoft, fontWeight: 500, lineHeight: 1.45 }}>
-          {t("milkLogHint")}
+          {t("milkDensityHint")} · {t("milkLogHint")}
         </div>
       </SetSection>
 
@@ -10584,24 +10576,6 @@ function FarmApp() {
     return milkStock(fake);
   })();
 
-  const setMilkUnitKeepQty = (next) => {
-    const to = milkUnitOf(next);
-    const from = milkUnit;
-    if (from === to) return;
-    setBatch((p) => {
-      const n = { ...p };
-      ["am", "pm"].forEach((sess) => {
-        const k = `bulk:${sess}`;
-        if (!(k in p)) return;
-        const raw = p[k];
-        if (raw === "" || raw == null) { n[k] = ""; return; }
-        n[k] = String(milkConvertQty(raw, from, to));
-      });
-      return n;
-    });
-    setMilkUnitDraft(to);
-  };
-
   const commitDayMilk = () => {
     const unit = milkUnit;
     const amP = milkPack(draftAm, unit);
@@ -10650,11 +10624,7 @@ function FarmApp() {
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
-            <Chip active={milkUnit === "L"} onClick={() => setMilkUnitKeepQty("L")}>{t("milkUnitL")}</Chip>
-            <Chip active={milkUnit === "kg"} onClick={() => setMilkUnitKeepQty("kg")}>{t("milkUnitKg")}</Chip>
-          </div>
-          <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginTop: -8 }}>
+          <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft }}>
             {t("milkDensityHint")}</div>
 
           <MilkStockCard stock={draftStock} lang={lang} t={t} unit={milkUnit} simple
@@ -10827,7 +10797,7 @@ function FarmApp() {
               title={milkUseLabel(e, t)}
               subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)}`}
               who={<WhoHint e={e} lang={lang} />}
-              meta={`${n1(e.qty)} ${milkUnitLb(e.unit || milkUnit, t)}`}
+              meta={milkKgLine(e, t)}
             />
           ))}
           table={
@@ -10848,7 +10818,7 @@ function FarmApp() {
                     <Td mono>{dmy(e.at)}</Td>
                     <Td mono tone={C.inkSoft}>{hhmm(e.loggedAt || e.at)}</Td>
                     <Td>{milkUseLabel(e, t)}</Td>
-                    <Td align="end" mono strong>{n1(e.qty)} {milkUnitLb(e.unit || milkUnit, t)}</Td>
+                    <Td align="end" mono strong>{milkKgLine(e, t)}</Td>
                     <Td align="center"><WhoHint e={e} lang={lang} /></Td>
                   </tr>
                 ))}
@@ -10856,7 +10826,7 @@ function FarmApp() {
               <tfoot>
                 <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
                   <Td colSpan={3} strong>{t("milkUsed")}</Td>
-                  <Td align="end" mono strong tone={C.field}>{n1(milkUseLog.totalQty)} {milkU}</Td>
+                  <Td align="end" mono strong tone={C.field}>{n1(milkFromLiters(milkUseLog.totalQty, "kg"))} {t("kg")}</Td>
                   <Td />
                 </tr>
               </tfoot>
@@ -11283,13 +11253,13 @@ function FarmApp() {
         })()}
 
         {sheet?.k === "milkUse" && <MilkUseSheet lang={lang} t={t} stock={milkStock(entries)} date={dayKey(Date.now())}
-          unit={milkUnit} savedReasons={S.milkUseReasons || []}
+          savedReasons={S.milkUseReasons || []}
           onClose={() => setSheet(null)}
           onSave={(v) => {
             const saved = rememberNames(S.milkUseReasons, v.reasonLabel ? [v.reasonLabel] : []);
-            commit([{ type: "milkUse", qty: v.qty, liters: v.liters, kg: v.kg,
+            commit([{ type: "milkUse", qty: v.liters, liters: v.liters, kg: v.kg,
               reason: v.reason, reasonLabel: v.reasonLabel || "",
-              unit: v.unit || milkUnit, at: v.at }],
+              unit: "kg", at: v.at }],
               namesChanged(saved, S.milkUseReasons) ? { settings: { ...S, milkUseReasons: saved } } : null);
             setSheet(null);
           }} />}
@@ -11712,31 +11682,14 @@ function FarmApp() {
           entries={entries} ledger={ledger}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, priceMode, reimbursements, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
+          onSave={({ customerId, product, qty, price, amount, priceMode, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
             const loggedAt = iso(Date.now());
             const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit",
               discountAmount: discountAmount || 0, discountNote: discountNote || "",
               currency, rateUsed, at, loggedAt, note }];
-            (reimbursements || []).forEach((r) => {
-              const reimbId = `reimb-${uid()}`;
-              const amt = fromCents(toCents(r.amount));
-              es.push({ id: reimbId, type: "saleReimburse",
-                saleId, customerId, name: r.name, amount: amt,
-                currency, rateUsed, at, loggedAt });
-              const cat = expenseCatFromName(r.name, S.categories);
-              es.push({
-                id: `exp-${uid()}`, type: "expense", category: cat, group: expGroupOf(cat),
-                amount: amt, paidAmount: 0, payStatus: "paid", paidBy: "customer",
-                customerId, saleId, saleReimburseId: reimbId,
-                vendor: customerNameById(customers, customerId, t) || "",
-                note: r.name, origin: "customer_reimbursement", currency, rateUsed, at, loggedAt,
-              });
-            });
             if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at, loggedAt });
-            const savedTypes = rememberNames(S.saleReimburseTypes, (reimbursements || []).map((r) => r.name));
-            const typesChanged = namesChanged(savedTypes, S.saleReimburseTypes);
-            commit(es, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
+            commit(es);
             returnToAccount(customerId); }} />}
 
         {sheet?.k === "quickSale" && <QuickSaleSheet lang={lang} t={t} S={S} customers={activeCustomers} preId={sheet.cid}
@@ -11764,8 +11717,33 @@ function FarmApp() {
             commit(es); setSheet(null); }} />}
 
         {sheet?.k === "payment" && cust && <PaymentForm lang={lang} t={t} S={S} customer={cust} ledger={ledger}
+          entries={entries}
           onClose={() => returnToAccount(cust.id)}
-          onSave={({ amount, saleId, method, currency, rateUsed, at, note }) => { commit([{ type: "payment", customerId: cust.id, saleId: saleId || null, amount, method, currency, rateUsed, at, note }]);
+          onSave={({ amount, cashAmount, saleId, method, currency, rateUsed, at, note, reimbursements }) => {
+            const loggedAt = iso(Date.now());
+            const payId = `pay-${uid()}`;
+            const cash = fromCents(toCents(cashAmount != null ? cashAmount : amount));
+            const es = [];
+            if (toCents(cash) > 0) {
+              es.push({ id: payId, type: "payment", customerId: cust.id, saleId: saleId || null, amount: cash,
+                method, currency, rateUsed, at, note, loggedAt });
+            }
+            (reimbursements || []).forEach((r) => {
+              const amt = fromCents(toCents(r.amount));
+              const cat = expenseCatFromName(r.name, S.categories);
+              es.push({
+                id: `exp-${uid()}`, type: "expense", category: cat, group: expGroupOf(cat),
+                amount: amt, paidAmount: amt, payStatus: "paid",
+                customerId: cust.id, paymentId: payId,
+                vendor: customerNameById(customers, cust.id, t) || "",
+                note: r.name, name: r.name, origin: "payment_reimbursement",
+                currency, rateUsed, at, loggedAt,
+              });
+            });
+            if (!es.length) return;
+            const savedTypes = rememberNames(S.saleReimburseTypes, (reimbursements || []).map((r) => r.name));
+            const typesChanged = namesChanged(savedTypes, S.saleReimburseTypes);
+            commit(es, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
             returnToAccount(cust.id); }} />}
 
         {sheet?.k === "editSale" && (() => {

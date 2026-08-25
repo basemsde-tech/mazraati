@@ -61,8 +61,11 @@ export function milkPack(qty, unit) {
    Older kg rows stored the typed kg amount in `liters` — convert those. */
 export function milkRecordLiters(e) {
   if (!e) return 0;
+  const litersN = e.liters != null && e.liters !== "" ? +e.liters : NaN;
+  const kgN = e.kg != null && e.kg !== "" ? +e.kg : NaN;
+  if (Number.isFinite(litersN) && litersN >= 0 && Number.isFinite(kgN)) return milkQty2(litersN);
   const raw = e.liters ?? e.qty ?? 0;
-  if (e.kg != null && e.kg !== "" && Number.isFinite(+e.kg)) return milkQty2(raw);
+  if (Number.isFinite(kgN)) return milkQty2(raw);
   return milkToLiters(raw, e.unit);
 }
 
