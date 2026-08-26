@@ -30,9 +30,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.16", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.17", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.17": {
+    ar: [
+      "المبيعات أوضح: البيع السريع للدفع، والحسابات للبحث والمستحق وتسجيل الدفعة",
+      "الإجراءات الثانوية في قائمة ⋯ · التسعير المتقدم وحسم المصروف مطويان حتى تحتاجهما",
+    ],
+    en: [
+      "Sales stays quieter: Quick Sale for checkout, Accounts for search, balance, and Record Payment",
+      "Secondary actions sit in a ⋯ menu · custom pricing and expense offsets stay folded until needed",
+    ],
+  },
   "2.9.16": {
     ar: [
       "المبيعات: صندوق بيع سريع وحسابات الزبائن في تبويبين",
@@ -1344,6 +1354,8 @@ const T = {
     rateHistory: "سجل أسعار الصرف", rateNow: "سعر اليوم",
     docGen: "إصدار مستند", docType: "نوع المستند", docLang: "لغة المستند", bilingual: "عربي + English",
     printNow: "طباعة المستند", generate: "إصدار", previewDoc: "معاينة المستند", backToOptions: "تعديل الخيارات",
+    moreActions: "المزيد", customPricing: "تسعير مخصص", morePaymentOpts: "خيارات أخرى",
+    offsetDetails: "تفاصيل المصروف", accountDetails: "تفاصيل الحساب",
   },
   en: {
     dir: "ltr", brand: "MAZRAATI", sub: "Farm Management System",
@@ -1810,6 +1822,8 @@ const T = {
     updateRate: "Update the rate", rateHistory: "Exchange rate history", rateNow: "Today's rate",
     docGen: "Generate a document", docType: "Document type", docLang: "Document language", bilingual: "Arabic + English",
     printNow: "Print document", generate: "Generate", previewDoc: "Document preview", backToOptions: "Edit options",
+    moreActions: "More", customPricing: "Custom pricing", morePaymentOpts: "More options",
+    offsetDetails: "Expense details", accountDetails: "Account details",
   },
 };
 
@@ -3807,6 +3821,39 @@ function HelpKit({ t, actions = [], items = [], tone }) {
       ))}
       {items.map((txt, i) => <p key={i} className="help-kit-txt">{txt}</p>)}
     </div>}
+  </div>;
+}
+function MoreMenu({ t, items, align = "end" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [open]);
+  const list = (items || []).filter(Boolean);
+  if (!list.length) return null;
+  return <div className="more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
+    <button type="button" className="more-menu-btn" aria-label={t("moreActions")} title={t("moreActions")}
+      aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>⋯</button>
+    {open && <div className={`more-menu-pop${align === "start" ? " start" : ""}`} role="menu">
+      {list.map((it, i) => it === "—"
+        ? <div key={`s${i}`} className="ctx-sep" />
+        : <button key={it.key || i} type="button" className={`help-kit-act${it.danger ? " danger" : ""}`}
+            onClick={() => { setOpen(false); it.run && it.run(); }}>
+            {it.icon ? `${it.icon} ` : ""}{it.label}
+          </button>)}
+    </div>}
+  </div>;
+}
+function FoldPanel({ open, onToggle, label, hint, children }) {
+  return <div className="fold-panel">
+    <button type="button" className={`fold-tog${open ? " on" : ""}`} onClick={onToggle}>
+      <span>{open ? "▾" : "▸"} {label}</span>
+      {hint ? <span className="fold-hint">{hint}</span> : null}
+    </button>
+    {open && <div className="fold-body">{children}</div>}
   </div>;
 }
 function DateFilterPills({ t, from, to, onChange }) {
@@ -6067,6 +6114,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const [till, setTill] = useState(false);
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
+  const [adv, setAdv] = useState(false);
   const milkSaleUnit = "kg";
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => {
@@ -6114,18 +6162,12 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
       onAdd={onAddCustomer} addLabel={t("addCustomer")} />
     {walkIn && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 10px" }}>
       {t("walkInHint")}</div>}
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
-      marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
-      <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.emerald : C.rose }}>
-        {n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
-    </div>
-    <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "12px 0" }}>
+    <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "4px 0 12px" }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
         const on = product === k;
         return <button type="button" key={k} onClick={() => setProduct(k)} style={{
           background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
-          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 8, padding: "14px 6px",
+          border: `1px solid ${on ? C.field : C.line}`, borderRadius: 8, padding: "12px 6px",
           cursor: "pointer", fontFamily: "var(--body)" }}>
           <div style={{ fontSize: 22 }}>{ic}</div>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4 }}>{lang === "ar" ? ar : en}</div>
@@ -6137,20 +6179,21 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
       <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb} />
     </div>
-    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
-        {priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</div>
-      {priceMode === "unit"
-        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
-        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
-    </div>
-    {qty > 0 && amount > 0 && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-2px 0 10px", textAlign: "center" }}>
-      {priceMode === "unit" ? `${t("calculatedTotal")}: ${fmtC(amount, S.rate, lang)}` : `${t("unitPrice")}: ${fmtC(unitPrice, S.rate, lang)}`}
-    </div>}
-    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
-      style={{ ...inp, marginBottom: 12 }} />
-    <div style={{ background: C.field, color: "#fff", borderRadius: 8, padding: 14, marginBottom: 12,
+    <FoldPanel open={adv} onToggle={() => setAdv((v) => !v)}
+      label={t("customPricing")}
+      hint={product === "milk" ? `${t("milkLeft")} ${n1(milkFromLiters(milkAvail, "kg"))} ${t("kg")}` : null}>
+      <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
+          {priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</div>
+        {priceMode === "unit"
+          ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
+          : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
+      </div>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+        style={{ ...inp, marginBottom: 4 }} />
+    </FoldPanel>
+    <div style={{ background: C.field, color: "#fff", borderRadius: 8, padding: 14, margin: "10px 0 12px",
       display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <span style={{ fontWeight: 700 }}>{t("netInvoiceTotal")}</span>
       <Money usd={amount} rate={S.rate} lang={lang} size={26} tone="#fff" />
@@ -6197,6 +6240,8 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   const [note, setNote] = useState("");
   const [reimbRows, setReimbRows] = useState([emptyOffset()]);
   const [offsetOpen, setOffsetOpen] = useState(false);
+  const [offsetDetail, setOffsetDetail] = useState({});
+  const [morePay, setMorePay] = useState(false);
   const [keepCredit, setKeepCredit] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -6223,118 +6268,99 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   const overpay = creditC > 0;
   const canSave = !locked && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
-    <div style={{ background: "#FFF1F2", border: `1px solid #FECDD3`, borderRadius: 6, padding: 13, marginBottom: 12,
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 13, marginBottom: 12,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
-      <span style={{ color: C.rose }}>{t("due")}</span>
+      <span style={{ color: isOwing(b.due) ? C.rose : C.slate }}>{t("due")}</span>
       {isOwing(b.due)
         ? <Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.rose} />
         : <span style={{ fontFamily: "var(--mono)", color: C.slate }}>—</span>}
     </div>
-    <Step n="1" label={`${t("cashToDrawer")} — ${t("payCurrency")}`} />
-    <div style={{ background: C.card, borderRadius: 6, padding: 15, marginBottom: 12, boxShadow: sh1,
-      borderInlineStart: `4px solid ${C.emerald}` }}>
+    <div style={{ background: C.card, borderRadius: 8, padding: 14, marginBottom: 12, border: `1px solid ${C.line}` }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("cashToDrawer")}</div>
       <MoneyStepper big usd={fromCents(payC)} onChange={(v) => { setCashTouched(true); setAmount(fromCents(toCents(v))); }}
         rate={S.rate} lang={lang} t={t} step={10} currency={cur} setCurrency={setCur} />
     </div>
-    <Step n="2" label={t("method")} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
-      {[["cash", "💵", t("cash")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
-        const on = method === k;
-        return <button type="button" key={k} disabled={locked} onClick={() => setMethod(k)} style={{
-          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
-          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 6, padding: "12px 6px",
-          cursor: locked ? "wait" : "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
-          <div style={{ fontSize: 21 }}>{ic}</div>
-          <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3, color: on ? "#fff" : C.ink }}>{lb}</div>
-        </button>;
-      })}
+    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      {[["cash", t("cash")], ["transfer", t("transfer")]].map(([k, lb]) => (
+        <Chip key={k} active={method === k} onClick={() => !locked && setMethod(k)}>{lb}</Chip>))}
     </div>
-    <Step n="3" label={`${t("paymentDate")} — ${dmy(date)}`} />
-    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
-    <Step n="4" label={t("invoice")} />
-    <Scroller>
-      <Chip active={!saleId} onClick={() => { setSaleId(""); setSuggestFromC(dueC); setCashTouched(false); }}>⚡ {t("allTypes")}</Chip>
-      {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => {
-        setSaleId(iv.id); setSuggestFromC(toCents(iv.due)); setCashTouched(false); setAmount(iv.due);
-      }}>
-        {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
-    </Scroller>
-    <Step n="5" label={t("expenseOffset")} />
-    <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 10px", lineHeight: 1.45 }}>
-      {t("offsetHint")}
-    </div>
-    <button type="button" onClick={() => setOffsetOpen((v) => !v)} className="dk-pill" style={{ marginBottom: 10 }}>
-      {offsetOpen || reimbC > 0 ? "▾" : "▸"} {t("expenseOffset")}
-      {reimbC > 0 ? ` · ${fmtC(fromCents(reimbC), S.rate, lang)}` : ""}
-    </button>
-    {(offsetOpen || reimbC > 0) && <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-      {reimbRows.map((r, i) => {
-        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : (r.amount || "");
-        return <div key={r.id} style={{ background: "#F5F3FF", border: `1px solid #DDD6FE`, borderRadius: 8, padding: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(100px,.8fr) auto", gap: 7, alignItems: "center" }}>
-            <select value={r.category} onChange={(e) => {
-              const category = e.target.value;
-              const auto = offsetCategoryLabel(category, lang);
-              updateReimb(r.id, { category, name: r.name && r.name !== offsetCategoryLabel(r.category, lang) ? r.name : auto });
-            }} style={{ ...inp, padding: "10px 11px", fontSize: 14 }}>
-              {OFFSET_CATEGORIES.map((cat) => (
-                <option key={cat.key} value={cat.key}>{lang === "ar" ? cat.ar : cat.en}</option>
-              ))}
-            </select>
-            <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
-              onChange={(e) => {
-                const raw = Math.max(0, +(e.target.value || 0));
-                const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
-                updateReimb(r.id, { amount: fromCents(toCents(usd)) });
-              }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
-              style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
-            {i === reimbRows.length - 1
-              ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, emptyOffset()])}
-                  style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.purple}`, background: C.paper,
-                    color: C.purple, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
-              : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
-                  style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
-                    color: C.rose, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
-          </div>
-          <input value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
-            placeholder={t("expenseName")} style={{ ...inp, padding: "8px 11px", fontSize: 13.5, marginTop: 8 }} />
-          <div style={{ marginTop: 8 }}>
-            <AttachPicker value={r.receipt} onPick={(v) => updateReimb(r.id, { receipt: v })}
-              onClear={() => updateReimb(r.id, { receipt: "" })} t={t} />
-          </div>
-        </div>;
-      })}
-    </div>}
-    <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14, display: "grid", gap: 7 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontWeight: 600 }}>{t("due")}</span>
-        <Money usd={fromCents(dueC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
+    <FoldPanel open={offsetOpen} onToggle={() => setOffsetOpen((v) => !v)}
+      label={t("expenseOffset")}
+      hint={reimbC > 0 ? fmtC(fromCents(reimbC), S.rate, lang) : null}>
+      <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>{t("offsetHint")}</div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {reimbRows.map((r, i) => {
+          const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : (r.amount || "");
+          const showDetail = toCents(r.amount) > 0 && offsetDetail[r.id] !== false;
+          return <div key={r.id} style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(100px,.8fr) auto", gap: 7, alignItems: "center" }}>
+              <select value={r.category} onChange={(e) => {
+                const category = e.target.value;
+                const auto = offsetCategoryLabel(category, lang);
+                updateReimb(r.id, { category, name: r.name && r.name !== offsetCategoryLabel(r.category, lang) ? r.name : auto });
+              }} style={{ ...inp, padding: "10px 11px", fontSize: 14 }}>
+                {OFFSET_CATEGORIES.map((cat) => (
+                  <option key={cat.key} value={cat.key}>{lang === "ar" ? cat.ar : cat.en}</option>
+                ))}
+              </select>
+              <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
+                onChange={(e) => {
+                  const raw = Math.max(0, +(e.target.value || 0));
+                  const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
+                  updateReimb(r.id, { amount: fromCents(toCents(usd)) });
+                }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
+                style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
+              {i === reimbRows.length - 1
+                ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, emptyOffset()])}
+                    style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
+                      color: C.field, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
+                : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
+                    style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
+                      color: C.rose, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
+            </div>
+            {toCents(r.amount) > 0 && <button type="button" className="fold-mini" onClick={() => setOffsetDetail((d) => ({ ...d, [r.id]: d[r.id] === false }))}>
+              {showDetail ? "▾" : "▸"} {t("offsetDetails")}
+            </button>}
+            {showDetail && toCents(r.amount) > 0 && <>
+              <input value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
+                placeholder={t("expenseName")} style={{ ...inp, padding: "8px 11px", fontSize: 13.5, marginTop: 6 }} />
+              <div style={{ marginTop: 8 }}>
+                <AttachPicker value={r.receipt} onPick={(v) => updateReimb(r.id, { receipt: v })}
+                  onClear={() => updateReimb(r.id, { receipt: "" })} t={t} />
+              </div>
+            </>}
+          </div>;
+        })}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
-        <span style={{ fontWeight: 600 }}>{t("expenseOffset")}</span>
-        <span>− <Money usd={fromCents(reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
-        <span style={{ fontWeight: 600 }}>{t("cashToDrawer")}</span>
-        <span>− <Money usd={fromCents(payC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92, color: "rgba(255,255,255,.85)" }}>
-        <span style={{ fontWeight: 600 }}>{t("creditedTotal")}</span>
-        <Money usd={fromCents(payC + reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
-      </div>
-      <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
-        justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{creditC > 0 ? t("credit") : t("remainingBalance")}</span>
-        <Money usd={fromCents(creditC > 0 ? creditC : remainingC)} rate={S.rate} lang={lang} size={26} tone="#fff" />
-      </div>
+    </FoldPanel>
+    <FoldPanel open={morePay} onToggle={() => setMorePay((v) => !v)} label={t("morePaymentOpts")}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("paymentDate")} — {dmy(date)}</div>
+      <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+      {open.length > 0 && <>
+        <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>{t("invoice")}</div>
+        <Scroller>
+          <Chip active={!saleId} onClick={() => { setSaleId(""); setSuggestFromC(dueC); setCashTouched(false); }}>⚡ {t("allTypes")}</Chip>
+          {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => {
+            setSaleId(iv.id); setSuggestFromC(toCents(iv.due)); setCashTouched(false); setAmount(iv.due);
+          }}>
+            {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
+        </Scroller>
+      </>}
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+        style={{ ...inp, marginTop: 10 }} />
+    </FoldPanel>
+    <div className="pay-remain" style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+      background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", margin: "12px 0 14px",
+      fontWeight: 800 }}>
+      <span>{creditC > 0 ? t("credit") : t("remainingBalance")}</span>
+      <Money usd={fromCents(creditC > 0 ? creditC : remainingC)} rate={S.rate} lang={lang} size={22}
+        tone={creditC > 0 ? C.emerald : (remainingC > 0 ? C.rose : C.ink)} />
     </div>
     {overpay && <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, fontWeight: 600, fontSize: 13.5 }}>
       <input type="checkbox" checked={keepCredit} onChange={(e) => { setKeepCredit(e.target.checked); setErr(""); }}
         style={{ marginTop: 3, width: 18, height: 18 }} />
       <span>{t("keepAsCredit")} · {fmtC(fromCents(creditC), S.rate, lang)}</span>
     </label>}
-    <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
-    <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     {(err) && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
     {overpay && !keepCredit && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("overpayWarn")}</div>}
     <button type="button" disabled={!canSave} style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
@@ -6606,7 +6632,7 @@ function AccountHead({ customer, no, b, lang, t, S }) {
   bits.push(`${t("since")} ${dmy(customer.at)}`);
   if (!isWalkInCustomer(customer)) bits.push(`${fmtC(price, S.rate, lang)} / ${t("colUnit")}`);
   return <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-    background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
+    background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 13 }}>
     <div style={{ width: 46, height: 46, borderRadius: "50%", flexShrink: 0, background: C.bg,
       color: C.field, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 16 }}>
       {initials(customerLabel(customer, t))}</div>
@@ -6617,19 +6643,24 @@ function AccountHead({ customer, no, b, lang, t, S }) {
     <div style={{ textAlign: "end", borderRadius: 12, padding: "10px 14px",
       background: C.paper, border: `1px solid ${C.line}`, display: "flex", flexDirection: "column",
       alignItems: "flex-end", gap: 8, minWidth: 140 }} className="account-balance">
-      <StatusPill status={owing ? (b.oldest > 30 ? "overdue" : "owing") : "paid"}>
-        {owing ? t("outstanding") : t("paidS")}</StatusPill>
       {owing
-        ? <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
+        ? <>
+          <StatusPill status={b.oldest > 30 ? "overdue" : "owing"}>
+            {b.oldest > 30 ? t("overdue") : t("outstanding")}</StatusPill>
+          <Money usd={b.due} rate={S.rate} lang={lang} size={26} />
+          {b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
+            {b.oldest} {t("daysLate")}</div>}
+        </>
         : <span style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 26, color: C.inkSoft }}>—</span>}
-      {owing && b.oldest > 30 && <div style={{ fontSize: 11, fontWeight: 700, color: C.inkSoft }}>
-        {b.oldest} {t("daysLate")}</div>}
     </div>
   </div>;
 }
 
 function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, filters, setFilters,
-  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onEditPay, no, wide }) {
+  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onEditPay, onStatement, no, wide }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [deductOpen, setDeductOpen] = useState(false);
+  const [payLogOpen, setPayLogOpen] = useState(false);
   const b = ledger.byCustomer[customer.id] || { sold: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
@@ -6647,11 +6678,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   const rDeduct = fromCents(rows.reduce((sum, x) => sum + toCents(x.reimbAmount) + toCents(x.discountAmount), 0));
   const rPaid = fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
   const rDue = fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
-  const ranged = !!(f.from || f.to || f.status !== "all" || f.q);
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
   const chipTone = (k) => (k === "all" ? C.field : k === "paid" ? C.green : k === "partial" ? C.amber : C.red);
-  const deductAmt = (iv) => fromCents(toCents(iv.reimbAmount) + toCents(iv.discountAmount));
-  const reimbName = (r) => r.accountAlloc ? t("accountReimburse") : (r.name || t("reimbursement"));
   const deductItems = [
     ...(ledger.reimbursements || []).filter((r) => r.customerId === customer.id && inR(r.at))
       .map((r) => ({ id: r.id, at: r.at, label: `${t("reimbursement")} · ${r.name || "—"}`, amount: r.amount, by: r })),
@@ -6661,62 +6689,44 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
       .map((x) => ({ id: `${x.id}-disc`, at: x.at, label: `${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""} · ${x.no}`,
         amount: x.discountAmount })),
   ].sort((a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest"));
-  const bDeduct = fromCents(toCents(b.deductions || 0) || (toCents(b.reimbursed) + toCents(b.discounted)));
 
   const Settlement = ({ gross, deduct, paid, due }) => (
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "12px 14px" }}
-      title={t("deductHint")}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("balance")}</div>
-      <div style={{ display: "grid", gap: 6, fontSize: 13.5, fontWeight: 600 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span>{t("accountTotal")}</span><span style={{ fontFamily: "var(--mono)" }}>{fmtC(gross, S.rate, lang)}</span></div>
-        <div style={{ display: "flex", justifyContent: "space-between", color: C.purple }}>
-          <span>{t("deductions")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(deduct) ? `− ${fmtC(deduct, S.rate, lang)}` : "—"}</span></div>
-        <div style={{ display: "flex", justifyContent: "space-between", color: C.emerald }}>
-          <span>{t("collected")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(paid) ? `− ${fmtC(paid, S.rate, lang)}` : "—"}</span></div>
-        <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 7, borderTop: `1px solid ${C.line}`,
-          fontWeight: 800 }}>
-          <span>{t("settlementNet")}</span>
-          <span style={{ fontFamily: "var(--mono)", color: isOwing(due) ? C.rose : C.slate }}>{fmtDue(due, S.rate, lang)}</span>
+    <div className="pay-remain" title={t("deductHint")}
+      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+        background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px" }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft }}>{t("balance")}</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600, marginTop: 3, lineHeight: 1.4 }}>
+          {t("accountTotal")} {fmtC(gross, S.rate, lang)}
+          {isOwing(deduct) ? ` · ${t("deductions")} −${fmtC(deduct, S.rate, lang)}` : ""}
+          {isOwing(paid) ? ` · ${t("collected")} −${fmtC(paid, S.rate, lang)}` : ""}
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600, marginTop: 8, lineHeight: 1.4 }}>{t("deductHint")}</div>
+      <span style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 20,
+        color: isOwing(due) ? C.rose : C.inkSoft }}>{fmtDue(due, S.rate, lang)}</span>
     </div>
   );
 
   const Overview = (
     <div style={{ display: "grid", gap: 12 }}>
-      <div className="adapt-grid">
-        <Kpi label={t("accountTotal")} value={fmtC(b.gross || b.sold, S.rate, lang)} />
-        <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.purple} hint={t("deductHint")} />
-        <Kpi label={t("collected")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
-        <Kpi label={t("due")} value={fmtDue(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
-        <Kpi label={t("txCount")} value={nf(all.length)} tone={C.slate} />
-      </div>
-      <Settlement gross={b.gross || b.sold} deduct={bDeduct} paid={b.paid} due={b.due} />
       {toCents(b.credit) > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
         border: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
         <StatusPill status="paid">{t("credit")}</StatusPill>
         {fmtC(b.credit, S.rate, lang)}</div>}
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-        {customer.phone && <Row k={t("phone")} v={customer.phone} />}
-        <Row k={t("product")} v={(() => { const p = PRODUCTS.find((x) => x[0] === (customer.product || "milk"));
-          return p ? `${p[1]} ${lang === "ar" ? p[2] : p[3]}` : "—"; })()} />
-        <Row k={t("unitPrice")} v={fmtC(customer.priceL > 0 ? customer.priceL : (customer.product === "eggs" ? S.eggPrice : S.milkPrice), S.rate, lang)} />
-        {(customer.defaultQty || 0) > 0 && <Row k={t("dailyQty")} v={nf(customer.defaultQty)} />}
-        {all.length > 0 && <Row k={t("lastOrder")} v={`${dmy(all[all.length - 1].at)} · ${n1(all[all.length - 1].qty)}`} />}
-        <Row k={t("since")} v={dmy(customer.at)} />
-        <Row k={t("oldestDebt")} v={isOwing(b.due) && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
-          tone={isOwing(b.due) && b.oldest > 30 ? C.red : isOwing(b.due) && b.oldest > 0 ? C.amber : C.green} />
-      </div>
-      <div style={{ display: "grid", gap: 9 }}>
-        <button style={primaryBtn} onClick={onNewSale}>🧾 {t("newSale")}</button>
-        <div style={{ display: "flex", gap: 9 }}>
-          <button style={{ ...secondaryBtn, flex: 1 }} onClick={onPayment}>💵 {t("recordPayment")}</button>
-          <button style={{ ...secondaryBtn, flex: 1 }} onClick={() => setTab("transactions")}>📊 {t("transactions")} ›</button>
+      <button type="button" style={primaryBtn} onClick={onPayment}>💵 {t("recordPayment")}</button>
+      <FoldPanel open={detailsOpen} onToggle={() => setDetailsOpen((v) => !v)} label={t("accountDetails")}>
+        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 12 }}>
+          {customer.phone && <Row k={t("phone")} v={customer.phone} />}
+          <Row k={t("product")} v={(() => { const p = PRODUCTS.find((x) => x[0] === (customer.product || "milk"));
+            return p ? `${p[1]} ${lang === "ar" ? p[2] : p[3]}` : "—"; })()} />
+          <Row k={t("unitPrice")} v={fmtC(customer.priceL > 0 ? customer.priceL : (customer.product === "eggs" ? S.eggPrice : S.milkPrice), S.rate, lang)} />
+          {(customer.defaultQty || 0) > 0 && <Row k={t("dailyQty")} v={nf(customer.defaultQty)} />}
+          {all.length > 0 && <Row k={t("lastOrder")} v={`${dmy(all[all.length - 1].at)} · ${n1(all[all.length - 1].qty)}`} />}
+          <Row k={t("since")} v={dmy(customer.at)} />
+          <Row k={t("oldestDebt")} v={isOwing(b.due) && b.oldest > 0 ? `${b.oldest} ${t("days")}` : t("noLate")}
+            tone={isOwing(b.due) && b.oldest > 30 ? C.red : b.due > 0 && b.oldest > 0 ? C.amber : C.green} />
         </div>
-      </div>
-      {onManage && <button style={{ ...secondaryBtn, color: C.inkSoft, fontSize: 13.5 }} onClick={onManage}>⚙️ {t("manageAccount")}</button>}
+      </FoldPanel>
     </div>
   );
 
@@ -6746,52 +6756,47 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         </FilterGroup>
       </SearchFilterBar>
 
-      <div className="adapt-grid">
-        <Kpi label={`${t("accountTotal")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rGross, S.rate, lang)} />
-        <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.purple} hint={t("deductHint")} />
-        <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.emerald} />
-        <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtDue(rDue, S.rate, lang)} tone={isOwing(rDue) ? C.rose : C.slate} />
-        <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.slate} />
-      </div>
+      <Settlement gross={rGross} deduct={rDeduct} paid={rPaid} due={rDue} />
 
       <DataList
         empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div> : null}
         cards={rows.map((iv) => {
           const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
           const kind = payStatusKind(iv);
+          const flag = kind === "paid" ? null : kind;
           return (
-            <DataCard key={iv.id} kind={kind}
-              status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
-              title={iv.no}
+            <DataCard key={iv.id} kind={flag || "neutral"}
+              status={flag ? <StatusPill status={kind}>{statusText(kind)}</StatusPill> : null}
+              title={`${iv.no} · ${fmtC(iv.grossAmount, S.rate, lang)}`}
               subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
-              who={<WhoHint e={iv} lang={lang} />}
-              meta={`${t("accountTotal")} ${fmtC(iv.grossAmount, S.rate, lang)}${deductAmt(iv) > 0.009 ? ` · ${t("deductions")} −${fmtC(deductAmt(iv), S.rate, lang)}` : ""} · ${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}`}
-              actions={
-                <>
-                  <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
-                  <button type="button" className="dk-pill dk-icon-btn" onClick={() => onDoc(iv)} title={t("docGen")}>🖨️</button>
-                </>
-              }
+              meta={isOwing(iv.due) ? `${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}` : undefined}
+              actions={<MoreMenu t={t} items={[
+                { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+                { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
+                isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
+                onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
+              ]} />}
             />
           );
         })}
         table={
-      <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
+      <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8 }}>
         {rows.length === 0
           ? null
-          : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 720 }}>
+          : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 560 }}>
             <thead><tr>
               <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
-                active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("product")}</Th>
-              <Th align="end">{t("colQty")}</Th><Th align="end">{t("colUnit")}</Th><Th align="end">{t("accountTotal")}</Th>
-              <Th align="end">{t("deductions")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("colDue")}</Th>
-              <Th>{t("colStatus")}</Th><Th>{t("colNotes")}</Th><Th>{t("colUser")}</Th><Th align="center">{t("actions")}</Th>
+                active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th>
+              <Th>{t("invoice")}</Th>
+              <Th align="end">{t("accountTotal")}</Th>
+              <Th align="end">{t("colDue")}</Th>
+              <Th align="center">{t("actions")}</Th>
             </tr></thead>
             <tbody>
               {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
-                const paidOn = pays.filter((p2) => p2.saleId === iv.id).sort((a2, c2) => cmpTx(a2, c2, "newest"))[0];
                 const kind = payStatusKind(iv);
-                return <tr key={iv.id} className={statusRowClass(kind)}
+                const flag = kind === "paid" ? null : kind;
+                return <tr key={iv.id} className={flag ? statusRowClass(kind) : undefined}
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                     { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
@@ -6799,94 +6804,75 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                     onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
                   <Td mono>{dmy(iv.at)}</Td>
-                  <Td mono tone={C.field}>{iv.no}</Td>
-                  <Td>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                  <Td align="end" mono>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</Td>
-                  <Td align="end" mono tone={C.inkSoft}>{fmtC(iv.price, S.rate, lang)}</Td>
+                  <Td>
+                    <div style={{ fontWeight: 700, fontFamily: "var(--mono)", fontSize: 13 }}>{iv.no}</div>
+                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                      {pr[1]} {lang === "ar" ? pr[2] : pr[3]} · {n1(iv.qty)} {saleQtyUnit(iv, lang, t)}
+                    </div>
+                    {flag && <div style={{ marginTop: 4 }}><StatusPill status={kind}>{statusText(kind)}</StatusPill></div>}
+                  </Td>
                   <Td align="end" mono strong>{fmtC(iv.grossAmount, S.rate, lang)}</Td>
-                  <Td align="end" mono tone={deductAmt(iv) > 0.009 ? C.purple : C.slate}>
-                    {deductAmt(iv) > 0.009 ? `−${fmtC(deductAmt(iv), S.rate, lang)}` : "—"}
-                    {iv.reimbAmount > 0 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
-                      color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
-                      {t("reimbursement")} {(iv.reimbRows || []).map((r) => reimbName(r)).filter(Boolean).join("، ")}
-                    </span>}
-                    {(iv.discountAmount || 0) > 0.009 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
-                      color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
-                      {t("discount")}{iv.discountNote ? ` · ${iv.discountNote}` : ""}
-                    </span>}
-                  </Td>
-                  <Td align="end" mono>{isOwing(iv.paidAmount) ? fmtC(iv.paidAmount, S.rate, lang) : "—"}</Td>
                   <Td align="end" mono strong>{fmtDue(iv.due, S.rate, lang)}</Td>
-                  <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill>
-                    {iv.status !== "unpaid" && paidOn && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 3,
-                      fontFamily: "var(--mono)" }}>{dmy(paidOn.at)}</div>}
-                    {isOwing(iv.due) && iv.lateDays > 0 && <div style={{ fontSize: 10.5, color: C.inkSoft, marginTop: 2 }}>
-                      {iv.lateDays} {t("daysLate")}</div>}
-                  </Td>
-                  <Td tone={C.inkSoft}>{iv.note || "—"}</Td>
-                  <Td align="center"><WhoHint e={iv} lang={lang} /></Td>
                   <Td align="center">
-                    <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-                      <button type="button" className="dk-pill dk-icon-btn" onClick={() => onEdit(iv)} title={t("editTx")}>✏️</button>
-                      <button type="button" className="dk-pill dk-icon-btn" onClick={() => onDoc(iv)} title={t("docGen")}>🖨️</button>
-                    </span>
+                    <MoreMenu t={t} items={[
+                      { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+                      { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
+                      isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
+                      onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
+                    ]} />
                   </Td>
                 </tr>; })}
             </tbody>
-            <tfoot><tr style={{ background: C.paper }}>
-              <Td strong colSpan={5}>{t("total")}</Td>
-              <Td align="end" mono strong>{fmtC(rGross, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={C.purple}>{rDeduct > 0.009 ? `−${fmtC(rDeduct, S.rate, lang)}` : "—"}</Td>
-              <Td align="end" mono strong tone={C.emerald}>{fmtC(rPaid, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={isOwing(rDue) ? C.rose : C.slate}>{fmtDue(rDue, S.rate, lang)}</Td>
-              <Td colSpan={4} />
-            </tr></tfoot>
           </table>}
       </div>
       }
     />
 
-      {deductItems.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>↩ {t("deductions")}</div>
+      {deductItems.length > 0 && <FoldPanel open={deductOpen} onToggle={() => setDeductOpen((v) => !v)}
+        label={t("deductions")} hint={String(deductItems.length)}>
         <div style={{ display: "grid", gap: 7 }}>
           {deductItems.slice(0, 12).map((d) => (
             <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
+              borderBottom: `1px solid ${C.line}`, paddingBottom: 6 }}>
               <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(d.at)}</b> · {d.label}
                 {d.by && <WhoHint e={d.by} lang={lang} />}</span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.green }}>−{nf(d.amount)}</span>
+              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.inkSoft }}>−{nf(d.amount)}</span>
             </div>))}
         </div>
-      </div>}
+      </FoldPanel>}
 
-      {pays.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>💵 {t("payments")}</div>
+      {pays.length > 0 && <FoldPanel open={payLogOpen} onToggle={() => setPayLogOpen((v) => !v)}
+        label={t("payments")} hint={String(pays.filter((p2) => inR(p2.at)).length)}>
         <div style={{ display: "grid", gap: 7 }}>
           {pays.filter((p2) => inR(p2.at)).slice(0, 12).map((p2) => (
             <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
+              borderBottom: `1px solid ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
               onClick={() => onEditPay && onEditPay(p2)}>
               <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
                 {p2.note ? ` · ${p2.note}` : ""}
                 <WhoHint e={p2} lang={lang} /></span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.green }}>+{nf(p2.amount)}</span>
+              <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>+{nf(p2.amount)}</span>
             </div>))}
         </div>
-      </div>}
+      </FoldPanel>}
     </div>
   );
 
   return <div style={{ display: "grid", gap: 12 }}>
     <AccountHead customer={customer} no={no} b={b} lang={lang} t={t} S={S} />
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      {[["overview", `📋 ${t("overview")}`], ["transactions", `📊 ${t("transactions")} · ${all.length}`]].map(([k, lb]) => (
+      {[["overview", t("overview")], ["transactions", `${t("transactions")} · ${all.length}`]].map(([k, lb]) => (
         <Chip key={k} active={tab === k} onClick={() => setTab(k)}>{lb}</Chip>))}
-      {onExport && <button onClick={onExport} title={t("exportAccount")}
-        style={{ marginInlineStart: "auto", background: C.card, border: `1px solid ${C.line}`, borderRadius: 3,
-          padding: "7px 11px", cursor: "pointer", fontFamily: "var(--body)", fontWeight: 600,
-          fontSize: 13, color: C.ink }}>📊 {t("excel")}</button>}
+      <span style={{ marginInlineStart: "auto" }}>
+        <MoreMenu t={t} items={[
+          { key: "sale", icon: "🧾", label: t("newSale"), run: onNewSale },
+          onStatement && { key: "stmt", icon: "🖨️", label: t("statement"), run: onStatement },
+          onExport && { key: "xls", icon: "📊", label: t("excel"), run: onExport },
+          onManage && { key: "manage", icon: "⚙️", label: t("manageAccount"), run: onManage },
+        ]} />
+      </span>
     </div>
     {tab === "overview" ? Overview : Transactions}
   </div>;
@@ -11102,15 +11088,13 @@ function FarmApp() {
 
       {selCustomer
         ? <DeskCard title={`🧾 ${customerLabel(selCustomer, t)}`}
-            right={<div style={{ display: "flex", gap: 7 }}>
-              <button className="dk-pill" onClick={() => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"] })}>🖨️ {t("statement")}</button>
-              <button className="dk-pill" onClick={() => setSelCust(null)}>‹ {t("backToCustomers")}</button>
-            </div>}>
+            right={<button className="dk-pill" onClick={() => setSelCust(null)}>‹ {t("backToCustomers")}</button>}>
             <CustomerAccount customer={selCustomer} ledger={ledger} entries={entries} lang={lang} t={t} S={S} wide onCtx={openCtx}
               no={accNo(customers, selCustomer.id)} onExport={() => doAccountExcel(selCustomer)}
               tab={accTab} setTab={setAccTab} filters={txFilters} setFilters={setTxFilters}
               onNewSale={() => setSheet({ k: "newSale", cid: selCustomer.id })}
               onPayment={() => setSheet({ k: "payment", cid: selCustomer.id })}
+              onStatement={() => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"] })}
               onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: selCustomer.id })}
               onDeleteTx={(iv) => setSheet({ k: "confirmDeleteEntry", id: iv.id, back: { k: null } })}
               onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
@@ -11148,32 +11132,36 @@ function FarmApp() {
                   const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
                   const iv = (ledger.list || []).find((x) => x.id === e.id);
                   const due = iv ? iv.due : 0;
-                  const kind = due > 0.009 ? "owing" : "paid";
-                  return <DataCard key={e.id} kind={kind}
-                    status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("paidS")}</StatusPill>}
+                  const owing = due > 0.009;
+                  return <DataCard key={e.id} kind={owing ? "owing" : "neutral"}
+                    status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
                     title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
                     subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)} · ${customerNameById(customers, e.customerId, t)}`}
-                    meta={e.id}
                   />;
                 })}
                 table={
                   <div className="overflow-x-auto">
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
                       <thead><tr>
-                        <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th><Th>{t("product")}</Th>
-                        <Th align="end">{t("colTotal")}</Th><Th>{t("colStatus")}</Th>
+                        <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th>
+                        <Th align="end">{t("colTotal")}</Th>
                       </tr></thead>
                       <tbody>
                         {posSales.map((e) => {
                           const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
                           const iv = (ledger.list || []).find((x) => x.id === e.id);
                           const due = iv ? iv.due : 0;
-                          return <tr key={e.id} className={statusRowClass(due > 0.009 ? "owing" : "paid")}>
+                          const owing = due > 0.009;
+                          return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}>
                             <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
-                            <Td>{customerNameById(customers, e.customerId, t)}</Td>
-                            <Td>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                            <Td align="end" mono strong tone={C.emerald}>{fmtC(e.amount, S.rate, lang)}</Td>
-                            <Td><StatusPill status={due > 0.009 ? "owing" : "paid"}>{due > 0.009 ? t("outstanding") : t("paidS")}</StatusPill></Td>
+                            <Td>
+                              <div style={{ fontWeight: 700 }}>{customerNameById(customers, e.customerId, t)}</div>
+                              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                                {pr[1]} {lang === "ar" ? pr[2] : pr[3]}
+                                {owing ? ` · ${t("outstanding")}` : ""}
+                              </div>
+                            </Td>
+                            <Td align="end" mono strong>{fmtC(e.amount, S.rate, lang)}</Td>
                           </tr>;
                         })}
                       </tbody>
@@ -11185,13 +11173,8 @@ function FarmApp() {
           </DeskCard>
         </>
         : <DeskCard pad={0} title={`🤝 ${t("customers")} · ${activeCustomers.length}`}
-            right={<div style={{ display: "flex", gap: 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <button style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13.5 }}
-                onClick={() => setSheet({ k: "addCustomer" })}>＋ {t("addCustomer")}</button>
-              <button style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13.5 }}
-                onClick={() => setSheet({ k: "quickSale" })}>⚡ {t("quickSale")}</button>
-              <button style={{ ...primaryBtn, width: "auto", padding: "8px 13px", fontSize: 13.5 }}
-                onClick={() => setSheet({ k: "newSale" })}>🧾 {t("newSale")}</button></div>}>
+            right={<button style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "addCustomer" })}>＋ {t("addCustomer")}</button>}>
             {activeCustomers.length === 0
               ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")}
                   cta={`＋ ${t("addCustomer")}`} onCta={() => setSheet({ k: "addCustomer" })} /></div>
@@ -11212,16 +11195,26 @@ function FarmApp() {
                   cards={sortedCustomers.map((c) => {
                     const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
                     const due = (ledger.byCustomer[c.id] || {}).due || 0;
-                    const kind = due > 0.009 ? "owing" : "clear";
+                    const owing = due > 0.009;
+                    const more = <MoreMenu t={t} items={[
+                      { key: "open", icon: "👁", label: t("openAccount"), run: () => openAccount(c.id) },
+                      { key: "sale", icon: "🧾", label: t("newSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
+                      { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                      { key: "manage", icon: "⚙️", label: t("manageAccount"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                    ]} />;
                     return (
-                      <DataCard key={c.id} kind={kind}
-                        status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("statusClear")}</StatusPill>}
+                      <DataCard key={c.id} kind={owing ? "owing" : "neutral"}
+                        status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
                         title={customerLabel(c, t)}
-                        subtitle={`${accNo(customers, c.id)}${isWalkInCustomer(c) ? ` · ${t("walkInHint")}` : c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
-                        meta={c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined}
+                        subtitle={`${accNo(customers, c.id)}${c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
+                        meta={owing ? `${t("due")} ${fmtC(due, S.rate, lang)}` : (c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined)}
                         onClick={() => openAccount(c.id)}
-                        actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}>
-                          {t("openAccount")} ›</button>}
+                        actions={<>
+                          {owing && <button type="button" className="dk-pill" onClick={(ev) => {
+                            ev.stopPropagation(); openAccount(c.id); setSheet({ k: "payment", cid: c.id });
+                          }}>💵 {t("recordPayment")}</button>}
+                          {more}
+                        </>}
                       />
                     );
                   })}
@@ -11229,20 +11222,17 @@ function FarmApp() {
                 <div className="overflow-x-auto">
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>
-                      <Th w={100}>{t("accountNo")}</Th>
                       <Th>{t("customerName")}</Th>
-                      <Th w={130}>{t("phone")}</Th>
-                      <Th w={120}>{t("product")}</Th>
-                      <Th w={100} align="end">{t("dailyQty")}</Th>
-                      <Th w={120} align="end">{t("due")}</Th>
-                      <Th w={90} align="center">{t("actions")}</Th>
+                      <Th w={140} align="end">{t("due")}</Th>
+                      <Th w={160} align="center">{t("actions")}</Th>
                     </tr></thead>
                     <tbody>
                       {sortedCustomers.map((c) => {
                         const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
                         const due = (ledger.byCustomer[c.id] || {}).due || 0;
+                        const owing = due > 0.009;
                         return <tr key={c.id} onClick={() => openAccount(c.id)}
-                          className={statusRowClass(due > 0.009 ? "owing" : "clear")}
+                          className={owing ? statusRowClass("owing") : undefined}
                           onContextMenu={(e) => openCtx(e, [
                             { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
                             { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
@@ -11252,14 +11242,31 @@ function FarmApp() {
                             { key: "manage", icon: "⚙️", label: t("ctxManage"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
                           ])}
                           style={{ cursor: "pointer" }}>
-                          <Td mono tone={C.inkSoft}>{accNo(customers, c.id)}</Td>
-                          <Td strong>{customerLabel(c, t)}</Td>
-                          <Td tone={C.inkSoft}>{c.phone || t("noPhone")}</Td>
-                          <Td tone={C.inkSoft}>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                          <Td align="end" mono tone={C.slate}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
-                          <Td align="end" mono strong tone={due > 0.009 ? C.rose : C.emerald}>{due > 0.009 ? fmtC(due, S.rate, lang) : t("statusClear")}</Td>
-                          <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}
-                            className="dk-pill">{t("openAccount")} ›</button></Td>
+                          <Td>
+                            <div style={{ fontWeight: 800 }}>{customerLabel(c, t)}</div>
+                            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                              {accNo(customers, c.id)}
+                              {c.phone ? ` · ${c.phone}` : ""}
+                              {` · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
+                            </div>
+                          </Td>
+                          <Td align="end" mono strong tone={owing ? C.rose : C.inkSoft}>
+                            {owing ? fmtC(due, S.rate, lang) : "—"}
+                          </Td>
+                          <Td align="center">
+                            <span style={{ display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center" }}
+                              onClick={(ev) => ev.stopPropagation()}>
+                              {owing && <button type="button" className="dk-pill" onClick={() => {
+                                openAccount(c.id); setSheet({ k: "payment", cid: c.id });
+                              }}>💵 {t("recordPayment")}</button>}
+                              <MoreMenu t={t} items={[
+                                { key: "open", icon: "👁", label: t("openAccount"), run: () => openAccount(c.id) },
+                                { key: "sale", icon: "🧾", label: t("newSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
+                                { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                                { key: "manage", icon: "⚙️", label: t("manageAccount"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                              ]} />
+                            </span>
+                          </Td>
                         </tr>;
                       })}
                     </tbody>
@@ -12823,6 +12830,23 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   border-radius:8px;cursor:pointer;font-weight:600;font-family:var(--body);color:${C.ink}}
 .help-kit-act:hover{background:${C.paper}}
 .help-kit-txt{margin:8px 4px 0;font-size:12.5px;color:${C.inkSoft};line-height:1.45}
+.help-kit-act.danger{color:${C.red}}
+.more-menu{position:relative;display:inline-flex}
+.more-menu-btn{width:44px;height:44px;border-radius:50%;border:1px solid ${C.line};background:${C.card};color:${C.inkSoft};
+  font-weight:800;cursor:pointer;font-family:var(--body);font-size:20px;line-height:1}
+.more-menu-pop{position:absolute;z-index:45;top:calc(100% + 4px);inset-inline-end:0;min-width:210px;max-width:280px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:8px;box-shadow:0 12px 32px ${C.shadow}}
+.more-menu-pop.start{inset-inline-end:auto;inset-inline-start:0}
+.fold-panel{margin:0 0 12px}
+.fold-tog{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;min-height:44px;
+  border:1px solid ${C.line};background:${C.paper};border-radius:8px;padding:10px 12px;cursor:pointer;
+  font-family:var(--body);font-weight:700;font-size:13.5px;color:${C.ink}}
+.fold-tog.on{background:${C.card}}
+.fold-hint{font-size:12px;font-weight:600;color:${C.inkSoft};font-family:var(--mono)}
+.fold-body{margin-top:8px}
+.fold-mini{display:inline-flex;align-items:center;gap:6px;margin-top:8px;border:none;background:transparent;
+  color:${C.field};font-family:var(--body);font-weight:700;font-size:13px;cursor:pointer;padding:6px 0;min-height:36px}
+.app.theme-dark .more-menu-pop,.app.theme-dark .fold-tog{background:${C.card};color:${C.ink}}
 .app.theme-dark .sf-search,.app.theme-dark .sf-pop,.app.theme-dark .sf-gear,.app.theme-dark .help-kit-pop{background:${C.card};color:${C.ink}}
 .app.theme-dark .sf-chip,.app.theme-dark .sf-date,.app.theme-dark .sf-select,.app.theme-dark .sf-dir,.app.theme-dark .sf-seg{background:${C.paper};color:${C.ink}}
 .app.theme-dark .sf-gear.hot{background:${C.paper};border-color:${C.line}}
@@ -12959,7 +12983,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .data-display-cards{display:grid}
 .data-display-table{display:none}
 .data-card{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px;min-height:44px;color:${C.ink};
-  box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:visible}
+  box-shadow:none;overflow:visible;border-inline-start-width:3px;border-inline-start-style:solid;border-inline-start-color:transparent}
 .data-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .data-card-copy{min-width:0;flex:1}
 .data-card-title{font-weight:700;font-size:15px;line-height:1.3}
@@ -12984,13 +13008,13 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .status-row--warning,.data-card--warning{border-inline-start-color:#F59E0B}
 .status-row--danger,.data-card--danger{border-inline-start-color:#F43F5E}
 .status-row--info,.data-card--info{border-inline-start-color:#0EA5E9}
-.status-row--neutral,.data-card--neutral{border-inline-start-color:#94A3B8}
+.status-row--neutral,.data-card--neutral{border-inline-start-color:transparent}
 .status-row--offset,.data-card--offset{border-inline-start-color:#7C3AED}
 .sale-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 @media(min-width:640px){.sale-product-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
 .adapt-grid{display:grid;grid-template-columns:1fr;gap:1rem}
 .touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog,
-.sf-gear,.sf-clear,.sf-chip,.sf-apply,.sf-dir,.help-kit-btn,.help-kit-act{
+.sf-gear,.sf-clear,.sf-chip,.sf-apply,.sf-dir,.help-kit-btn,.help-kit-act,.more-menu-btn,.fold-tog{
   min-height:44px;min-width:44px}
 .dk-pill,.filter-tog,.sort-tog,.dk-quick-btn{display:inline-flex;align-items:center;justify-content:center}
 .dk-icon-btn{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}

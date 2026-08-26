@@ -2,7 +2,7 @@
    Strategy: serve the app shell from cache first so it opens with no signal,
    but always go to the network for weather and cloud sync.
    Bump CACHE when you deploy — users tap "Check for updates" in Settings. */
-const CACHE = "mazraati-v2.9.16";
+const CACHE = "mazraati-v2.9.17";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest"]).catch(() => {})));
