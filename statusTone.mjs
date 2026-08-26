@@ -21,6 +21,10 @@ export const STATUS_PILL_TOKENS = {
     pill: "bg-slate-100 text-slate-600 border-slate-200",
     dot: "bg-slate-400",
   },
+  offset: {
+    pill: "bg-purple-50 text-purple-700 border-purple-200",
+    dot: "bg-purple-500",
+  },
 };
 
 const SUCCESS = new Set([
@@ -42,10 +46,14 @@ const INFO = new Set([
 const NEUTRAL = new Set([
   "draft", "inactive", "neutral", "dry", "stopped", "all", "idle",
 ]);
+const OFFSET = new Set([
+  "offset", "reimbursement", "deduction", "deduct", "expenseoffset",
+]);
 
 export function statusToneOf(kind) {
   const k = String(kind || "").toLowerCase().replace(/[\s_]+/g, "");
   if (SUCCESS.has(k)) return "success";
+  if (OFFSET.has(k)) return "offset";
   if (WARNING.has(k)) return "warning";
   if (DANGER.has(k)) return "danger";
   if (INFO.has(k)) return "info";

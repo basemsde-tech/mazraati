@@ -18,6 +18,10 @@ import {
   DEDUCTION_REIMBURSEMENT, isDeductionReimbursement, deductionCents, deductionMemo,
   settleAmounts, recordPaymentSplit,
 } from "./settlement.mjs";
+import {
+  OFFSET_CATEGORIES, offsetCategoryLabel, buildAccountPayment, buildQuickSale,
+  migrateSalesEntries, paymentCashCents, posChangeCents,
+} from "./salesPosting.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -26,9 +30,21 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.15", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.16", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.16": {
+    ar: [
+      "المبيعات: صندوق بيع سريع وحسابات الزبائن في تبويبين",
+      "تسجيل الدفعة: النقد يدخل الصندوق فقط، وحسم المصروف يُسجَّل مصروف مزرعة دون تحريك الدرج",
+      "المتبقي = المستحق − (النقد + حسم المصروف) — الزيادة لا تُحفظ رصيدًا إلا باختيار صريح",
+    ],
+    en: [
+      "Sales splits into Quick Sale (POS) and customer account ledgers",
+      "Record Payment: cash in is cash received only; expense offsets log as farm expenses without moving the drawer",
+      "Remaining = owing − (cash + expense deductions); extra is customer credit only when you opt in",
+    ],
+  },
   "2.9.15": {
     ar: [
       "تسجيل الدفعة: مصروف الزبون من جيبه يُحسم من المستحق، والنقد المأخوذ منفصل — مثال: عليه 100$، صرف 50$ للمزرعة، تأخذ 50$ ويُقفَل الحساب",
@@ -485,6 +501,7 @@ const THEMES = {
     field: "#1B6B5A", fieldDeep: "#0C3A31", tag: "#C9A227",
     bg: "#E8E4DC", card: "#F6F3EE", paper: "#EFEBE4",
     green: "#1F8F72", amber: "#C4842D", red: "#B53A4A", blue: "#2A5F6E",
+    rose: "#E11D48", emerald: "#059669", purple: "#7C3AED", slate: "#64748B",
     glow: "rgba(27,107,90,.08)", glowGold: "rgba(201,162,39,.07)",
     shadow: "rgba(40,32,24,.07)", overlay: "rgba(28,25,23,.45)",
   },
@@ -493,6 +510,7 @@ const THEMES = {
     field: "#3FBE9A", fieldDeep: "#0E2A24", tag: "#D4B03A",
     bg: "#0F1613", card: "#1A2420", paper: "#151E1A",
     green: "#3CB892", amber: "#D49A3C", red: "#E05A6A", blue: "#4A8A9A",
+    rose: "#FB7185", emerald: "#34D399", purple: "#A78BFA", slate: "#94A3B8",
     glow: "rgba(47,168,136,.14)", glowGold: "rgba(212,176,58,.08)",
     shadow: "rgba(0,0,0,.35)", overlay: "rgba(0,0,0,.62)",
   },
@@ -645,6 +663,7 @@ const EXPENSES = [
   ["medicine", "💊", "أدوية وعلاج", "Medicines", "#D9A0A8", "feedLive"],
   ["livestock", "🚚", "شراء حيوانات", "Livestock purchase", "#6B4A7A", "feedLive"],
   ["fuel", "⛽", "وقود", "Fuel", "#8A5A2B", "machine"],
+  ["transport", "🚛", "نقل", "Transport", "#7C3AED", "machine"],
   ["repairs", "🔧", "إصلاحات", "Repairs", "#7A5312", "machine"],
   ["service", "🛠️", "صيانة دورية", "Servicing", "#9A6B3A", "machine"],
   ["parts", "⚙️", "قطع غيار", "Parts", "#6C5A40", "machine"],
@@ -660,6 +679,7 @@ const EXPENSES = [
   ["rent", "🔑", "إيجار", "Rent", "#8A4A6A", "finance"],
   ["vendorPay", "🤝", "دفعات موردين", "Vendor payments", "#5A4A6B", "finance"],
   ["labour", "👷", "عمال وأجور", "Labour", "#C4626F", "otherGrp"],
+  ["packaging", "📦", "تغليف", "Packaging", "#7C3AED", "otherGrp"],
   ["other", "📦", "مصاريف أخرى", "Other", "#6C7488", "otherGrp"],
 ];
 const expOf = (k) => EXPENSES.find((x) => x[0] === k) || EXPENSES[EXPENSES.length - 1];
@@ -723,9 +743,10 @@ const moneyStatus = (billC, paidC) => {
   if (paidC <= 0) return "unpaid";
   return "partial";
 };
-/* Cash that left the box for a non-supplier expense. Supplier bills use supplierPay. */
+/* Cash that left the box for a non-supplier expense. Supplier bills use supplierPay.
+   Payment expense offsets are non-cash — they must not move the drawer. */
 const expenseCounted = (e) => {
-  if (e.supplierId || isCustomerPaidExpense(e)) return 0;
+  if (e.supplierId || isCustomerPaidExpense(e) || isDeductionReimbursement(e)) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
   if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
@@ -1090,7 +1111,7 @@ const T = {
     addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
     netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "اختر نوع المصروف لكل مبلغ تعويض.",
     reimburseOverGross: "لا يمكن أن يتجاوز التعويض مستحقات هذا الزبون.",
-    reimburseFromBalance: "إذا دفع الزبون مصروف مزرعة من جيبه يُحسم من مستحقاته، والنقد الذي تأخذه منفصل. يُسجَّل الحسم مصروفًا وصرفًا في الصندوق.",
+    reimburseFromBalance: "إذا دفع الزبون مصروف مزرعة من جيبه يُحسم من مستحقاته، والنقد الذي تأخذه منفصل. يُسجَّل الحسم مصروف مزرعة ولا يحرّك درج النقد.",
     cashToDrawer: "النقد الداخل",
     reimburseMemo: "ملاحظة (اختياري)", reimburseOnSale: "من هذا البيع", reimburseOnAccount: "من رصيد الحساب",
     resultingBalance: "رصيد الحساب بعد القيد", netDueNow: "المطلوب الآن",
@@ -1101,7 +1122,7 @@ const T = {
     milkUseHistory: "سجل استخدام المزرعة", milkUseEmpty: "لا استخدام مزرعة في هذه الفترة.", reimburseReadOnly: "التعويضات المرتبطة محفوظة وتظهر هنا للقراءة فقط.",
     creditsCollected: "الرصيد الدائن / المحصّل", actualPaid: "المدفوع فعليًا",
     accountTotal: "إجمالي الحساب", deductions: "الحسومات والتعويضات", noDeductions: "لا حسومات في هذه الفترة.",
-    deductHint: "الحسومات تعويضات من المزرعة تُقيَّد على رصيد الحساب، وتُسجَّل مصروفًا وصرفًا في الصندوق.",
+    deductHint: "الحسومات تعويضات من المزرعة تُقيَّد على رصيد الحساب، وتُسجَّل مصروف مزرعة دون تحريك درج النقد.",
     settlementNet: "صافي المستحق",
     accountReimburse: "تعويض على الحساب",
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
@@ -1159,6 +1180,17 @@ const T = {
     cashierFullHint: "يُسجَّل في الصندوق الآن",
     cashierPartialHint: "الباقي يبقى على حساب الزبون",
     cashierLaterHint: "الفاتورة كاملة على الحساب — بدون دفعة الآن",
+    cashTendered: "النقد المستلم", changeDue: "الفكة",
+    salesPos: "بيع سريع", salesAccounts: "حسابات الزبائن",
+    salesPosSub: "منتج · كمية · نقد — مع فكة",
+    expenseOffset: "حسم مصروف", offsetCategory: "بند المصروف",
+    remainingBalance: "المتبقي بعد التسوية",
+    overpayWarn: "النقد والحسم أكبر من المستحق. فعّل الرصيد الدائن للمتابعة.",
+    keepAsCredit: "احتفظ بالزيادة رصيدًا للزبون",
+    posRecent: "مبيعات الصندوق الأخيرة", posEmpty: "لا مبيعات صندوق بعد. ابدأ بيعًا سريعًا.",
+    savingPayment: "جاري الحفظ…", creditedTotal: "إجمالي المسدَّد",
+    offsetHint: "الحسم يُسجَّل مصروف مزرعة ولا يحرّك درج النقد.",
+    attachOffsetReceipt: "إيصال المصروف (اختياري)",
     editPayment: "تعديل الدفعة", editCashMove: "تعديل حركة الصندوق", saleDate: "تاريخ البيع", paymentDate: "تاريخ الدفع",
     notes2: "ملاحظات", noTx: "لا حركات مطابقة.", lastPayment: "آخر دفعة", payments: "الدفعات",
     colQty: "الكمية", colUnit: "السعر", colTotal: "الإجمالي", colPaid: "المدفوع", colDue: "المتبقي",
@@ -1545,7 +1577,7 @@ const T = {
     addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
     netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Choose an expense category for every reimbursement amount.",
     reimburseOverGross: "Reimbursement cannot exceed this customer’s owing.",
-    reimburseFromBalance: "If the customer paid a farm expense from their pocket, it comes off what they owe — cash you take is separate. The deduction logs as a farm expense and a cash-box cash-out.",
+    reimburseFromBalance: "If the customer paid a farm expense from their pocket, it comes off what they owe — cash you take is separate. The deduction logs as a farm expense and does not move the cash drawer.",
     cashToDrawer: "Cash in",
     reimburseMemo: "Note (optional)", reimburseOnSale: "Off this sale", reimburseOnAccount: "Off account balance",
     resultingBalance: "Account balance after posting", netDueNow: "Due now",
@@ -1556,7 +1588,7 @@ const T = {
     milkUseHistory: "Farm-use log", milkUseEmpty: "No farm-use milk in this period.", reimburseReadOnly: "Linked reimbursements are preserved and shown here read-only.",
     creditsCollected: "Credits / Collected", actualPaid: "Actual paid",
     accountTotal: "Account total", deductions: "Reimbursements & deductions", noDeductions: "No deductions in this range.",
-    deductHint: "Deductions are farm reimbursements credited to the account, and logged as expenses and cash-box cash-out.",
+    deductHint: "Deductions are farm reimbursements credited to the account, and logged as farm expenses without moving the cash drawer.",
     settlementNet: "Net due",
     accountReimburse: "Account reimbursement",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
@@ -1614,6 +1646,17 @@ const T = {
     cashierFullHint: "Posted to Cash Box now",
     cashierPartialHint: "The remainder stays on the customer account",
     cashierLaterHint: "Whole invoice on account — no payment now",
+    cashTendered: "Cash tendered", changeDue: "Change due",
+    salesPos: "Quick Sale", salesAccounts: "Customer accounts",
+    salesPosSub: "Product · qty · cash — with change",
+    expenseOffset: "Expense offset", offsetCategory: "Expense category",
+    remainingBalance: "Remaining after settlement",
+    overpayWarn: "Cash plus offsets exceed the amount due. Turn on customer credit to continue.",
+    keepAsCredit: "Keep the extra as customer credit",
+    posRecent: "Recent cash sales", posEmpty: "No POS sales yet. Start a quick sale.",
+    savingPayment: "Saving…", creditedTotal: "Total credited",
+    offsetHint: "The offset logs as a farm expense and does not move the cash drawer.",
+    attachOffsetReceipt: "Expense receipt (optional)",
     editPayment: "Edit payment", editCashMove: "Edit cash movement", saleDate: "Sale date", paymentDate: "Payment date",
     notes2: "Notes", noTx: "No matching transactions.", lastPayment: "Last payment", payments: "Payments",
     colQty: "Qty", colUnit: "Unit price", colTotal: "Total", colPaid: "Paid", colDue: "Due",
@@ -2232,6 +2275,7 @@ function migrate(farm) {
       group: row.group || expGroupOf(category),
     };
   });
+  f.entries = migrateSalesEntries(f.entries);
   return f;
 }
 const mergeById = (base = [], next = []) => { const m = new Map((base || []).map((x) => [x.id, x])); (next || []).forEach((x) => m.set(x.id, x)); return [...m.values()]; };
@@ -2552,8 +2596,9 @@ function obligationAlert(ob, lang, t) {
   return null;
 }
 function moneyColor(kind, val = 0) {
-  if (kind === "due" || kind === "owing" || kind === "cost") return val > 0 ? C.red : C.green;
-  if (kind === "paid" || kind === "income" || kind === "collected") return C.green;
+  if (kind === "due" || kind === "owing" || kind === "cost") return val > 0 ? C.rose : C.emerald;
+  if (kind === "paid" || kind === "income" || kind === "collected") return C.emerald;
+  if (kind === "offset" || kind === "deduct") return C.purple;
   if (kind === "partial") return C.amber;
   return C.ink;
 }
@@ -2563,26 +2608,22 @@ function initials(name) {
   return p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[1][0];
 }
 
-/* Cash box: real money in (payments) and out (paid expenses / supplier pays / medicine).
-   Payment reimbursements are farm expenses (cash out). The receipt is grossed up by the
-   deduction so drawer net equals cash actually taken. Older sale reimbursements stay
-   as non-cash offsets so historical drawers still reconcile. */
+/* Cash box: physical drawer moves only. Payment Cash In is cash received.
+   Expense offsets appear as non-cash deduct rows and do not change the balance.
+   Older sale reimbursements stay non-cash so historical drawers still reconcile. */
 function cashMoveAmount(e) {
-  if (e.type === "payment") return +(e.amount || 0);
+  if (e.type === "payment") return fromCents(paymentCashCents(e) || toCents(e.amount));
   if (e.type === "supplierPay") return +(e.amount || 0);
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
   return 0;
 }
-function paymentTenderAmount(e, src) {
-  const cash = cashMoveAmount(e);
-  if (!e || e.type !== "payment") return cash;
-  const extra = (src || []).filter((x) => x.origin === "payment_reimbursement" && x.paymentId === e.id)
-    .reduce((s, x) => s + (toCents(x.amount) > 0 ? fromCents(toCents(x.amount)) : 0), 0);
-  return +(cash + extra).toFixed(2);
+function paymentTenderAmount(e) {
+  if (!e || e.type !== "payment") return cashMoveAmount(e);
+  return fromCents(paymentCashCents(e));
 }
 function cashDeductAmount(e) {
-  if (e.origin === "payment_reimbursement") return 0;
+  if (e.origin === "payment_reimbursement" && toCents(e.amount) > 0) return +(e.amount || 0);
   if (e.type === "saleReimburse" && toCents(e.amount) > 0) return +(e.amount || 0);
   if (isCustomerPaidExpense(e) && !e.saleReimburseId && toCents(e.amount) > 0) return +(e.amount || 0);
   return 0;
@@ -2593,7 +2634,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   const src = withImpliedSupplierPays(entries);
   const byId = Object.fromEntries(src.filter((e) => e.type === "expense").map((e) => [e.id, e]));
   const moves = src.filter((e) => {
-    const amt = e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e);
+    const amt = e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e);
     const deduct = cashDeductAmount(e);
     if (!(amt > 0.0001) && !(deduct > 0.0001)) return false;
     const k = dayKey(e.at);
@@ -2605,7 +2646,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   let opening = 0;
   if (from) {
     src.forEach((e) => {
-      const amt = e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e);
+      const amt = e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e);
       if (!(amt > 0.0001)) return;
       if (dayKey(e.at) >= from) return;
       if (e.type === "payment") opening += amt;
@@ -2624,7 +2665,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       const pref = "DC";
       const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
       const parts = [
-        { text: t("cashOffset"), tone: "muted" },
+        { text: t("cashOffset"), tone: "offset" },
         { text: " · " },
         { text: t("cashDeductedFrom"), tone: "out" },
         { text: " " },
@@ -2637,7 +2678,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
         debit: deduct, credit: deduct, balance: bal, source: e, nonCash: true,
       };
     }
-    const amt = +(e.type === "payment" ? paymentTenderAmount(e, src) : cashMoveAmount(e)).toFixed(2);
+    const amt = +(e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e)).toFixed(2);
     const isIn = e.type === "payment";
     if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
     else { bal = +(bal - amt).toFixed(2); outN += amt; }
@@ -2698,8 +2739,9 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
 function CashParts({ parts }) {
   return <span>
     {(parts || []).map((p, i) => {
-      const color = p.tone === "in" ? C.green : p.tone === "out" ? C.red
-        : p.tone === "name" ? C.field : p.tone === "muted" ? C.inkSoft : C.ink;
+      const color = p.tone === "in" ? C.emerald : p.tone === "out" ? C.rose
+        : p.tone === "offset" ? C.purple : p.tone === "name" ? C.field
+        : p.tone === "muted" ? C.slate : C.ink;
       const weight = p.tone === "in" || p.tone === "out" || p.tone === "name" ? 700 : 500;
       return <span key={i} style={{ color, fontWeight: weight }}>{p.text}</span>;
     })}
@@ -2891,10 +2933,8 @@ function computeSums(list, S, workers, days, includePayroll = true) {
     reimbBySaleC[e.saleId] = (reimbBySaleC[e.saleId] || 0) + Math.max(0, toCents(e.amount));
   });
   const grossInvoiced = fromCents(sales.reduce((sum, sale) => sum + toCents(sale.amount), 0));
-  const payDeductC = list.filter((e) => isDeductionReimbursement(e) && e.type === "expense")
-    .reduce((sum, e) => sum + deductionCents(e), 0);
   const reimbursed = fromCents(sales.reduce((sum, sale) =>
-    sum + Math.min(toCents(sale.amount), reimbBySaleC[sale.id] || 0), 0) + payDeductC);
+    sum + Math.min(toCents(sale.amount), reimbBySaleC[sale.id] || 0), 0));
   const discounted = fromCents(sales.reduce((sum, sale) => {
     const afterReimb = Math.max(0, toCents(sale.amount) - (reimbBySaleC[sale.id] || 0));
     return sum + Math.min(afterReimb, Math.max(0, toCents(sale.discountAmount)));
@@ -2911,11 +2951,11 @@ function computeSums(list, S, workers, days, includePayroll = true) {
   const byCategory = {};
   const add = (k, v) => { byCategory[k] = (byCategory[k] || 0) + (v || 0); };
   /* Accrual: supplier purchases count in full whether owed or paid.
-     Customer-paid reimbursements are expenses on the expense register, but when
-     this list also has sales they already reduced invoiced AR — skip them here. */
+     Legacy customer-paid sale reimbursements already reduced invoiced AR — skip those.
+     Payment expense offsets are operational costs and count here. */
   const skipCustomerPaidCosts = list.some((e) => e.type === "sale");
   list.filter((e) => e.type === "expense").forEach((e) => {
-    if (skipCustomerPaidCosts && (isCustomerPaidExpense(e) || isDeductionReimbursement(e))) return;
+    if (skipCustomerPaidCosts && isCustomerPaidExpense(e)) return;
     add(e.category || "other", expenseAccrued(e));
   });
   /* a medicine record is both a health note and a cost — recorded once, counted once */
@@ -4552,34 +4592,48 @@ function PaySplit({ amount, paid, onChange, rate, lang, t, supplierLinked }) {
 }
 
 /* Till-style checkout for sales: take the full amount, or a partial, then post. */
-function CashierPayPrompt({ t, lang, S, amount, err, onConfirm }) {
+function CashierPayPrompt({ t, lang, S, amount, err, onConfirm, busy }) {
   const [mode, setMode] = useState(null);
   const [tender, setTender] = useState(0);
-  const paid = mode === "full" ? amount
+  const [saving, setSaving] = useState(false);
+  const dueC = Math.max(0, toCents(amount));
+  const tenderC = Math.max(0, toCents(tender));
+  const paid = mode === "full" ? fromCents(dueC)
     : mode === "later" ? 0
-    : fromCents(Math.min(toCents(tender), toCents(amount)));
+    : fromCents(Math.min(tenderC, dueC));
+  const change = mode === "full" ? posChangeCents({ dueC, tenderC: Math.max(tenderC, dueC) }) : { changeC: 0, tenderC };
   const p = payState(amount, paid);
+  const locked = !!(busy || saving);
   const pick = (m) => {
     setMode(m);
     if (m === "partial" && !(tender > 0.009)) setTender(0);
-    if (m === "full") setTender(amount);
+    if (m === "full") setTender(fromCents(dueC));
     if (m === "later") setTender(0);
   };
-  const ready = mode === "full" || mode === "later" || (mode === "partial" && paid > 0.009);
-  const confirmLabel = mode === "full" ? `💵 ${t("chargeFull")} · ${fmtC(amount, S.rate, lang)}`
+  const ready = !locked && (mode === "full" || mode === "later" || (mode === "partial" && paid > 0.009));
+  const confirmLabel = locked ? t("savingPayment")
+    : mode === "full" ? `💵 ${t("chargeFull")} · ${fmtC(amount, S.rate, lang)}`
     : mode === "partial" ? `💵 ${t("takePartial")} · ${fmtC(paid, S.rate, lang)}`
     : mode === "later" ? `📋 ${t("putOnAccount")}`
     : t("pickPayMode");
   const payBtn = (k, icon, label, color, sub) => {
     const on = mode === k;
-    return <button type="button" onClick={() => pick(k)} style={{
+    return <button type="button" disabled={locked} onClick={() => pick(k)} style={{
       background: on ? color : C.card, color: on ? "#fff" : C.ink,
       border: `2px solid ${on ? color : C.line}`, borderRadius: 10, padding: "16px 10px",
-      cursor: "pointer", fontFamily: "var(--body)", minHeight: 92, textAlign: "center" }}>
+      cursor: locked ? "wait" : "pointer", fontFamily: "var(--body)", minHeight: 92, textAlign: "center" }}>
       <div style={{ fontSize: 26, lineHeight: 1 }}>{icon}</div>
       <div style={{ fontWeight: 800, fontSize: 15.5, marginTop: 7 }}>{label}</div>
       {sub && <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, opacity: on ? .92 : .75 }}>{sub}</div>}
     </button>;
+  };
+  const submit = async () => {
+    if (!ready) return;
+    const fullTender = mode === "full" ? fromCents(Math.max(tenderC, dueC)) : paid;
+    setSaving(true);
+    try {
+      await onConfirm({ paid, tender: mode === "later" ? 0 : fullTender });
+    } finally { setSaving(false); }
   };
   return <>
     <div style={{ background: C.field, color: "#fff", borderRadius: 10, padding: "18px 16px", marginBottom: 14,
@@ -4588,33 +4642,46 @@ function CashierPayPrompt({ t, lang, S, amount, err, onConfirm }) {
       <Money usd={amount} rate={S.rate} lang={lang} size={36} tone="#fff" />
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-      {payBtn("full", "💵", t("payInFull"), C.green, fmtC(amount, S.rate, lang))}
+      {payBtn("full", "💵", t("payInFull"), C.emerald, fmtC(amount, S.rate, lang))}
       {payBtn("partial", "💰", t("payPartialMode"), C.amber, t("remainder"))}
     </div>
     {mode === "partial" && <>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8, textAlign: "center" }}>{t("amountReceived")}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8, textAlign: "center" }}>{t("amountReceived")}</div>
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-        <MoneyStepper big usd={paid} onChange={(v) => setTender(fromCents(Math.min(toCents(amount), Math.max(0, toCents(v)))))}
+        <MoneyStepper big usd={paid} onChange={(v) => setTender(fromCents(Math.min(dueC, Math.max(0, toCents(v)))))}
           rate={S.rate} lang={lang} t={t} step={1} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
         background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", marginBottom: 12,
         fontWeight: 700 }}>
         <span>{t("remainder")}</span>
-        <Money usd={p.due} rate={S.rate} lang={lang} size={20} tone={p.due > 0.009 ? C.red : C.green} />
+        <Money usd={p.due} rate={S.rate} lang={lang} size={20} tone={p.due > 0.009 ? C.rose : C.emerald} />
       </div>
-      <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 12px" }}>💡 {t("cashierPartialHint")}</div>
+      <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 12px" }}>💡 {t("cashierPartialHint")}</div>
     </>}
-    {mode === "full" && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-2px 0 12px" }}>💡 {t("cashierFullHint")}</div>}
-    {mode === "later" && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "0 0 12px" }}>💡 {t("cashierLaterHint")}</div>}
-    <button type="button" onClick={() => pick("later")} style={{
+    {mode === "full" && <>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8, textAlign: "center" }}>{t("cashTendered")}</div>
+      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+        <MoneyStepper big usd={fromCents(Math.max(tenderC, dueC))} onChange={(v) => setTender(fromCents(Math.max(0, toCents(v))))}
+          rate={S.rate} lang={lang} t={t} step={1} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: "#ECFDF5", border: `1px solid #A7F3D0`, borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+        fontWeight: 700 }}>
+        <span style={{ color: C.emerald }}>{t("changeDue")}</span>
+        <Money usd={fromCents(change.changeC)} rate={S.rate} lang={lang} size={20} tone={C.emerald} />
+      </div>
+      <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 12px" }}>💡 {t("cashierFullHint")}</div>
+    </>}
+    {mode === "later" && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "0 0 12px" }}>💡 {t("cashierLaterHint")}</div>}
+    <button type="button" disabled={locked} onClick={() => pick("later")} style={{
       ...secondaryBtn, marginBottom: 12,
       borderColor: mode === "later" ? C.amber : C.line,
       background: mode === "later" ? "#F6EFDD" : C.paper }}>📋 {t("payLater")} · {t("putOnAccount")}</button>
-    {err && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
-    <button type="button" style={{ ...primaryBtn, opacity: ready ? 1 : .45, padding: "16px 18px", fontSize: 17,
+    {err && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    <button type="button" disabled={!ready} style={{ ...primaryBtn, opacity: ready ? 1 : .45, padding: "16px 18px", fontSize: 17,
       background: mode === "later" ? C.amber : primaryBtn.background }}
-      onClick={() => ready && onConfirm(paid)}>{confirmLabel}</button>
+      onClick={submit}>{confirmLabel}</button>
   </>;
 }
 
@@ -5837,7 +5904,7 @@ function ObligationForm({ lang, t, S, initial, onSave, onClose }) {
   </Sheet>;
 }
 
-function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAddCustomer, entries, ledger }) {
+function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAddCustomer, entries, ledger, busy }) {
   const [cid, setCid] = useState(preId || (customers.length === 1 ? customers[0].id : null));
   const c = customers.find((x) => x.id === cid);
   const [product, setProduct] = useState(c?.product || "milk");
@@ -5876,23 +5943,26 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const discC = Math.min(toCents(amount), Math.max(0, toCents(discount)));
   const netAmount = fromCents(Math.max(0, toCents(amount) - discC));
   const discountOver = toCents(discount) > toCents(amount);
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver });
+  const milkAvail = milkStock(entries || [], date).available;
+  const milkNeed = product === "milk" ? milkToLiters(qty, "kg") : 0;
+  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver })
+    || (oversell ? t("oversellWarn") : "");
   const goTill = () => {
     if (block) return setErr(block);
     setErr("");
     if (toCents(netAmount) < 1) return saveSale(0);
     setTill(true);
   };
-  const saveSale = (payNow) => {
+  const saveSale = (pay) => {
     if (block) return setErr(block);
-    onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, payNow,
+    const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
+    const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
+    onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, payNow, tender,
       discountAmount: fromCents(discC), discountNote: discountNote.trim(),
       unit: product === "milk" ? "kg" : undefined,
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
   };
-  const milkAvail = milkStock(entries || [], date).available;
-  const milkNeed = product === "milk" ? milkToLiters(qty, "kg") : 0;
-  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
     <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
@@ -5900,7 +5970,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     sub={c ? customerLabel(c, t) : undefined}
     onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
     {till
-      ? <CashierPayPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveSale} />
+      ? <CashierPayPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveSale} busy={busy} />
       : <>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
@@ -5984,12 +6054,12 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   </Sheet>;
 }
 
-function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCustomer }) {
+function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onClose, onAddCustomer, entries, busy, embedded }) {
   const named = (customers || []).filter((c) => !isWalkInCustomer(c));
   const [cid, setCid] = useState(preId || WALKIN_ID);
   const walkIn = cid === WALKIN_ID;
   const c = named.find((x) => x.id === cid);
-  const [product, setProduct] = useState(c?.product || "milk");
+  const [product, setProduct] = useState(preProduct || c?.product || "milk");
   const [qty, setQty] = useState(c?.defaultQty || 0);
   const [price, setPrice] = useState(0);
   const [total, setTotal] = useState(0);
@@ -6001,7 +6071,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => {
     if (c) { setProduct(c.product || "milk"); setQty(c.defaultQty || 0); }
-    else { setProduct("milk"); setQty(0); }
+    else { setProduct(preProduct || "milk"); setQty(0); }
   }, [cid]);
   useEffect(() => {
     const next = defPrice(product) || 0;
@@ -6012,35 +6082,44 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
   const unitLb = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
   const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
+  const milkAvail = milkStock(entries || []).available;
+  const milkNeed = product === "milk" ? milkToLiters(qty, milkSaleUnit) : 0;
+  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
   const switchPriceMode = (next) => {
     if (next === priceMode) return;
     if (next === "total") setTotal(qtyMoney(qty, price));
     else if (qty > 0) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode });
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode })
+    || (oversell ? t("oversellWarn") : "");
   const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
-  const saveQuick = (payNow) => {
+  const saveQuick = (pay) => {
     if (block) return setErr(block);
+    const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
+    const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
     onSave({
       customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
       unit: product === "milk" ? milkSaleUnit : undefined,
-      payNow, at: iso(Date.now()),
+      payNow, tender, at: iso(Date.now()),
     });
   };
   const who = walkIn ? t("walkIn") : (c ? c.name : "");
-  return <Sheet title={till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
-    sub={who || undefined}
-    onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
-    {till
-      ? <CashierPayPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} />
-      : <>
+  const form = till
+    ? <CashierPayPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} />
+    : <>
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
       extras={[{ id: WALKIN_ID, label: t("walkIn"), icon: "🛍️" }]}
       items={named.map((x) => ({ id: x.id, label: x.name, hint: x.phone || "", search: `${x.name} ${x.phone || ""}` }))}
       onAdd={onAddCustomer} addLabel={t("addCustomer")} />
-    {walkIn && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px" }}>
+    {walkIn && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 10px" }}>
       {t("walkInHint")}</div>}
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
+      marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
+      <span>🥛 {t("milkLeft")}</span>
+      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.emerald : C.rose }}>
+        {n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
+    </div>
     <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "12px 0" }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
         const on = product === k;
@@ -6055,18 +6134,18 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
     </div>
     {product === "milk" && milkEqHint(qty, "kg", t)}
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
       <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb} />
     </div>
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
         {priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</div>
       {priceMode === "unit"
         ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
         : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
     </div>
-    {qty > 0 && amount > 0 && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-2px 0 10px", textAlign: "center" }}>
+    {qty > 0 && amount > 0 && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-2px 0 10px", textAlign: "center" }}>
       {priceMode === "unit" ? `${t("calculatedTotal")}: ${fmtC(amount, S.rate, lang)}` : `${t("unitPrice")}: ${fmtC(unitPrice, S.rate, lang)}`}
     </div>}
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
@@ -6076,10 +6155,15 @@ function QuickSaleSheet({ lang, t, S, customers, preId, onSave, onClose, onAddCu
       <span style={{ fontWeight: 700 }}>{t("netInvoiceTotal")}</span>
       <Money usd={amount} rate={S.rate} lang={lang} size={26} tone="#fff" />
     </div>
-    {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
-    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
+    {(block || err) && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
+    <button type="button" disabled={!!busy} style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block || busy ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
-      </>}
+      </>;
+  if (embedded) return <div>{form}</div>;
+  return <Sheet title={till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
+    sub={who || undefined}
+    onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
+    {form}
   </Sheet>;
 }
 
@@ -6098,10 +6182,11 @@ function reimburseTypeOptions(S, entries) {
   return saved;
 }
 
-function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose }) {
+function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, busy }) {
   const open = ledger.list.filter((x) => x.customerId === customer.id && isOwing(x.due));
   const b = ledger.byCustomer[customer.id] || { due: 0 };
   const dueC = Math.max(0, toCents(b.due));
+  const emptyOffset = () => ({ id: uid(), category: "fuel", name: "", amount: 0, receipt: "" });
   const [amount, setAmount] = useState(fromCents(dueC));
   const [cashTouched, setCashTouched] = useState(false);
   const [saleId, setSaleId] = useState("");
@@ -6110,9 +6195,11 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
-  const [reimbRows, setReimbRows] = useState([{ id: uid(), name: "", amount: 0 }]);
+  const [reimbRows, setReimbRows] = useState([emptyOffset()]);
+  const [offsetOpen, setOffsetOpen] = useState(false);
+  const [keepCredit, setKeepCredit] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const types = reimburseTypeOptions(S, entries);
   const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
   const typedCashC = cashTouched ? Math.max(0, toCents(amount)) : 0;
   const split = recordPaymentSplit({ dueC: suggestFromC, deductC: reimbC, cashC: typedCashC });
@@ -6120,38 +6207,43 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
   const settled = settleAmounts({ grossC: dueC, deductC: reimbC, paidC: payC });
   const remainingC = settled.dueC;
   const creditC = settled.creditC;
+  const locked = !!(busy || saving);
   const updateReimb = (id, patch) => {
     setErr("");
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
   };
   const reimbursements = () => {
-    const rows = reimbRows.filter((r) => toCents(r.amount) > 0)
-      .map((r) => ({ name: String(r.name || "").trim(), amount: fromCents(toCents(r.amount)) }));
-    if (rows.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
+    const rows = reimbRows.filter((r) => toCents(r.amount) > 0).map((r) => {
+      const cat = r.category || "other";
+      const name = String(r.name || "").trim() || offsetCategoryLabel(cat, lang);
+      return { category: cat, name, amount: fromCents(toCents(r.amount)), receipt: r.receipt || "" };
+    });
     return rows;
   };
-  const canSave = (payC > 0 || reimbC > 0);
+  const overpay = creditC > 0;
+  const canSave = !locked && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
-    <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 12, boxShadow: sh1,
+    <div style={{ background: "#FFF1F2", border: `1px solid #FECDD3`, borderRadius: 6, padding: 13, marginBottom: 12,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
-      <span>{t("due")}</span>
+      <span style={{ color: C.rose }}>{t("due")}</span>
       {isOwing(b.due)
-        ? <Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.red} />
-        : <span style={{ fontFamily: "var(--mono)", color: C.inkSoft }}>—</span>}
+        ? <Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.rose} />
+        : <span style={{ fontFamily: "var(--mono)", color: C.slate }}>—</span>}
     </div>
     <Step n="1" label={`${t("cashToDrawer")} — ${t("payCurrency")}`} />
-    <div style={{ background: C.card, borderRadius: 6, padding: 15, marginBottom: 12, boxShadow: sh1 }}>
-      <MoneyStepper big usd={fromCents(payC)} onChange={(v) => { setCashTouched(true); setAmount(v); }}
+    <div style={{ background: C.card, borderRadius: 6, padding: 15, marginBottom: 12, boxShadow: sh1,
+      borderInlineStart: `4px solid ${C.emerald}` }}>
+      <MoneyStepper big usd={fromCents(payC)} onChange={(v) => { setCashTouched(true); setAmount(fromCents(toCents(v))); }}
         rate={S.rate} lang={lang} t={t} step={10} currency={cur} setCurrency={setCur} />
     </div>
     <Step n="2" label={t("method")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
       {[["cash", "💵", t("cash")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
         const on = method === k;
-        return <button type="button" key={k} onClick={() => setMethod(k)} style={{
+        return <button type="button" key={k} disabled={locked} onClick={() => setMethod(k)} style={{
           background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
           border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 6, padding: "12px 6px",
-          cursor: "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
+          cursor: locked ? "wait" : "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
           <div style={{ fontSize: 21 }}>{ic}</div>
           <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3, color: on ? "#fff" : C.ink }}>{lb}</div>
         </button>;
@@ -6167,68 +6259,97 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
       }}>
         {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
     </Scroller>
-    <Step n="5" label={t("reimbursements")} />
-    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, margin: "-4px 0 10px", lineHeight: 1.45 }}>
-      {t("reimburseFromBalance")}
+    <Step n="5" label={t("expenseOffset")} />
+    <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 10px", lineHeight: 1.45 }}>
+      {t("offsetHint")}
     </div>
-    <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-      <datalist id="pay-reimburse-types">
-        {types.map((name) => <option key={name.toLocaleLowerCase()} value={name} />)}
-      </datalist>
+    <button type="button" onClick={() => setOffsetOpen((v) => !v)} className="dk-pill" style={{ marginBottom: 10 }}>
+      {offsetOpen || reimbC > 0 ? "▾" : "▸"} {t("expenseOffset")}
+      {reimbC > 0 ? ` · ${fmtC(fromCents(reimbC), S.rate, lang)}` : ""}
+    </button>
+    {(offsetOpen || reimbC > 0) && <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
       {reimbRows.map((r, i) => {
-        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : r.amount || "";
-        return <div key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.8fr) auto",
-          gap: 7, alignItems: "center" }}>
-          <input list="pay-reimburse-types" value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
-            placeholder={t("expenseName")} style={{ ...inp, padding: "10px 11px", fontSize: 14.5 }} />
-          <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
-            onChange={(e) => {
-              const raw = Math.max(0, +(e.target.value || 0));
-              const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
-              updateReimb(r.id, { amount: fromCents(toCents(usd)) });
-            }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
-            style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
-          {i === reimbRows.length - 1
-            ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, { id: uid(), name: "", amount: 0 }])}
-                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.field}`, background: C.paper,
-                  color: C.field, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
-            : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
-                style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
-                  color: C.red, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
+        const shown = cur === "lbp" ? Math.round((r.amount || 0) * (S.rate || 0)) : (r.amount || "");
+        return <div key={r.id} style={{ background: "#F5F3FF", border: `1px solid #DDD6FE`, borderRadius: 8, padding: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(100px,.8fr) auto", gap: 7, alignItems: "center" }}>
+            <select value={r.category} onChange={(e) => {
+              const category = e.target.value;
+              const auto = offsetCategoryLabel(category, lang);
+              updateReimb(r.id, { category, name: r.name && r.name !== offsetCategoryLabel(r.category, lang) ? r.name : auto });
+            }} style={{ ...inp, padding: "10px 11px", fontSize: 14 }}>
+              {OFFSET_CATEGORIES.map((cat) => (
+                <option key={cat.key} value={cat.key}>{lang === "ar" ? cat.ar : cat.en}</option>
+              ))}
+            </select>
+            <input type="number" min="0" step={cur === "lbp" ? "1000" : "0.01"} value={shown}
+              onChange={(e) => {
+                const raw = Math.max(0, +(e.target.value || 0));
+                const usd = cur === "lbp" && S.rate > 0 ? raw / S.rate : raw;
+                updateReimb(r.id, { amount: fromCents(toCents(usd)) });
+              }} placeholder={`${t("amount")} (${cur === "lbp" ? t("lbp") : "USD"})`}
+              style={{ ...inp, padding: "10px 9px", fontSize: 14, fontFamily: "var(--mono)", textAlign: "end" }} />
+            {i === reimbRows.length - 1
+              ? <button type="button" title={t("addReimbursement")} onClick={() => setReimbRows((rows) => [...rows, emptyOffset()])}
+                  style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.purple}`, background: C.paper,
+                    color: C.purple, fontWeight: 800, fontSize: 20, cursor: "pointer" }}>＋</button>
+              : <button type="button" title={t("removeReimbursement")} onClick={() => setReimbRows((rows) => rows.filter((x) => x.id !== r.id))}
+                  style={{ width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.card,
+                    color: C.rose, fontWeight: 800, fontSize: 17, cursor: "pointer" }}>×</button>}
+          </div>
+          <input value={r.name} onChange={(e) => updateReimb(r.id, { name: e.target.value })}
+            placeholder={t("expenseName")} style={{ ...inp, padding: "8px 11px", fontSize: 13.5, marginTop: 8 }} />
+          <div style={{ marginTop: 8 }}>
+            <AttachPicker value={r.receipt} onPick={(v) => updateReimb(r.id, { receipt: v })}
+              onClear={() => updateReimb(r.id, { receipt: "" })} t={t} />
+          </div>
         </div>;
       })}
-    </div>
+    </div>}
     <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14, display: "grid", gap: 7 }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <span style={{ fontWeight: 600 }}>{t("due")}</span>
         <Money usd={fromCents(dueC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
-        <span style={{ fontWeight: 600 }}>{t("reimbursementTotal")}</span>
+        <span style={{ fontWeight: 600 }}>{t("expenseOffset")}</span>
         <span>− <Money usd={fromCents(reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
         <span style={{ fontWeight: 600 }}>{t("cashToDrawer")}</span>
         <span>− <Money usd={fromCents(payC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
       </div>
+      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92, color: "rgba(255,255,255,.85)" }}>
+        <span style={{ fontWeight: 600 }}>{t("creditedTotal")}</span>
+        <Money usd={fromCents(payC + reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
+      </div>
       <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
         justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{creditC > 0 ? t("credit") : t("netDueNow")}</span>
+        <span style={{ fontWeight: 800 }}>{creditC > 0 ? t("credit") : t("remainingBalance")}</span>
         <Money usd={fromCents(creditC > 0 ? creditC : remainingC)} rate={S.rate} lang={lang} size={26} tone="#fff" />
       </div>
     </div>
+    {overpay && <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, fontWeight: 600, fontSize: 13.5 }}>
+      <input type="checkbox" checked={keepCredit} onChange={(e) => { setKeepCredit(e.target.checked); setErr(""); }}
+        style={{ marginTop: 3, width: 18, height: 18 }} />
+      <span>{t("keepAsCredit")} · {fmtC(fromCents(creditC), S.rate, lang)}</span>
+    </label>}
     <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    {(err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
-    <button style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
-      onClick={() => {
+    {(err) && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    {overpay && !keepCredit && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("overpayWarn")}</div>}
+    <button type="button" disabled={!canSave} style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
+      onClick={async () => {
+        if (!canSave) return;
+        if (overpay && !keepCredit) { setErr(t("overpayWarn")); return; }
         const rows = reimbursements();
-        if (!rows || !canSave) return;
-        onSave({
-          amount: fromCents(payC), cashAmount: fromCents(payC), saleId, method, currency: cur, rateUsed: S.rate,
-          at: dayStamp(date), note: note.trim(), reimbursements: rows,
-        });
-      }}>✓ {t("save")}</button>
+        setSaving(true);
+        try {
+          await onSave({
+            amount: fromCents(payC), cashAmount: fromCents(payC), saleId, method, currency: cur, rateUsed: S.rate,
+            at: dayStamp(date), note: note.trim(), reimbursements: rows, keepCredit,
+          });
+        } finally { setSaving(false); }
+      }}>{locked ? t("savingPayment") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
 
@@ -6549,14 +6670,14 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
       <div style={{ display: "grid", gap: 6, fontSize: 13.5, fontWeight: 600 }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span>{t("accountTotal")}</span><span style={{ fontFamily: "var(--mono)" }}>{fmtC(gross, S.rate, lang)}</span></div>
-        <div style={{ display: "flex", justifyContent: "space-between", color: C.green }}>
+        <div style={{ display: "flex", justifyContent: "space-between", color: C.purple }}>
           <span>{t("deductions")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(deduct) ? `− ${fmtC(deduct, S.rate, lang)}` : "—"}</span></div>
-        <div style={{ display: "flex", justifyContent: "space-between", color: C.field }}>
+        <div style={{ display: "flex", justifyContent: "space-between", color: C.emerald }}>
           <span>{t("collected")}</span><span style={{ fontFamily: "var(--mono)" }}>{isOwing(paid) ? `− ${fmtC(paid, S.rate, lang)}` : "—"}</span></div>
         <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 7, borderTop: `1px solid ${C.line}`,
           fontWeight: 800 }}>
           <span>{t("settlementNet")}</span>
-          <span style={{ fontFamily: "var(--mono)", color: isOwing(due) ? C.red : C.inkSoft }}>{fmtDue(due, S.rate, lang)}</span>
+          <span style={{ fontFamily: "var(--mono)", color: isOwing(due) ? C.rose : C.slate }}>{fmtDue(due, S.rate, lang)}</span>
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: C.inkSoft, fontWeight: 600, marginTop: 8, lineHeight: 1.4 }}>{t("deductHint")}</div>
@@ -6567,10 +6688,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     <div style={{ display: "grid", gap: 12 }}>
       <div className="adapt-grid">
         <Kpi label={t("accountTotal")} value={fmtC(b.gross || b.sold, S.rate, lang)} />
-        <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.green} hint={t("deductHint")} />
+        <Kpi label={t("deductions")} value={fmtC(bDeduct, S.rate, lang)} tone={C.purple} hint={t("deductHint")} />
         <Kpi label={t("collected")} value={fmtC(b.paid, S.rate, lang)} tone={moneyColor("paid")} />
         <Kpi label={t("due")} value={fmtDue(b.due, S.rate, lang)} tone={moneyColor("due", b.due)} />
-        <Kpi label={t("txCount")} value={nf(all.length)} tone={C.inkSoft} />
+        <Kpi label={t("txCount")} value={nf(all.length)} tone={C.slate} />
       </div>
       <Settlement gross={b.gross || b.sold} deduct={bDeduct} paid={b.paid} due={b.due} />
       {toCents(b.credit) > 0 && <div style={{ background: C.paper, borderRadius: 8, padding: 11, fontWeight: 700, color: C.ink,
@@ -6627,10 +6748,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
       <div className="adapt-grid">
         <Kpi label={`${t("accountTotal")}${ranged ? ` · ${t("inRange")}` : ""}`} value={fmtC(rGross, S.rate, lang)} />
-        <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.green} hint={t("deductHint")} />
-        <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.green} />
-        <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtDue(rDue, S.rate, lang)} tone={isOwing(rDue) ? C.red : C.inkSoft} />
-        <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.inkSoft} />
+        <Kpi label={t("deductions")} value={fmtC(rDeduct, S.rate, lang)} tone={C.purple} hint={t("deductHint")} />
+        <Kpi label={t("collected")} value={fmtC(rPaid, S.rate, lang)} tone={C.emerald} />
+        <Kpi label={ranged ? t("owingInRange") : t("due")} value={fmtDue(rDue, S.rate, lang)} tone={isOwing(rDue) ? C.rose : C.slate} />
+        <Kpi label={t("txCount")} value={nf(rows.length)} tone={C.slate} />
       </div>
 
       <DataList
@@ -6683,7 +6804,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   <Td align="end" mono>{n1(iv.qty)} {saleQtyUnit(iv, lang, t)}</Td>
                   <Td align="end" mono tone={C.inkSoft}>{fmtC(iv.price, S.rate, lang)}</Td>
                   <Td align="end" mono strong>{fmtC(iv.grossAmount, S.rate, lang)}</Td>
-                  <Td align="end" mono tone={deductAmt(iv) > 0.009 ? C.green : C.inkSoft}>
+                  <Td align="end" mono tone={deductAmt(iv) > 0.009 ? C.purple : C.slate}>
                     {deductAmt(iv) > 0.009 ? `−${fmtC(deductAmt(iv), S.rate, lang)}` : "—"}
                     {iv.reimbAmount > 0 && <span style={{ display: "block", marginTop: 3, fontSize: 10.5,
                       color: C.inkSoft, fontFamily: "var(--body)", fontWeight: 600 }}>
@@ -6715,9 +6836,9 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
             <tfoot><tr style={{ background: C.paper }}>
               <Td strong colSpan={5}>{t("total")}</Td>
               <Td align="end" mono strong>{fmtC(rGross, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={C.green}>{rDeduct > 0.009 ? `−${fmtC(rDeduct, S.rate, lang)}` : "—"}</Td>
-              <Td align="end" mono strong tone={C.green}>{fmtC(rPaid, S.rate, lang)}</Td>
-              <Td align="end" mono strong tone={isOwing(rDue) ? C.red : C.inkSoft}>{fmtDue(rDue, S.rate, lang)}</Td>
+              <Td align="end" mono strong tone={C.purple}>{rDeduct > 0.009 ? `−${fmtC(rDeduct, S.rate, lang)}` : "—"}</Td>
+              <Td align="end" mono strong tone={C.emerald}>{fmtC(rPaid, S.rate, lang)}</Td>
+              <Td align="end" mono strong tone={isOwing(rDue) ? C.rose : C.slate}>{fmtDue(rDue, S.rate, lang)}</Td>
               <Td colSpan={4} />
             </tr></tfoot>
           </table>}
@@ -8350,6 +8471,7 @@ function FarmApp() {
   }, []);
   const [sel, setSel] = useState(null);
   const [selCust, setSelCust] = useState(null);
+  const [salesChannel, setSalesChannel] = useState("accounts");
   const [palette, setPalette] = useState(false);
   const [q, setQ] = useState("");
   const [batch, setBatch] = useState({});
@@ -10946,6 +11068,17 @@ function FarmApp() {
 
   const DeskSales = (
     <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {[["pos", "⚡", t("salesPos")], ["accounts", "🤝", t("salesAccounts")]].map(([k, ic, lb]) => {
+          const on = salesChannel === k && !selCustomer;
+          return <button type="button" key={k} onClick={() => { setSalesChannel(k); if (k === "pos") setSelCust(null); }}
+            style={{ background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
+              border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 10, padding: "12px 10px",
+              fontWeight: 800, fontSize: 14.5, cursor: "pointer", fontFamily: "var(--body)", minHeight: 48 }}>
+            {ic} {lb}
+          </button>;
+        })}
+      </div>
       {/* open accounts, minimised into named tabs */}
       {openAcc.length > 0 && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
@@ -10985,6 +11118,72 @@ function FarmApp() {
                 kinds: isOwing(iv.due) || !isOwing(iv.paidAmount) ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
               onManage={() => setSheet({ k: "customerManage", cid: selCustomer.id })} />
           </DeskCard>
+        : salesChannel === "pos" ? <>
+          <DeskCard title={`⚡ ${t("salesPos")}`} pad={16}>
+            <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, marginBottom: 10 }}>{t("salesPosSub")}</div>
+            <QuickSaleSheet embedded lang={lang} t={t} S={S} customers={activeCustomers} entries={entries} busy={busy}
+              onClose={() => {}}
+              onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale" } })}
+              onSave={async (p) => {
+                const built = buildQuickSale({
+                  customerId: p.customerId, product: p.product, qty: +p.qty, price: +p.price, amount: +p.amount,
+                  priceMode: p.priceMode, unit: p.unit, payNowC: toCents(p.payNow),
+                  tenderC: toCents(p.tender != null ? p.tender : p.payNow),
+                  currency: "usd", rateUsed: S.rate, at: p.at, note: p.note, idFn: uid,
+                });
+                if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
+                const needWalkIn = p.customerId === WALKIN_ID;
+                await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+              }} />
+          </DeskCard>
+          <DeskCard pad={0} title={`🧾 ${t("posRecent")}`}>
+            {(() => {
+              const posSales = entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID))
+                .slice().sort((a, b) => cmpTx(a, b, "newest")).slice(0, 12);
+              if (!posSales.length) {
+                return <div style={{ padding: 24 }}><Empty icon="⚡" title={t("posEmpty")} /></div>;
+              }
+              return <DataList
+                cards={posSales.map((e) => {
+                  const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
+                  const iv = (ledger.list || []).find((x) => x.id === e.id);
+                  const due = iv ? iv.due : 0;
+                  const kind = due > 0.009 ? "owing" : "paid";
+                  return <DataCard key={e.id} kind={kind}
+                    status={<StatusPill status={kind}>{due > 0.009 ? t("outstanding") : t("paidS")}</StatusPill>}
+                    title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
+                    subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)} · ${customerNameById(customers, e.customerId, t)}`}
+                    meta={e.id}
+                  />;
+                })}
+                table={
+                  <div className="overflow-x-auto">
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+                      <thead><tr>
+                        <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th><Th>{t("product")}</Th>
+                        <Th align="end">{t("colTotal")}</Th><Th>{t("colStatus")}</Th>
+                      </tr></thead>
+                      <tbody>
+                        {posSales.map((e) => {
+                          const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
+                          const iv = (ledger.list || []).find((x) => x.id === e.id);
+                          const due = iv ? iv.due : 0;
+                          return <tr key={e.id} className={statusRowClass(due > 0.009 ? "owing" : "paid")}>
+                            <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
+                            <Td>{customerNameById(customers, e.customerId, t)}</Td>
+                            <Td>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
+                            <Td align="end" mono strong tone={C.emerald}>{fmtC(e.amount, S.rate, lang)}</Td>
+                            <Td><StatusPill status={due > 0.009 ? "owing" : "paid"}>{due > 0.009 ? t("outstanding") : t("paidS")}</StatusPill></Td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />;
+            })()}
+          </DeskCard>
+        </>
         : <DeskCard pad={0} title={`🤝 ${t("customers")} · ${activeCustomers.length}`}
             right={<div style={{ display: "flex", gap: 7, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <button style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13.5 }}
@@ -11035,6 +11234,7 @@ function FarmApp() {
                       <Th w={130}>{t("phone")}</Th>
                       <Th w={120}>{t("product")}</Th>
                       <Th w={100} align="end">{t("dailyQty")}</Th>
+                      <Th w={120} align="end">{t("due")}</Th>
                       <Th w={90} align="center">{t("actions")}</Th>
                     </tr></thead>
                     <tbody>
@@ -11056,7 +11256,8 @@ function FarmApp() {
                           <Td strong>{customerLabel(c, t)}</Td>
                           <Td tone={C.inkSoft}>{c.phone || t("noPhone")}</Td>
                           <Td tone={C.inkSoft}>{pr[1]} {lang === "ar" ? pr[2] : pr[3]}</Td>
-                          <Td align="end" mono tone={C.inkSoft}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
+                          <Td align="end" mono tone={C.slate}>{c.defaultQty ? nf(c.defaultQty) : "—"}</Td>
+                          <Td align="end" mono strong tone={due > 0.009 ? C.rose : C.emerald}>{due > 0.009 ? fmtC(due, S.rate, lang) : t("statusClear")}</Td>
                           <Td align="center"><button type="button" onClick={(ev) => { ev.stopPropagation(); openAccount(c.id); }}
                             className="dk-pill">{t("openAccount")} ›</button></Td>
                         </tr>;
@@ -11785,30 +11986,42 @@ function FarmApp() {
         })()}
 
         {sheet?.k === "newSale" && <SaleForm lang={lang} t={t} S={S} customers={activeCustomers} animals={animals} preId={sheet.cid}
-          entries={entries} ledger={ledger}
+          entries={entries} ledger={ledger} busy={busy}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, priceMode, payNow, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
+          onSave={async ({ customerId, product, qty, price, amount, priceMode, payNow, tender, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
             const loggedAt = iso(Date.now());
-            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit",
-              discountAmount: discountAmount || 0, discountNote: discountNote || "",
-              currency, rateUsed, at, loggedAt, note }];
-            if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash", currency, rateUsed, at, loggedAt });
-            commit(es);
+            const payC = Math.max(0, toCents(payNow));
+            const es = [{ id: saleId, type: "sale", customerId, product, qty: +qty, unit, price: +price, amount: fromCents(toCents(amount)),
+              priceMode: priceMode || "unit", discountAmount: discountAmount || 0, discountNote: discountNote || "",
+              currency, rateUsed, at, loggedAt, note, channel: "accounts" }];
+            if (payC > 0) {
+              const ch = posChangeCents({ dueC: toCents(amount), tenderC: toCents(tender != null ? tender : payNow) });
+              es.push({
+                id: `pay-${uid()}`, type: "payment", customerId, saleId,
+                amount: fromCents(payC), amount_cash: fromCents(payC), amount_expense_offset: 0,
+                total_credited: fromCents(payC), method: "cash", currency, rateUsed, at, loggedAt,
+                tenderAmount: fromCents(ch.tenderC), changeAmount: fromCents(ch.changeC), channel: "accounts",
+              });
+            }
+            await commit(es);
             returnToAccount(customerId); }} />}
 
         {sheet?.k === "quickSale" && <QuickSaleSheet lang={lang} t={t} S={S} customers={activeCustomers} preId={sheet.cid}
+          entries={entries} busy={busy}
           onClose={() => setSheet(null)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale", cid: sheet.cid } })}
-          onSave={({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, at }) => {
-            const saleId = `sale-${uid()}`;
-            const es = [{ id: saleId, type: "sale", customerId, product, qty, unit, price, amount, priceMode: priceMode || "unit", at, note,
-              loggedAt: at, currency: "usd", rateUsed: S.rate }];
-            if (payNow > 0) es.push({ type: "payment", customerId, saleId, amount: payNow, method: "cash",
-              at, loggedAt: at, currency: "usd", rateUsed: S.rate });
+          onSave={async ({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, tender, at }) => {
+            const built = buildQuickSale({
+              customerId, product, qty: +qty, price: +price, amount: +amount, priceMode, unit,
+              payNowC: toCents(payNow), tenderC: toCents(tender != null ? tender : payNow),
+              currency: "usd", rateUsed: S.rate, at, note, idFn: uid,
+            });
+            if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
             const needWalkIn = customerId === WALKIN_ID;
-            commit(es, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+            await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+            if (salesChannel === "pos") { setSheet(null); return; }
             returnToAccount(customerId);
           }} />}
 
@@ -11817,42 +12030,39 @@ function FarmApp() {
           onClose={() => setSheet(null)}
           onSave={(list) => { const es = [];
             list.forEach((x) => { const saleId = `sale-${uid()}`;
+              const amt = fromCents(toCents(x.amount));
               es.push({ id: saleId, type: "sale", customerId: x.customerId, product: x.product,
-                qty: x.qty, unit: x.unit, price: x.price, amount: x.amount });
-              if (x.paid) es.push({ type: "payment", customerId: x.customerId, saleId, amount: x.amount, method: "cash" }); });
+                qty: +x.qty, unit: x.unit, price: +x.price, amount: amt, channel: "accounts" });
+              if (x.paid) es.push({
+                type: "payment", customerId: x.customerId, saleId, amount: amt,
+                amount_cash: amt, amount_expense_offset: 0, total_credited: amt,
+                method: "cash", channel: "accounts",
+              }); });
             commit(es); setSheet(null); }} />}
 
         {sheet?.k === "payment" && cust && <PaymentForm lang={lang} t={t} S={S} customer={cust} ledger={ledger}
-          entries={entries}
+          entries={entries} busy={busy}
           onClose={() => returnToAccount(cust.id)}
-          onSave={({ amount, cashAmount, saleId, method, currency, rateUsed, at, note, reimbursements }) => {
-            const loggedAt = iso(Date.now());
-            const payId = `pay-${uid()}`;
-            const cash = fromCents(toCents(cashAmount != null ? cashAmount : amount));
-            const es = [];
-            const hasCash = toCents(cash) > 0;
-            if (hasCash) {
-              es.push({ id: payId, type: "payment", customerId: cust.id, saleId: saleId || null, amount: cash,
-                method, currency, rateUsed, at, note, loggedAt });
-            }
-            (reimbursements || []).forEach((r) => {
-              const amt = fromCents(toCents(r.amount));
-              const cat = expenseCatFromName(r.name, S.categories);
-              es.push({
-                id: `exp-${uid()}`, type: "expense", category: cat, group: expGroupOf(cat),
-                amount: amt, paidAmount: amt, payStatus: "paid",
-                customerId: cust.id, paymentId: hasCash ? payId : null,
-                vendor: customerNameById(customers, cust.id, t) || "",
-                note: r.name, name: r.name, memo: r.name, origin: "payment_reimbursement",
-                kind: DEDUCTION_REIMBURSEMENT, deductions: amt,
-                currency, rateUsed, at, loggedAt,
-              });
+          onSave={async ({ amount, cashAmount, saleId, method, currency, rateUsed, at, note, reimbursements }) => {
+            const built = buildAccountPayment({
+              customerId: cust.id, saleId: saleId || null,
+              cashC: toCents(cashAmount != null ? cashAmount : amount),
+              offsets: (reimbursements || []).map((r) => ({
+                category: r.category || expenseCatFromName(r.name, S.categories),
+                amount: r.amount, note: r.name, receipt: r.receipt || "",
+              })),
+              method, currency, rateUsed, at, note,
+              vendor: customerNameById(customers, cust.id, t) || "",
+              idFn: uid, groupOf: expGroupOf,
+              catFromName: (name) => expenseCatFromName(name, S.categories),
             });
-            if (!es.length) return;
+            if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
             const savedTypes = rememberNames(S.saleReimburseTypes, (reimbursements || []).map((r) => r.name));
             const typesChanged = namesChanged(savedTypes, S.saleReimburseTypes);
-            commit(es, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
+            await commit(built.entries, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
             returnToAccount(cust.id); }} />}
+
+
 
         {sheet?.k === "editSale" && (() => {
           const iv = ledger.list.find((x) => x.id === sheet.id);
@@ -12742,6 +12952,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .bg-rose-50{background:#FFF1F2}.text-rose-700{color:#BE123C}.border-rose-200{border-color:#FECDD3}.bg-rose-500{background:#F43F5E}
 .bg-sky-50{background:#F0F9FF}.text-sky-700{color:#0369A1}.border-sky-200{border-color:#BAE6FD}.bg-sky-500{background:#0EA5E9}
 .bg-slate-100{background:#F1F5F9}.text-slate-600{color:#475569}.border-slate-200{border-color:#E2E8F0}.bg-slate-400{background:#94A3B8}
+.bg-purple-50{background:#F5F3FF}.text-purple-700{color:#6D28D9}.border-purple-200{border-color:#DDD6FE}.bg-purple-500{background:#7C3AED}
 .status-pill{position:relative;line-height:1.2;white-space:nowrap;max-width:100%}
 .status-pill::after{content:"";position:absolute;inset:50%;width:44px;height:44px;transform:translate(-50%,-50%);pointer-events:none}
 .status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block}
@@ -12774,6 +12985,9 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .status-row--danger,.data-card--danger{border-inline-start-color:#F43F5E}
 .status-row--info,.data-card--info{border-inline-start-color:#0EA5E9}
 .status-row--neutral,.data-card--neutral{border-inline-start-color:#94A3B8}
+.status-row--offset,.data-card--offset{border-inline-start-color:#7C3AED}
+.sale-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+@media(min-width:640px){.sale-product-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
 .adapt-grid{display:grid;grid-template-columns:1fr;gap:1rem}
 .touch-target,.dk-pill,.chip,.filter-tog,.ctx-item,.dk-quick-btn,.dk-nav,.dk-side-hide,.sort-tog,
 .sf-gear,.sf-clear,.sf-chip,.sf-apply,.sf-dir,.help-kit-btn,.help-kit-act{
@@ -12829,6 +13043,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .app.theme-dark .bg-rose-50{background:rgba(244,63,94,.14)}.app.theme-dark .text-rose-700{color:#FDA4AF}.app.theme-dark .border-rose-200{border-color:rgba(253,164,175,.35)}
 .app.theme-dark .bg-sky-50{background:rgba(14,165,233,.14)}.app.theme-dark .text-sky-700{color:#7DD3FC}.app.theme-dark .border-sky-200{border-color:rgba(125,211,252,.35)}
 .app.theme-dark .bg-slate-100{background:rgba(148,163,184,.16)}.app.theme-dark .text-slate-600{color:#CBD5E1}.app.theme-dark .border-slate-200{border-color:rgba(203,213,225,.28)}
+.app.theme-dark .bg-purple-50{background:rgba(124,58,237,.16)}.app.theme-dark .text-purple-700{color:#C4B5FD}.app.theme-dark .border-purple-200{border-color:rgba(196,181,253,.35)}
 .app.theme-dark .data-card,.app.theme-dark .account-balance,.app.theme-dark .hero-stat{background:${C.card};color:${C.ink}}
 .app.theme-dark .status-choice{background:${C.card};color:${C.ink};border-color:${C.line}}
 @media print{

@@ -32,7 +32,8 @@ export function settleAmounts({ grossC = 0, deductC = 0, paidC = 0 } = {}) {
 
 /* Record Payment: cash collected is independent of expense deductions.
    Example: owing 100, pocket farm expense 50, take 50 cash → due 0.
-   Cash is stored as the payment; deductions post as farm expenses / cash-out. */
+   Cash is stored as the payment; deductions post as farm expenses.
+   Physical cash-box Cash In is cash received only — offsets do not move the drawer. */
 export function recordPaymentSplit({ dueC = 0, cashC = 0, deductC = 0 } = {}) {
   const due = Math.max(0, Math.round(dueC));
   const cash = Math.max(0, Math.round(cashC));
@@ -50,13 +51,11 @@ export function recordPaymentSplit({ dueC = 0, cashC = 0, deductC = 0 } = {}) {
   };
 }
 
-/* Gross cash-box view of a payment with expense deductions:
-   receipt is cash + deductions, the deduction is a cash-out expense,
-   so drawer net equals cash actually taken. */
+/* Physical cash box for a payment with expense offsets:
+   Cash In is cash received only. Offsets do not move the drawer —
+   they post as farm expenses on the expense / P&L ledger. */
 export function cashBoxFromPayment({ cashC = 0, deductC = 0 } = {}) {
   const cash = Math.max(0, Math.round(cashC));
   const deduct = Math.max(0, Math.round(deductC));
-  const inC = cash + deduct;
-  const outC = deduct;
-  return { inC, outC, netC: inC - outC };
+  return { inC: cash, outC: 0, netC: cash, expenseC: deduct };
 }

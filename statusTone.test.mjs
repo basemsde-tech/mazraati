@@ -12,6 +12,8 @@ test("statusToneOf maps operational statuses to semantic tones", () => {
   assert.equal(statusToneOf("due"), "warning");
   assert.equal(statusToneOf("partial"), "warning");
   assert.equal(statusToneOf("owing"), "warning");
+  assert.equal(statusToneOf("offset"), "offset");
+  assert.equal(statusToneOf("reimbursement"), "offset");
   assert.equal(statusToneOf("overdue"), "danger");
   assert.equal(statusToneOf("unpaid"), "danger");
   assert.equal(statusToneOf("sick"), "danger");
@@ -40,6 +42,7 @@ test("pill tokens stay on soft fills with AA-friendly ink", () => {
   assert.equal(STATUS_PILL_TOKENS.danger.pill.includes("rose"), true);
   assert.equal(STATUS_PILL_TOKENS.info.dot, "bg-sky-500");
   assert.equal(STATUS_PILL_TOKENS.neutral.pill, "bg-slate-100 text-slate-600 border-slate-200");
+  assert.equal(STATUS_PILL_TOKENS.offset.pill, "bg-purple-50 text-purple-700 border-purple-200");
 });
 
 function relativeLuminance(hex) {
@@ -61,6 +64,7 @@ test("status pill text meets WCAG AA contrast on soft fills", () => {
     ["#BE123C", "#FFF1F2"],
     ["#0369A1", "#F0F9FF"],
     ["#475569", "#F1F5F9"],
+    ["#6D28D9", "#F5F3FF"],
   ];
   for (const [fg, bg] of pairs) {
     assert.ok(contrastRatio(fg, bg) >= 4.5, `${fg} on ${bg} is ${contrastRatio(fg, bg).toFixed(2)}`);

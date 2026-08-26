@@ -69,10 +69,11 @@ describe("record payment split", () => {
 });
 
 describe("cash box from a payment reimbursement", () => {
-  it("posts the deduction as a cash-out expense and keeps drawer net equal to cash taken", () => {
+  it("records cash in only — offsets do not move the drawer", () => {
     const box = cashBoxFromPayment({ cashC: 5000, deductC: 5000 });
-    assert.equal(box.inC, 10000);
-    assert.equal(box.outC, 5000);
+    assert.equal(box.inC, 5000);
+    assert.equal(box.outC, 0);
     assert.equal(box.netC, 5000);
+    assert.equal(box.expenseC, 5000);
   });
 });
