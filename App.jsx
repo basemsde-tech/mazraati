@@ -20,7 +20,7 @@ import {
 } from "./settlement.mjs";
 import {
   OFFSET_CATEGORIES, offsetCategoryLabel, buildAccountPayment, buildQuickSale,
-  migrateSalesEntries, paymentCashCents, posChangeCents,
+  migrateSalesEntries, paymentCashCents, posChangeCents, isOneTimeSale,
 } from "./salesPosting.mjs";
 import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
 
@@ -31,9 +31,21 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.21", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.22", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.22": {
+    ar: [
+      "البيع السريع: شراء لمرة واحدة يبقى في الصندوق فقط، أو ضعه على حساب زبون",
+      "قوائم الإجراءات تظهر فوق الجداول ولا تُقصّ داخل البطاقة",
+      "في الحساب: بيع جديد وتسجيل دفعة يظهران لإجمالي المستحق، لا لكل حركة",
+    ],
+    en: [
+      "Quick Sale: one-time purchases stay in Cash Box only, or tick to put them on a customer account",
+      "Action menus open in front of tables instead of clipping inside the card",
+      "On an account: New Sale and Record Payment apply to the overall due, not each invoice",
+    ],
+  },
   "2.9.21": {
     ar: [
       "احذف عدة مبيعات دفعة واحدة: إرجاع المخزون أو شطب بلا إرجاع، مع سبب إلزامي وسجل كامل",
@@ -1237,8 +1249,12 @@ const T = {
     milkUseVoidWriteoff: "شطب بيع",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
-    quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ثم الصندوق: كامل أو جزئي",
+    quickSale: "بيع سريع", quickSaleHint: "شراء لمرة واحدة أو حساب زبون · منتج · كمية — ثم الصندوق",
     walkIn: "زبون عابر", walkInHint: "بيع لمرة واحدة — لا حاجة لاسم",
+    oneTimePurchase: "شراء لمرة واحدة",
+    oneTimeHint: "يُسجَّل في الصندوق فقط — لا يظهر في حسابات الزبائن",
+    createAsAccount: "إنشاء كحساب زبون",
+    createAsAccountHint: "يظهر في حسابات الزبائن ويمكن تأجيل الدفع أو تحصيل جزئي",
     cashier: "الصندوق", charge: "تحصيل", payInFull: "دفع كامل",
     amountReceived: "المبلغ المستلم", amountDue: "المطلوب",
     chargeFull: "تحصيل الكامل", takePartial: "تحصيل الجزئي",
@@ -1251,7 +1267,7 @@ const T = {
     tenderShort: "النقد المستلم أقل من المطلوب", paidExact: "بدون فكة",
     cashBills: "فئات سريعة",
     salesPos: "بيع سريع", salesAccounts: "حسابات الزبائن",
-    salesPosSub: "منتج · كمية · نقد — مع فكة",
+    salesPosSub: "مرة واحدة أو حساب زبون · منتج · كمية · نقد — مع فكة",
     expenseOffset: "حسم مصروف", offsetCategory: "بند المصروف",
     remainingBalance: "المتبقي بعد التسوية",
     overpayWarn: "النقد والحسم أكبر من المستحق. فعّل الرصيد الدائن للمتابعة.",
@@ -1724,8 +1740,12 @@ const T = {
     milkUseVoidWriteoff: "Sale write-off",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
-    quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — then cashier: full or partial",
+    quickSale: "Quick Sale", quickSaleHint: "One-time or customer account · product · qty — then cashier",
     walkIn: "Walk-in", walkInHint: "One-off sale — no name needed",
+    oneTimePurchase: "One-time purchase",
+    oneTimeHint: "Cash Box only — does not appear in Customer accounts",
+    createAsAccount: "Create as customer account",
+    createAsAccountHint: "Shows in Customer accounts; you can charge now, take a partial, or put it on account",
     cashier: "Cashier", charge: "Charge", payInFull: "Pay in full",
     amountReceived: "Amount received", amountDue: "Amount due",
     chargeFull: "Charge full", takePartial: "Take partial",
@@ -1738,7 +1758,7 @@ const T = {
     tenderShort: "Cash received is less than the total", paidExact: "No change",
     cashBills: "Quick cash",
     salesPos: "Quick Sale", salesAccounts: "Customer accounts",
-    salesPosSub: "Product · qty · cash — with change",
+    salesPosSub: "One-time or customer account · product · qty · cash — with change",
     expenseOffset: "Expense offset", offsetCategory: "Expense category",
     remainingBalance: "Remaining after settlement",
     overpayWarn: "Cash plus offsets exceed the amount due. Turn on customer credit to continue.",
@@ -2109,8 +2129,8 @@ function datePresetBounds(kind) {
   if (kind === "month") return { from: dayKey(new Date(y, m, 1)), to: dayKey(now) };
   return { from: "", to: "" };
 }
-function saleSaveReason(t, { cid, qty, price, amount, priceMode, discountOver }) {
-  if (!cid) return t("needCustomer");
+function saleSaveReason(t, { cid, qty, price, amount, priceMode, discountOver, allowNoCustomer }) {
+  if (!cid && !allowNoCustomer) return t("needCustomer");
   if (!(Number(qty) > 0)) return t("needQty");
   if (priceMode === "unit" && !(Number(price) > 0)) return t("needPrice");
   if (!(Number(amount) > 0)) return t("needAmount");
@@ -2671,6 +2691,7 @@ const withWalkInCustomer = (list) => {
 };
 const customerLabel = (c, t) => (isWalkInCustomer(c) ? t("walkIn") : ((c && c.name) || "—"));
 const customerNameById = (customers, id, t) => {
+  if (!id) return t("oneTimePurchase");
   if (id === WALKIN_ID) return t("walkIn");
   return customerLabel((customers || []).find((x) => x.id === id), t);
 };
@@ -2877,7 +2898,9 @@ function buildLedger(entries, customers) {
     netBySaleC[s.id] = afterReimb - discC;
     extraOnSaleC[s.id] = 0;
     const extraReimbC = Math.max(0, ownReimbC - saleC);
-    if (extraReimbC > 0) reimbPoolC[s.customerId] = (reimbPoolC[s.customerId] || 0) + extraReimbC;
+    if (extraReimbC > 0 && s.customerId && !isOneTimeSale(s)) {
+      reimbPoolC[s.customerId] = (reimbPoolC[s.customerId] || 0) + extraReimbC;
+    }
   });
   const paymentDeductions = (entries || []).filter((e) => isDeductionReimbursement(e)
     && e.type === "expense" && deductionCents(e) > 0)
@@ -2888,6 +2911,7 @@ function buildLedger(entries, customers) {
   });
   /* Leftover reimbursement (sale overflow + payment credits) reduces other invoices as a deduction, not as cash collected. */
   sales.forEach((s) => {
+    if (!s.customerId || isOneTimeSale(s)) return;
     const takeC = Math.min(netBySaleC[s.id], reimbPoolC[s.customerId] || 0);
     if (takeC > 0) {
       extraOnSaleC[s.id] += takeC;
@@ -2900,9 +2924,12 @@ function buildLedger(entries, customers) {
     const roomC = Math.max(0, netBySaleC[p.saleId] - recC[p.saleId]);
     const appliedC = Math.min(roomC, paidC);
     recC[p.saleId] += appliedC;
-    if (paidC > appliedC) poolC[p.customerId] = (poolC[p.customerId] || 0) + paidC - appliedC;
+    if (paidC > appliedC && p.customerId && !isOneTimeSale(p)) {
+      poolC[p.customerId] = (poolC[p.customerId] || 0) + paidC - appliedC;
+    }
   });
   pays.filter((p) => !p.saleId || !(p.saleId in recC)).forEach((p) => {
+    if (!p.customerId || isOneTimeSale(p)) return;
     poolC[p.customerId] = (poolC[p.customerId] || 0) + Math.max(0, toCents(p.amount));
   });
   const list = sales.map((s, i) => {
@@ -2916,7 +2943,7 @@ function buildLedger(entries, customers) {
     const reimbC = appliedOwnC + extraC;
     const netC = Math.max(0, grossC - reimbC - discountC);
     const remainingC = Math.max(0, netC - recC[s.id]);
-    const takeC = Math.min(remainingC, poolC[s.customerId] || 0);
+    const takeC = (!s.customerId || isOneTimeSale(s)) ? 0 : Math.min(remainingC, poolC[s.customerId] || 0);
     if (takeC > 0) { recC[s.id] += takeC; poolC[s.customerId] -= takeC; }
     const paidC = Math.min(netC, recC[s.id]);
     const dueC = Math.max(0, netC - paidC);
@@ -2935,6 +2962,7 @@ function buildLedger(entries, customers) {
   const blank = () => ({ gross: 0, net: 0, sold: 0, reimbursed: 0, discounted: 0, deductions: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0 });
   (customers || []).forEach((c) => { byCustomer[c.id] = blank(); });
   list.forEach((s) => {
+    if (!s.customerId || isOneTimeSale(s)) return;
     const b = byCustomer[s.customerId] || (byCustomer[s.customerId] = blank());
     b.gross = fromCents(toCents(b.gross) + toCents(s.grossAmount));
     b.reimbursed = fromCents(toCents(b.reimbursed) + toCents(s.reimbAmount));
@@ -2948,10 +2976,12 @@ function buildLedger(entries, customers) {
     if (isOwing(s.due)) b.oldest = Math.max(b.oldest, s.lateDays);
   });
   Object.keys(poolC).forEach((cid) => {
+    if (!cid || cid === "undefined") return;
     if (!byCustomer[cid]) byCustomer[cid] = blank();
     if (poolC[cid] > 0) byCustomer[cid].credit = fromCents(poolC[cid]);
   });
   Object.keys(reimbPoolC).forEach((cid) => {
+    if (!cid || cid === "undefined") return;
     if (!byCustomer[cid]) byCustomer[cid] = blank();
     if (reimbPoolC[cid] > 0) {
       byCustomer[cid].credit = fromCents(toCents(byCustomer[cid].credit) + reimbPoolC[cid]);
@@ -3541,12 +3571,16 @@ function Chip({ active, onClick, children, color = C.field }) {
     fontFamily: "var(--body)", flexShrink: 0, minHeight: 44, minWidth: 44,
     transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
 }
-function placeMenu(anchor, { minW = 220, maxW = 480, estH = 280 } = {}) {
+function placeMenu(anchor, { minW = 220, maxW = 480, estH = 280, align = "stretch" } = {}) {
   if (!anchor) return { top: 8, left: 8, width: minW };
   const r = anchor.getBoundingClientRect();
-  const w = Math.min(maxW, Math.max(minW, r.width, Math.min(window.innerWidth - 16, r.width)));
+  const want = align === "stretch" ? r.width : minW;
+  const w = Math.min(maxW, Math.max(minW, want, Math.min(window.innerWidth - 16, want)));
   const rtl = typeof document !== "undefined" && document.documentElement.dir === "rtl";
-  let left = rtl ? r.right - w : r.left;
+  let left;
+  if (align === "end") left = rtl ? r.left : r.right - w;
+  else if (align === "start") left = rtl ? r.right - w : r.left;
+  else left = rtl ? r.right - w : r.left;
   left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
   let top = r.bottom + 6;
   if (top + Math.min(estH, 280) > window.innerHeight - 8 && r.top > 160) {
@@ -4078,50 +4112,92 @@ function SearchFilterBar({ t, q, onQ, qPlaceholder, chips, extra, activeCount, o
 function HelpKit({ t, actions = [], items = [], tone }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const popRef = useRef(null);
+  const [pos, setPos] = useState({ top: 8, left: 8, width: 240 });
+  const place = useCallback(() => {
+    if (ref.current) setPos(placeMenu(ref.current, { minW: 220, maxW: 280, estH: 220, align: "end" }));
+  }, []);
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    place();
+    const onDoc = (e) => {
+      if (ref.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", onDoc);
-    return () => document.removeEventListener("pointerdown", onDoc);
-  }, [open]);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
   if (!actions.length && !items.length) return null;
   return <div className="help-kit" ref={ref}>
     <button type="button" className={`help-kit-btn${tone === "inv" ? " inv" : ""}`}
       aria-label={t("help")} title={t("help")} aria-expanded={open}
       onClick={() => setOpen((o) => !o)}>?</button>
-    {open && <div className="help-kit-pop" role="dialog" aria-label={t("help")}>
-      {actions.map((a) => (
-        <button key={a.key} type="button" className="help-kit-act"
-          onClick={() => { setOpen(false); a.run && a.run(); }}>
-          {a.icon ? `${a.icon} ` : ""}{a.label}
-        </button>
-      ))}
-      {items.map((txt, i) => <p key={i} className="help-kit-txt">{txt}</p>)}
-    </div>}
+    {open && createPortal(
+      <div ref={popRef} className="help-kit-pop help-kit-port" role="dialog" aria-label={t("help")}
+        style={{ top: pos.top, left: pos.left, width: pos.width }}>
+        {actions.map((a) => (
+          <button key={a.key} type="button" className="help-kit-act"
+            onClick={() => { setOpen(false); a.run && a.run(); }}>
+            {a.icon ? `${a.icon} ` : ""}{a.label}
+          </button>
+        ))}
+        {items.map((txt, i) => <p key={i} className="help-kit-txt">{txt}</p>)}
+      </div>, document.body)}
   </div>;
 }
 function MoreMenu({ t, items, align = "end" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const popRef = useRef(null);
+  const [pos, setPos] = useState({ top: 8, left: 8, width: 220 });
+  const list = (items || []).filter(Boolean);
+  const place = useCallback(() => {
+    if (ref.current) setPos(placeMenu(ref.current, {
+      minW: 210, maxW: 280, estH: 16 + list.length * 48, align,
+    }));
+  }, [align, list.length]);
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    place();
+    const onDoc = (e) => {
+      if (ref.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", onDoc);
-    return () => document.removeEventListener("pointerdown", onDoc);
-  }, [open]);
-  const list = (items || []).filter(Boolean);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
   if (!list.length) return null;
   return <div className="more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
     <button type="button" className="more-menu-btn" aria-label={t("moreActions")} title={t("moreActions")}
       aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>⋯</button>
-    {open && <div className={`more-menu-pop${align === "start" ? " start" : ""}`} role="menu">
-      {list.map((it, i) => it === "—"
-        ? <div key={`s${i}`} className="ctx-sep" />
-        : <button key={it.key || i} type="button" className={`help-kit-act${it.danger ? " danger" : ""}`}
-            onClick={() => { setOpen(false); it.run && it.run(); }}>
-            {it.icon ? `${it.icon} ` : ""}{it.label}
-          </button>)}
-    </div>}
+    {open && createPortal(
+      <div ref={popRef} className="more-menu-pop more-menu-port" role="menu"
+        style={{ top: pos.top, left: pos.left, width: pos.width }}>
+        {list.map((it, i) => it === "—"
+          ? <div key={`s${i}`} className="ctx-sep" />
+          : <button key={it.key || i} type="button" className={`help-kit-act${it.danger ? " danger" : ""}`}
+              onClick={() => { setOpen(false); it.run && it.run(); }}>
+              {it.icon ? `${it.icon} ` : ""}{it.label}
+            </button>)}
+      </div>, document.body)}
   </div>;
 }
 function FoldPanel({ open, onToggle, label, hint, children }) {
@@ -6485,8 +6561,10 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
 
 function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onClose, onAddCustomer, entries, busy, embedded }) {
   const named = (customers || []).filter((c) => !isWalkInCustomer(c));
-  const [cid, setCid] = useState(preId || WALKIN_ID);
-  const walkIn = cid === WALKIN_ID;
+  const namedPre = preId && preId !== WALKIN_ID ? preId : "";
+  const [onAccount, setOnAccount] = useState(!!namedPre);
+  const [cid, setCid] = useState(namedPre);
+  const oneTime = !onAccount;
   const c = named.find((x) => x.id === cid);
   const [product, setProduct] = useState(preProduct || c?.product || "milk");
   const [qty, setQty] = useState(c?.defaultQty || 0);
@@ -6520,7 +6598,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     else if (qty > 0) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode });
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, allowNoCustomer: oneTime });
   const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
   const resetQuick = () => {
     setTill(false);
@@ -6528,7 +6606,8 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     setNote("");
     setAdv(false);
     setErr("");
-    setCid(WALKIN_ID);
+    setOnAccount(!!namedPre);
+    setCid(namedPre);
     setProduct("milk");
     setQty(0);
     setPriceMode("unit");
@@ -6540,7 +6619,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     const ch = posChangeCents({ dueC: toCents(amount), tenderC: toCents(tender) });
     try {
       const ok = await onSave({
-        customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
+        customerId: onAccount ? cid : "", oneTime, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
         unit: product === "milk" ? milkSaleUnit : undefined,
         payNow, tender, at: iso(Date.now()),
       });
@@ -6556,18 +6635,27 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     setChangeGive({ change: fromCents(ch.changeC) });
     setTill(false);
   };
-  const who = walkIn ? t("walkIn") : (c ? c.name : "");
+  const who = oneTime ? t("oneTimePurchase") : (c ? c.name : "");
   const form = changeGive
     ? <PosChangeDone t={t} lang={lang} S={S} change={changeGive.change} onNext={resetQuick} />
     : till
-    ? <PosTillPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} walkIn={walkIn} />
+    ? <PosTillPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} walkIn={oneTime} />
     : <>
-    <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
-      extras={[{ id: WALKIN_ID, label: t("walkIn"), icon: "🛍️" }]}
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontWeight: 700, fontSize: 14.5, cursor: "pointer" }}>
+        <input type="checkbox" checked={onAccount}
+          onChange={(e) => { setOnAccount(e.target.checked); setErr(""); if (!e.target.checked) setCid(""); }}
+          style={{ marginTop: 3, width: 18, height: 18, flexShrink: 0 }} />
+        <span>
+          {t("createAsAccount")}
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: C.slate, marginTop: 3 }}>
+            {onAccount ? t("createAsAccountHint") : t("oneTimeHint")}</div>
+        </span>
+      </label>
+    </div>
+    {onAccount && <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
       items={named.map((x) => ({ id: x.id, label: x.name, hint: x.phone || "", search: `${x.name} ${x.phone || ""}` }))}
-      onAdd={onAddCustomer} addLabel={t("addCustomer")} />
-    {walkIn && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 10px" }}>
-      {t("walkInHint")}</div>}
+      onAdd={onAddCustomer} addLabel={t("addCustomer")} />}
     <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "4px 0 12px" }}>
       {PRODUCTS.map(([k, ic, ar, en]) => {
         const on = product === k;
@@ -7140,7 +7228,6 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         border: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 8 }}>
         <StatusPill status="paid">{t("credit")}</StatusPill>
         {fmtC(b.credit, S.rate, lang)}</div>}
-      <button type="button" style={primaryBtn} onClick={onPayment}>💵 {t("recordPayment")}</button>
       <FoldPanel open={detailsOpen} onToggle={() => setDetailsOpen((v) => !v)} label={t("accountDetails")}>
         <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 12 }}>
           {customer.phone && <Row k={t("phone")} v={customer.phone} />}
@@ -7208,7 +7295,6 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                 actions={<MoreMenu t={t} items={[
                   { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                   { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                  isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
                   onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
                 ]} />}
               />
@@ -7240,7 +7326,6 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                     { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                    isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
                     onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
                   <Td align="center">
@@ -7261,7 +7346,6 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                     <MoreMenu t={t} items={[
                       { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                       { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                      isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
                       onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
                     ]} />
                   </Td>
@@ -7308,12 +7392,17 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
   return <div style={{ display: "grid", gap: 12 }}>
     <AccountHead customer={customer} no={no} b={b} lang={lang} t={t} S={S} />
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <button type="button" style={{ ...secondaryBtn, padding: "14px 12px", fontSize: 15 }} onClick={onNewSale}>
+        🧾 {t("newSale")}</button>
+      <button type="button" style={{ ...primaryBtn, padding: "14px 12px", fontSize: 15 }} onClick={onPayment}>
+        💵 {t("recordPayment")}{isOwing(b.due) ? ` · ${fmtDue(b.due, S.rate, lang)}` : ""}</button>
+    </div>
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
       {[["overview", t("overview")], ["transactions", `${t("transactions")} · ${all.length}`]].map(([k, lb]) => (
         <Chip key={k} active={tab === k} onClick={() => setTab(k)}>{lb}</Chip>))}
       <span style={{ marginInlineStart: "auto" }}>
         <MoreMenu t={t} items={[
-          { key: "sale", icon: "🧾", label: t("newSale"), run: onNewSale },
           onStatement && { key: "stmt", icon: "🖨️", label: t("statement"), run: onStatement },
           onExport && { key: "xls", icon: "📊", label: t("excel"), run: onExport },
           onManage && { key: "manage", icon: "⚙️", label: t("manageAccount"), run: onManage },
@@ -11703,19 +11792,19 @@ function FarmApp() {
               onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale" } })}
               onSave={async (p) => {
                 const built = buildQuickSale({
-                  customerId: p.customerId, product: p.product, qty: +p.qty, price: +p.price, amount: +p.amount,
+                  customerId: p.oneTime ? "" : p.customerId, oneTime: !!p.oneTime,
+                  product: p.product, qty: +p.qty, price: +p.price, amount: +p.amount,
                   priceMode: p.priceMode, unit: p.unit, payNowC: toCents(p.payNow),
                   tenderC: toCents(p.tender != null ? p.tender : p.payNow),
                   currency: "usd", rateUsed: S.rate, at: p.at, note: p.note, idFn: uid,
                 });
                 if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
-                const needWalkIn = p.customerId === WALKIN_ID;
-                return await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+                return await commit(built.entries);
               }} />
           </DeskCard>
           <DeskCard pad={0} title={`🧾 ${t("posRecent")}`}>
             <PosRecentList
-              posSales={entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID))
+              posSales={entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID || isOneTimeSale(e)))
                 .slice().sort((a, b) => cmpTx(a, b, "newest")).slice(0, 12)}
               ledger={ledger} customers={customers} lang={lang} t={t} S={S}
               onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
@@ -12493,7 +12582,11 @@ function FarmApp() {
           onView={() => openAccountFull(sheet.customer.id, "overview")}
           onAddAnother={() => setSheet({ k: "addCustomer", back: sheet.back || null })}
           onClose={() => setSheet(null)}
-          onBack={sheet.back ? () => setSheet(sheet.back) : undefined} backLabel={t("backBtn")} />}
+          onBack={sheet.back ? () => setSheet(
+            (sheet.back.k === "quickSale" || sheet.back.k === "newSale")
+              ? { ...sheet.back, cid: sheet.customer.id }
+              : sheet.back
+          ) : undefined} backLabel={t("backBtn")} />}
 
         {sheet?.k === "customerManage" && cust && <CustomerManageSheet lang={lang} t={t} S={S}
           customer={cust} no={accNo(customers, cust.id)} ledger={ledger}
@@ -12569,15 +12662,15 @@ function FarmApp() {
           entries={entries} busy={busy}
           onClose={() => setSheet(null)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale", cid: sheet.cid } })}
-          onSave={async ({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, tender, at }) => {
+          onSave={async ({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, tender, at, oneTime }) => {
             const built = buildQuickSale({
-              customerId, product, qty: +qty, price: +price, amount: +amount, priceMode, unit,
+              customerId: oneTime ? "" : customerId, oneTime: !!oneTime,
+              product, qty: +qty, price: +price, amount: +amount, priceMode, unit,
               payNowC: toCents(payNow), tenderC: toCents(tender != null ? tender : payNow),
               currency: "usd", rateUsed: S.rate, at, note, idFn: uid,
             });
             if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
-            const needWalkIn = customerId === WALKIN_ID;
-            return await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+            return await commit(built.entries);
           }} />}
 
         {sheet?.k === "round" && <DailyRoundSheet lang={lang} t={t} S={S} customers={activeCustomers} ledger={ledger}
@@ -13443,6 +13536,7 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .help-kit-btn.inv{background:transparent;border-color:rgba(255,255,255,.35);color:#fff}
 .help-kit-pop{position:absolute;z-index:30;top:calc(100% + 6px);inset-inline-end:0;min-width:220px;max-width:280px;
   background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px;box-shadow:0 12px 32px ${C.shadow}}
+.help-kit-port{position:fixed;z-index:130;inset:auto;max-width:none}
 .help-kit-act{display:block;width:100%;text-align:start;min-height:44px;border:none;background:transparent;padding:10px;
   border-radius:8px;cursor:pointer;font-weight:600;font-family:var(--body);color:${C.ink}}
 .help-kit-act:hover{background:${C.paper}}
@@ -13453,6 +13547,7 @@ body.sale-picking .dk-body{padding-bottom:76px}
   font-weight:800;cursor:pointer;font-family:var(--body);font-size:20px;line-height:1}
 .more-menu-pop{position:absolute;z-index:45;top:calc(100% + 4px);inset-inline-end:0;min-width:210px;max-width:280px;
   background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:8px;box-shadow:0 12px 32px ${C.shadow}}
+.more-menu-port{position:fixed;z-index:130;inset:auto;max-width:none}
 .more-menu-pop.start{inset-inline-end:auto;inset-inline-start:0}
 .fold-panel{margin:0 0 12px}
 .fold-tog{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;min-height:44px;

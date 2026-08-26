@@ -135,4 +135,41 @@ describe("quick sale POS tender", () => {
     assert.equal(built.entries[1].tenderAmount, 200);
     assert.equal(built.entries[1].changeAmount, 100);
   });
+
+  it("posts a one-time cash sale without a customer account", () => {
+    const built = buildQuickSale({
+      oneTime: true,
+      product: "milk",
+      qty: 2,
+      price: 50,
+      amount: 100,
+      payNowC: 10000,
+      tenderC: 10000,
+      at: "2026-08-26T00:00:00.000Z",
+      idFn: () => "z",
+    });
+    assert.equal(built.ok, true);
+    assert.equal(built.touchesCashbox, true);
+    assert.equal(built.entries[0].oneTime, true);
+    assert.equal(built.entries[0].customerId, undefined);
+    assert.equal(built.entries[0].channel, "pos");
+    assert.equal(built.entries[1].oneTime, true);
+    assert.equal(built.entries[1].customerId, undefined);
+    assert.equal(built.entries[1].amount_cash, 100);
+  });
+
+  it("rejects a one-time sale with no cash in", () => {
+    const built = buildQuickSale({
+      oneTime: true,
+      product: "milk",
+      qty: 1,
+      price: 10,
+      amount: 10,
+      payNowC: 0,
+      idFn: () => "z",
+    });
+    assert.equal(built.ok, false);
+    assert.equal(built.error, "tenderShort");
+    assert.equal(built.entries.length, 0);
+  });
 });

@@ -172,12 +172,19 @@ export function buildAccountPayment({
   };
 }
 
+export function isOneTimeSale(e) {
+  if (!e) return false;
+  if (e.oneTime === true) return true;
+  return e.channel === "pos" && !e.customerId;
+}
+
 export function buildQuickSale({
   customerId, product, qty, price, amount, priceMode = "unit", unit,
   payNowC = 0, tenderC = 0, currency = "usd", rateUsed = 0,
-  at, note = "", idFn,
+  at, note = "", idFn, oneTime = false,
 } = {}) {
-  if (!customerId) return { ok: false, error: "needCustomer", entries: [] };
+  const onAccount = !oneTime && !!customerId;
+  if (!onAccount && !oneTime) return { ok: false, error: "needCustomer", entries: [] };
   const amtC = Math.max(0, toCents(amount));
   if (!(amtC > 0) || !(qty > 0)) return { ok: false, error: "needAmount", entries: [] };
   const nid = typeof idFn === "function" ? idFn : () => `id-${Math.random().toString(36).slice(2, 9)}`;
@@ -185,10 +192,10 @@ export function buildQuickSale({
   const paidC = Math.max(0, Math.min(amtC, Math.round(payNowC)));
   const tender = Math.max(paidC, Math.round(tenderC || 0));
   const changeC = Math.max(0, tender - amtC);
+  if (oneTime && !(paidC > 0)) return { ok: false, error: "tenderShort", entries: [] };
   const sale = {
     id: saleId,
     type: "sale",
-    customerId,
     product,
     qty,
     unit,
@@ -201,12 +208,13 @@ export function buildQuickSale({
     rateUsed,
     channel: "pos",
   };
+  if (onAccount) sale.customerId = customerId;
+  else sale.oneTime = true;
   const entries = [sale];
   if (paidC > 0) {
-    entries.push({
+    const pay = {
       id: `pay-${nid()}`,
       type: "payment",
-      customerId,
       saleId,
       amount: fromCents(paidC),
       amount_cash: fromCents(paidC),
@@ -219,7 +227,10 @@ export function buildQuickSale({
       tenderAmount: fromCents(tender),
       changeAmount: fromCents(changeC),
       channel: "pos",
-    });
+    };
+    if (onAccount) pay.customerId = customerId;
+    else pay.oneTime = true;
+    entries.push(pay);
   }
   return {
     ok: true,
