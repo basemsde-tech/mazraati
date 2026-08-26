@@ -22,7 +22,7 @@ import {
   OFFSET_CATEGORIES, offsetCategoryLabel, buildAccountPayment, buildQuickSale,
   migrateSalesEntries, paymentCashCents, posChangeCents,
 } from "./salesPosting.mjs";
-import { voidSales, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
+import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -31,9 +31,17 @@ import { voidSales, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./sales
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.20", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.21", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.21": {
+    ar: [
+      "احذف عدة مبيعات دفعة واحدة: إرجاع المخزون أو شطب بلا إرجاع، مع سبب إلزامي وسجل كامل",
+    ],
+    en: [
+      "Delete several sales at once: restore stock or write off, with a required reason and a full history log",
+    ],
+  },
   "2.9.20": {
     ar: [
       "القوائم المنبثقة تبقى فوق الجداول والبطاقات، والأزرار والنوافذ أوضح",
@@ -775,6 +783,7 @@ const milkUseLabel = (e, t) => {
   if (reason === "home") return t("milkUseHome");
   if (reason === "calves") return t("milkUseCalves");
   if (reason === "waste") return t("milkUseWaste");
+  if (reason === "void-writeoff") return (e && e.reasonLabel) || t("milkUseVoidWriteoff");
   const label = (e && e.reasonLabel) || (reason.startsWith("custom:") ? reason.slice(7) : "");
   return label || t("milkUseOther");
 };
@@ -1224,6 +1233,8 @@ const T = {
     voidMissingSale: "لم يُعثر على أحد البيوع المحدّدة.",
     voidTankOverflow: "إرجاع الحليب يتجاوز سعة الخزان.",
     voidConfirm: "تأكيد الحذف",
+    voidBusy: "جاري الحذف…",
+    milkUseVoidWriteoff: "شطب بيع",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
     quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ثم الصندوق: كامل أو جزئي",
@@ -1709,6 +1720,8 @@ const T = {
     voidMissingSale: "One of the selected sales was not found.",
     voidTankOverflow: "Putting the milk back would overflow the tank.",
     voidConfirm: "Confirm delete",
+    voidBusy: "Deleting…",
+    milkUseVoidWriteoff: "Sale write-off",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
     quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — then cashier: full or partial",
@@ -3308,7 +3321,7 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
     ...Object.entries(sums.byCategory || {}).filter(([, v]) => v > 0).map(([k, v]) => ["", "", catLabel(k, lang, S.categories), "", money(-v), "", ""])] });
 
   const label = { milk: t("milk"), eggs: t("eggs"), med: t("meds"), attend: t("workers"), feed: t("feed"),
-    sale: t("newSale"), saleReimburse: t("reimbursement"), payment: t("recordPayment"), purchase: t("purchases"), setting: t("settings"),
+    sale: t("newSale"), saleReimburse: t("reimbursement"), saleVoid: t("voidSalesTitle"), payment: t("recordPayment"), purchase: t("purchases"), setting: t("settings"),
     animalAdd: t("addAnimal"), animalEdit: t("editAnimal"), workerAdd: t("addWorker"), customerAdd: t("addCustomer"),
     profile: t("createProfile"), profileSecurity: t("security"), status: t("changeStatus"), due: t("dueDate"),
     loss: t("losses"), birth: t("births"), weight: t("weighIn") };
@@ -3318,8 +3331,8 @@ function buildSheets({ lang, t, sums, S, days, period, me, animals, workers, cus
   sheets.push({ name: t("shLog"), cols: [12, 8, 16, 18, 22, 12],
     rows: [[t("colDate"), t("colTime"), t("colUser"), t("colType"), t("colNote"), t("colValue")],
     ...auditRows.map((e) => [d(e), h(e), e.byName, label[e.type] || e.type,
-      e.animalId ? aLbl(e.animalId) : e.workerId ? ((workers.find((w) => w.id === e.workerId) || {}).name || "")
-        : e.customerId ? customerNameById(customers, e.customerId, t) : e.name || e.field || "",
+      e.reason || (e.animalId ? aLbl(e.animalId) : e.workerId ? ((workers.find((w) => w.id === e.workerId) || {}).name || "")
+        : e.customerId ? customerNameById(customers, e.customerId, t) : e.name || e.field || ""),
       e.liters ?? e.count ?? e.cost ?? e.amount ?? e.kg ?? e.value ?? (e.present === undefined ? "" : (e.present ? t("present") : t("absent")))])] });
 
   return sheets;
@@ -3870,6 +3883,83 @@ function DeleteConfirmBlock({ t, warn, onDelete }) {
         onClick={() => setConfirm(false)}>{t("cancel")}</button>
     </div>
   </div>;
+}
+function CheckCell({ checked, onChange, title, indeterminate }) {
+  return <input type="checkbox" className="sale-check" checked={!!checked} title={title} aria-label={title}
+    ref={(el) => { if (el) el.indeterminate = !!indeterminate && !checked; }}
+    onClick={(e) => e.stopPropagation()}
+    onChange={(e) => { e.stopPropagation(); onChange(!!e.target.checked); }} />;
+}
+function SelectionBar({ t, n, onClear, onDelete }) {
+  useEffect(() => {
+    if (!n) return undefined;
+    document.body.classList.add("sale-picking");
+    return () => document.body.classList.remove("sale-picking");
+  }, [n]);
+  if (!n || typeof document === "undefined") return null;
+  return createPortal(
+    <div className="sel-bar" role="toolbar" aria-label={t("deleteSelected")}>
+      <span>{n} {t("selectedCount")}</span>
+      <button type="button" className="sel-bar-ghost" onClick={onClear}>{t("clearSelection")}</button>
+      <button type="button" className="sel-bar-del" onClick={onDelete}>🗑️ {t("deleteSelected")}</button>
+    </div>, document.body);
+}
+function VoidSalesSheet({ sales = [], lang, t, S, busy, onConfirm, onClose, onBack, backLabel }) {
+  const [mode, setMode] = useState("");
+  const [reason, setReason] = useState("");
+  const why = reason.trim();
+  const n = sales.length;
+  const ready = (mode === VOID_RESTORE || mode === VOID_WRITEOFF) && why.length >= VOID_REASON_MIN && !busy;
+  const modes = [
+    [VOID_RESTORE, "↩", t("voidRestore"), t("voidRestoreHint")],
+    [VOID_WRITEOFF, "⊘", t("voidWriteoff"), t("voidWriteoffHint")],
+  ];
+  return <Sheet title={`🗑️ ${t("voidSalesTitle")}`} sub={`${n} ${t("selectedCount")}`}
+    onClose={onClose} onBack={onBack} backLabel={backLabel}
+    footer={
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={onClose}>{t("cancel")}</button>
+        <button type="button" style={{ ...dangerBtn, flex: 1.2, opacity: ready ? 1 : .45 }} disabled={!ready}
+          onClick={() => ready && onConfirm({ mode, reason: why })}>
+          {busy ? t("voidBusy") : t("voidConfirm")}
+        </button>
+      </div>
+    }>
+    <div style={{ display: "grid", gap: 8, marginBottom: 14, maxHeight: 160, overflow: "auto" }}>
+      {sales.slice(0, 8).map((s) => {
+        const pr = PRODUCTS.find((p) => p[0] === (s.product || "milk")) || PROD_OTHER;
+        return <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 10,
+          fontSize: 13.5, fontWeight: 600, borderBottom: `1px dotted ${C.line}`, paddingBottom: 6 }}>
+          <span>{pr[1]} {s.no || (lang === "ar" ? pr[2] : pr[3])} · {n1(s.qty)}</span>
+          <span style={{ fontFamily: "var(--mono)" }}>{fmtC(s.amount, S.rate, lang)}</span>
+        </div>;
+      })}
+      {n > 8 ? <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>+{n - 8}</div> : null}
+    </div>
+    <div style={{ fontSize: 13, fontWeight: 800, color: C.inkSoft, marginBottom: 8 }}>{t("voidPickMode")}</div>
+    <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+      {modes.map(([k, ic, lb, hint]) => {
+        const on = mode === k;
+        return <button type="button" key={k} onClick={() => setMode(k)}
+          style={{ textAlign: "start", background: on ? C.paper : C.card, color: C.ink,
+            border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 12, padding: 12,
+            cursor: "pointer", fontFamily: "var(--body)" }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>{ic} {lb}</div>
+          <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginTop: 4, lineHeight: 1.4 }}>{hint}</div>
+        </button>;
+      })}
+    </div>
+    <div style={{ fontSize: 13, fontWeight: 800, color: C.inkSoft, marginBottom: 6 }}>{t("voidReason")}</div>
+    <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+      placeholder={t("voidReasonPh")}
+      style={{ ...inp, minHeight: 88, resize: "vertical", marginBottom: 8 }} />
+    {why.length > 0 && why.length < VOID_REASON_MIN
+      ? <div style={{ color: C.red, fontWeight: 700, fontSize: 13 }}>⚠️ {t("voidReasonNeeded")}</div>
+      : null}
+    {!mode && why.length >= VOID_REASON_MIN
+      ? <div style={{ color: C.amber, fontWeight: 700, fontSize: 13 }}>⚠️ {t("voidModeNeeded")}</div>
+      : null}
+  </Sheet>;
 }
 function FilterGroup({ label, children }) {
   return <div className="sf-group">
@@ -6930,7 +7020,8 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
             at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
       </>;
     })()}
-    {onDelete && <DeleteConfirmBlock t={t} warn={t("deleteWarn")} onDelete={onDelete} />}
+    {onDelete && <button type="button" style={{ ...outlineBtn, marginTop: 10, color: C.red, borderColor: C.red }}
+      onClick={onDelete}>🗑️ {t("deleteTx")}</button>}
   </Sheet>;
 }
 
@@ -6972,10 +7063,11 @@ function AccountHead({ customer, no, b, lang, t, S }) {
 }
 
 function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, filters, setFilters,
-  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onEditPay, onStatement, no, wide }) {
+  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onVoidSales, onEditPay, onStatement, no, wide }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [deductOpen, setDeductOpen] = useState(false);
   const [payLogOpen, setPayLogOpen] = useState(false);
+  const [picked, setPicked] = useState(() => new Set());
   const b = ledger.byCustomer[customer.id] || { sold: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
@@ -6989,6 +7081,26 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     .filter((x) => f.status === "all" || x.status === f.status)
     .filter((x) => !f.q || `${x.no} ${x.note || ""} ${n1(x.qty)}`.toLowerCase().includes(f.q.toLowerCase()))
     .sort((a, c) => cmpBySort(a, c, f.sort, (x) => x.netAmount, (x) => x.no));
+  const rowIds = rows.map((x) => x.id);
+  const rowIdKey = rowIds.join("|");
+  useEffect(() => {
+    setPicked((prev) => {
+      const live = new Set(rowIds);
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rowIdKey]);
+  useEffect(() => { setPicked(new Set()); }, [customer.id]);
+  const allOn = rows.length > 0 && rows.every((x) => picked.has(x.id));
+  const someOn = rows.some((x) => picked.has(x.id));
+  const togglePick = (id, on) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+  const toggleAll = (on) => setPicked(on ? new Set(rowIds) : new Set());
   const rGross = fromCents(rows.reduce((sum, x) => sum + toCents(x.grossAmount), 0));
   const rDeduct = fromCents(rows.reduce((sum, x) => sum + toCents(x.reimbAmount) + toCents(x.discountAmount), 0));
   const rPaid = fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
@@ -7073,6 +7185,11 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 
       <Settlement gross={rGross} deduct={rDeduct} paid={rPaid} due={rDue} />
 
+      {rows.length > 0 && <label className="sale-pick-all">
+        <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+        {t("selectAll")}
+      </label>}
+
       <DataList
         empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div> : null}
         cards={rows.map((iv) => {
@@ -7080,18 +7197,22 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           const kind = payStatusKind(iv);
           const flag = kind === "paid" ? null : kind;
           return (
-            <DataCard key={iv.id} kind={flag || "neutral"}
-              status={flag ? <StatusPill status={kind}>{statusText(kind)}</StatusPill> : null}
-              title={`${iv.no} · ${fmtC(iv.grossAmount, S.rate, lang)}`}
-              subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
-              meta={isOwing(iv.due) ? `${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}` : undefined}
-              actions={<MoreMenu t={t} items={[
-                { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
-                { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
-                onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
-              ]} />}
-            />
+            <div key={iv.id} className="sale-pick-card">
+              <CheckCell checked={picked.has(iv.id)} title={t("selectAll")}
+                onChange={(on) => togglePick(iv.id, on)} />
+              <DataCard kind={flag || "neutral"}
+                status={flag ? <StatusPill status={kind}>{statusText(kind)}</StatusPill> : null}
+                title={`${iv.no} · ${fmtC(iv.grossAmount, S.rate, lang)}`}
+                subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
+                meta={isOwing(iv.due) ? `${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}` : undefined}
+                actions={<MoreMenu t={t} items={[
+                  { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+                  { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
+                  isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
+                  onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
+                ]} />}
+              />
+            </div>
           );
         })}
         table={
@@ -7100,6 +7221,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           ? null
           : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 560 }}>
             <thead><tr>
+              <Th w={44} align="center">
+                <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")}
+                  onChange={toggleAll} />
+              </Th>
               <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
                 active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th>
               <Th>{t("invoice")}</Th>
@@ -7118,6 +7243,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                     isOwing(iv.due) && { key: "pay", icon: "💵", label: t("ctxPay"), run: () => onPayment() },
                     onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
+                  <Td align="center">
+                    <CheckCell checked={picked.has(iv.id)} title={iv.no || t("selectAll")}
+                      onChange={(on) => togglePick(iv.id, on)} />
+                  </Td>
                   <Td mono>{dmy(iv.at)}</Td>
                   <Td>
                     <div style={{ fontWeight: 700, fontFamily: "var(--mono)", fontSize: 13 }}>{iv.no}</div>
@@ -7142,6 +7271,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
       </div>
       }
     />
+      <SelectionBar t={t} n={picked.size} onClear={() => setPicked(new Set())}
+        onDelete={() => onVoidSales && onVoidSales([...picked])} />
 
       {deductItems.length > 0 && <FoldPanel open={deductOpen} onToggle={() => setDeductOpen((v) => !v)}
         label={t("deductions")} hint={String(deductItems.length)}>
@@ -7191,6 +7322,102 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     </div>
     {tab === "overview" ? Overview : Transactions}
   </div>;
+}
+
+function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, onDeleteTx }) {
+  const [picked, setPicked] = useState(() => new Set());
+  const rowIds = posSales.map((x) => x.id);
+  const rowIdKey = rowIds.join("|");
+  useEffect(() => {
+    setPicked((prev) => {
+      const live = new Set(rowIds);
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rowIdKey]);
+  const allOn = posSales.length > 0 && posSales.every((x) => picked.has(x.id));
+  const someOn = posSales.some((x) => picked.has(x.id));
+  const togglePick = (id, on) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+  const toggleAll = (on) => setPicked(on ? new Set(rowIds) : new Set());
+  if (!posSales.length) {
+    return <div style={{ padding: 24 }}><Empty icon="⚡" title={t("posEmpty")} /></div>;
+  }
+  return <>
+    <div style={{ padding: "10px 16px 0" }}>
+      <label className="sale-pick-all">
+        <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+        {t("selectAll")}
+      </label>
+    </div>
+    <DataList
+      cards={posSales.map((e) => {
+        const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
+        const iv = (ledger.list || []).find((x) => x.id === e.id);
+        const due = iv ? iv.due : 0;
+        const owing = due > 0.009;
+        return <div key={e.id} className="sale-pick-card">
+          <CheckCell checked={picked.has(e.id)} title={t("selectAll")} onChange={(on) => togglePick(e.id, on)} />
+          <DataCard kind={owing ? "owing" : "neutral"}
+            status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
+            title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
+            subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)} · ${customerNameById(customers, e.customerId, t)}`}
+            actions={onDeleteTx ? <MoreMenu t={t} items={[
+              { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+            ]} /> : null}
+          />
+        </div>;
+      })}
+      table={
+        <div className="overflow-x-auto">
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
+            <thead><tr>
+              <Th w={44} align="center">
+                <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+              </Th>
+              <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th>
+              <Th align="end">{t("colTotal")}</Th>
+              <Th align="center">{t("actions")}</Th>
+            </tr></thead>
+            <tbody>
+              {posSales.map((e) => {
+                const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
+                const iv = (ledger.list || []).find((x) => x.id === e.id);
+                const due = iv ? iv.due : 0;
+                const owing = due > 0.009;
+                return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}>
+                  <Td align="center">
+                    <CheckCell checked={picked.has(e.id)} title={t("selectAll")} onChange={(on) => togglePick(e.id, on)} />
+                  </Td>
+                  <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
+                  <Td>
+                    <div style={{ fontWeight: 700 }}>{customerNameById(customers, e.customerId, t)}</div>
+                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                      {pr[1]} {lang === "ar" ? pr[2] : pr[3]}
+                      {owing ? ` · ${t("outstanding")}` : ""}
+                    </div>
+                  </Td>
+                  <Td align="end" mono strong>{fmtC(e.amount, S.rate, lang)}</Td>
+                  <Td align="center">
+                    {onDeleteTx ? <MoreMenu t={t} items={[
+                      { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+                    ]} /> : null}
+                  </Td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      }
+    />
+    <SelectionBar t={t} n={picked.size} onClear={() => setPicked(new Set())}
+      onDelete={() => onVoidSales && onVoidSales([...picked])} />
+  </>;
 }
 
 function SetPassSheet({ lang, t, onSave, onClose }) {
@@ -7478,6 +7705,8 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
     expense: [catIcon(e.category, custom), `${catLabel(e.category, lang, custom)}${isCustomerPaidExpense(e) ? ` · ${t("paidByCustomer")}` : ""}${e.feedType ? ` · ${t(e.feedType)}` : ""}${e.qty ? ` · ${expenseQtyLabel(e, t)}` : ""}${e.note ? ` · ${e.note}` : ""}${e.species ? ` · ${spName(e.species, lang)}` : ""}`, fmtC(e.amount, rate, lang)],
     sale: ["🧾", `${pr ? (lang === "ar" ? pr[2] : pr[3]) : t("newSale")} · ${c ? customerLabel(c, t) : "—"}`, fmtC(e.amount, rate, lang)],
+    saleVoid: ["🗑️", `${t("voidSalesTitle")} · ${e.mode === VOID_WRITEOFF ? t("voidWriteoff") : t("voidRestore")}${e.reason ? ` · ${e.reason}` : ""}`,
+      e.count ? String(e.count) : ""],
     saleReimburse: ["↩️", `${t("reimbursement")} · ${e.name || "—"} · ${c ? customerLabel(c, t) : "—"}`, `−${fmtC(e.amount, rate, lang)}`],
     payment: ["💵", `${t("recordPayment")} · ${c ? customerLabel(c, t) : "—"}${e.currency === "lbp" ? ` · ${t("lbp")}` : ""}`, fmtC(e.amount, rate, lang)],
     purchase: ["🚚", `${t("purchases")} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
@@ -8172,7 +8401,7 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
   const groups = [["all", "🧾", t("allTypes")], ["prod", "🥛", t("production")], ["med", "💉", t("meds")],
     ["attend", "👷", t("workers")], ["sale", "🧾", t("sales")], ["payment", "💵", t("recordPayment")], ["herd", "🐄", t("animals")]];
   const belongs = (e) => logType === "all" || e.type === logType
-    || (logType === "sale" && e.type === "saleReimburse")
+    || (logType === "sale" && (e.type === "saleReimburse" || e.type === "saleVoid"))
     || (logType === "prod" && ["milk", "milkBulk", "milkUse", "eggs"].includes(e.type))
     || (logType === "herd" && ["animalAdd", "animalEdit", "status", "due", "loss", "birth", "weight", "workerAdd", "customerAdd", "profile"].includes(e.type));
   const list = foldMilkBulkLog(scoped.filter(belongs)).slice().sort((a, b) => compareEntries(a, b, true));
@@ -9144,6 +9373,45 @@ function FarmApp() {
 
   const deleteEntry = async (id) => {
     await rewriteEntries((rows) => purgeRelatedEntries(rows, id), t("deleted"));
+  };
+
+  const openVoidSales = (ids, back) => {
+    const list = saleIdsOf(ids);
+    if (!list.length) { ping(t("voidNoSales")); return; }
+    setSheet({ k: "voidSales", ids: list, back: back || null });
+  };
+
+  const applyVoidSales = async (saleIds, { mode, reason }) => {
+    setBusy(true);
+    try {
+      const live = dataRef.current || emptyFarm();
+      const base = await readSharedFarm(live);
+      const result = voidSales({
+        entries: base.entries || [],
+        animals: base.animals || [],
+        saleIds,
+        mode,
+        reason,
+        byId: me?.id || null,
+        byName: me ? me.name : "—",
+        idFn: uid,
+        tankMaxLiters: +(base.settings && base.settings.tankMaxLiters) || 0,
+      });
+      if (!result.ok) return result.error || "voidNoSales";
+      const upd = Object.fromEntries((result.animalUpdates || []).map((a) => [a.id, a]));
+      const animalsNext = Object.keys(upd).length
+        ? (base.animals || []).map((a) => upd[a.id] || a)
+        : base.animals;
+      const merged = { ...base, entries: result.entries, animals: animalsNext };
+      setData(merged);
+      await store.set(SHARED_KEY, JSON.stringify(merged), true);
+      setData(merged); setFailed(null);
+      ping(t("deleted"));
+      return null;
+    } catch (e) {
+      setFailed({ entries: [], patch: null, profile: me });
+      return "voidNoSales";
+    } finally { setBusy(false); }
   };
 
   /* Entries are normally append-only; this is the one path that edits one in
@@ -11420,7 +11688,8 @@ function FarmApp() {
               onPayment={() => setSheet({ k: "payment", cid: selCustomer.id })}
               onStatement={() => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"] })}
               onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: selCustomer.id })}
-              onDeleteTx={(iv) => setSheet({ k: "confirmDeleteEntry", id: iv.id, back: { k: null } })}
+              onDeleteTx={(iv) => setSheet({ k: "voidSales", ids: [iv.id] })}
+              onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
               onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
               onDoc={(iv) => setSheet({ k: "docgen", id: iv.id, cid: selCustomer.id,
                 kinds: isOwing(iv.due) || !isOwing(iv.paidAmount) ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
@@ -11445,55 +11714,12 @@ function FarmApp() {
               }} />
           </DeskCard>
           <DeskCard pad={0} title={`🧾 ${t("posRecent")}`}>
-            {(() => {
-              const posSales = entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID))
-                .slice().sort((a, b) => cmpTx(a, b, "newest")).slice(0, 12);
-              if (!posSales.length) {
-                return <div style={{ padding: 24 }}><Empty icon="⚡" title={t("posEmpty")} /></div>;
-              }
-              return <DataList
-                cards={posSales.map((e) => {
-                  const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
-                  const iv = (ledger.list || []).find((x) => x.id === e.id);
-                  const due = iv ? iv.due : 0;
-                  const owing = due > 0.009;
-                  return <DataCard key={e.id} kind={owing ? "owing" : "neutral"}
-                    status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
-                    title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
-                    subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)} · ${customerNameById(customers, e.customerId, t)}`}
-                  />;
-                })}
-                table={
-                  <div className="overflow-x-auto">
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
-                      <thead><tr>
-                        <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th>
-                        <Th align="end">{t("colTotal")}</Th>
-                      </tr></thead>
-                      <tbody>
-                        {posSales.map((e) => {
-                          const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
-                          const iv = (ledger.list || []).find((x) => x.id === e.id);
-                          const due = iv ? iv.due : 0;
-                          const owing = due > 0.009;
-                          return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}>
-                            <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
-                            <Td>
-                              <div style={{ fontWeight: 700 }}>{customerNameById(customers, e.customerId, t)}</div>
-                              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
-                                {pr[1]} {lang === "ar" ? pr[2] : pr[3]}
-                                {owing ? ` · ${t("outstanding")}` : ""}
-                              </div>
-                            </Td>
-                            <Td align="end" mono strong>{fmtC(e.amount, S.rate, lang)}</Td>
-                          </tr>;
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                }
-              />;
-            })()}
+            <PosRecentList
+              posSales={entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID))
+                .slice().sort((a, b) => cmpTx(a, b, "newest")).slice(0, 12)}
+              ledger={ledger} customers={customers} lang={lang} t={t} S={S}
+              onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
+              onDeleteTx={(e) => setSheet({ k: "voidSales", ids: [e.id] })} />
           </DeskCard>
         </>
         : <DeskCard pad={0} title={`🤝 ${t("customers")} · ${activeCustomers.length}`}
@@ -12400,7 +12626,7 @@ function FarmApp() {
           return <EditSaleSheet sale={iv} lang={lang} t={t} S={S}
             onClose={() => returnToAccount(backCid)}
             onSave={(v) => { updateEntry(iv.id, v); returnToAccount(backCid); }}
-            onDelete={() => { deleteEntry(iv.id); returnToAccount(backCid); }} />;
+            onDelete={() => openVoidSales([iv.id], { k: "editSale", id: iv.id, cid: backCid })} />;
         })()}
 
         {sheet?.k === "editMoney" && (() => {
@@ -12447,14 +12673,38 @@ function FarmApp() {
             }} />;
         })()}
 
+        {sheet?.k === "voidSales" && (() => {
+          const ids = saleIdsOf(sheet.ids);
+          const sales = ids.map((id) => entries.find((x) => x && x.id === id && x.type === "sale")).filter(Boolean);
+          if (!sales.length) return null;
+          const back = sheet.back && sheet.back.k ? sheet.back : null;
+          return <VoidSalesSheet sales={sales} lang={lang} t={t} S={S} busy={busy}
+            onClose={() => setSheet(back)}
+            onBack={back ? () => setSheet(back) : undefined}
+            onConfirm={async (p) => {
+              const err = await applyVoidSales(ids, p);
+              if (err) ping(t(err) || t("voidNoSales"));
+              else setSheet(null);
+            }} />;
+        })()}
+
         {sheet?.k === "confirmDeleteEntry" && (() => {
           const seed = sheet.id;
           const e = entries.find((x) => x.id === seed)
             || (impliedExpenseId(seed) ? entries.find((x) => x.id === impliedExpenseId(seed)) : null);
+          if (e && e.type === "sale") {
+            return <VoidSalesSheet sales={[e]} lang={lang} t={t} S={S} busy={busy}
+              onClose={() => setSheet(null)}
+              onConfirm={async (p) => {
+                const err = await applyVoidSales([e.id], p);
+                if (err) ping(t(err) || t("voidNoSales"));
+                else setSheet(null);
+              }} />;
+          }
           return <Sheet title={`🗑️ ${t("deleteTx")}`} onClose={() => setSheet(null)}>
             <div style={{ background: "#F5E2E4", borderRadius: 6, padding: 14, fontWeight: 600,
               color: "#7A1A2E", marginBottom: 14, lineHeight: 1.45 }}>{deleteWarnFor(e, t, seed)}</div>
-            <button type="button" style={{ ...primaryBtn, background: C.red, marginBottom: 8 }}
+            <button type="button" style={{ ...dangerBtn, marginBottom: 8 }}
               onClick={() => { deleteEntry(seed); setSheet(null); }}>{t("confirmDelete")}</button>
             <button type="button" style={secondaryBtn} onClick={() => setSheet(null)}>{t("cancel")}</button>
           </Sheet>;
@@ -12875,6 +13125,21 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sheet-sub{font-size:13px;color:${C.inkSoft};font-weight:500;margin-top:2px;line-height:1.4}
 .sheet-body{padding:16px 18px 18px;overflow-y:auto;flex:1;min-height:0}
 .sheet-foot{padding:12px 18px 16px;border-top:1px solid ${C.line};flex-shrink:0}
+.sale-check{width:20px;height:20px;accent-color:${C.field};cursor:pointer;flex-shrink:0;margin:0}
+.sale-pick-all{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
+  color:${C.ink};min-height:44px;cursor:pointer;user-select:none}
+.sale-pick-card{display:flex;gap:8px;align-items:flex-start}
+.sale-pick-card .data-card{flex:1;min-width:0}
+.sel-bar{position:fixed;inset-inline:0;bottom:0;z-index:70;display:flex;align-items:center;gap:10px;
+  flex-wrap:wrap;background:${C.fieldDeep};color:#fff;box-shadow:0 -8px 24px rgba(0,0,0,.2);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));font-family:var(--body)}
+.sel-bar > span{font-weight:800;flex:1;min-width:8em}
+.sel-bar-ghost,.sel-bar-del{border:none;border-radius:10px;min-height:44px;padding:10px 14px;cursor:pointer;
+  font-family:var(--body);font-weight:700;font-size:14px}
+.sel-bar-ghost{background:rgba(255,255,255,.12);color:#fff}
+.sel-bar-del{background:${C.red};color:#fff}
+body.sale-picking .dk-body{padding-bottom:76px}
+@media print{.sel-bar,.sale-check,.sale-pick-all{display:none!important}}
 .sheet-icon-btn{width:40px;height:40px;border-radius:10px;border:1px solid ${C.line};background:${C.paper};
   font-size:18px;cursor:pointer;flex-shrink:0;color:${C.ink};line-height:1;display:inline-grid;place-items:center;padding:0}
 .sheet-icon-btn:hover{border-color:${C.field};background:${C.card}}
