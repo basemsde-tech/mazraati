@@ -22,6 +22,7 @@ import {
   OFFSET_CATEGORIES, offsetCategoryLabel, buildAccountPayment, buildQuickSale,
   migrateSalesEntries, paymentCashCents, posChangeCents,
 } from "./salesPosting.mjs";
+import { voidSales, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -30,9 +31,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.19", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.20", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.20": {
+    ar: [
+      "القوائم المنبثقة تبقى فوق الجداول والبطاقات، والأزرار والنوافذ أوضح",
+    ],
+    en: [
+      "Menus stay above tables and cards, and buttons and sheets are clearer",
+    ],
+  },
   "2.9.19": {
     ar: [
       "كميات الحليب تظهر بالكغ في السجل والإجمالي، والليتر يظهر عند تمرير المؤشر على الرقم",
@@ -1201,6 +1210,20 @@ const T = {
     deletePaymentWarn: "ستُحذف دفعة الصندوق هذه وتعويضات المصروف المرتبطة بها ويُحدَّث حساب الزبون. تبقى فاتورة البيع إن وُجدت.",
     deleteMedWarn: "سيُحذف علاج الدواء من المصاريف وصندوق النقد.",
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
+    selectAll: "تحديد الكل", selectedCount: "محدّد", clearSelection: "إلغاء التحديد",
+    deleteSelected: "حذف المحدّد", voidSalesTitle: "حذف المبيعات",
+    voidPickMode: "كيف نتعامل مع المخزون؟",
+    voidRestore: "إرجاع المخزون",
+    voidRestoreHint: "يعود الحليب إلى الخزان، ويُنشَّط الحيوان إن رُبط بالبيع، وتُعكس القيود المالية.",
+    voidWriteoff: "شطب بلا إرجاع",
+    voidWriteoffHint: "يُحذف البيع دون إرجاع المخزون — للحليب المسكوب أو التالف.",
+    voidReason: "سبب الحذف", voidReasonPh: "اكتب لماذا يُحذف هذا البيع…",
+    voidReasonNeeded: "اكتب سببًا للحذف (٣ أحرف على الأقل).",
+    voidModeNeeded: "اختر إرجاع المخزون أو الشطب.",
+    voidNoSales: "لا توجد مبيعات للحذف.",
+    voidMissingSale: "لم يُعثر على أحد البيوع المحدّدة.",
+    voidTankOverflow: "إرجاع الحليب يتجاوز سعة الخزان.",
+    voidConfirm: "تأكيد الحذف",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
     quickSale: "بيع سريع", quickSaleHint: "زبون أو بيع عابر · منتج · كمية — ثم الصندوق: كامل أو جزئي",
@@ -1672,6 +1695,20 @@ const T = {
     deletePaymentWarn: "This cash receipt and its linked expense reimbursements will be removed, and the customer balance updated. The sale invoice stays if it exists.",
     deleteMedWarn: "This medicine cost will be removed from Expenses and Cash Box.",
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
+    selectAll: "Select all", selectedCount: "selected", clearSelection: "Clear selection",
+    deleteSelected: "Delete selected", voidSalesTitle: "Delete sales",
+    voidPickMode: "What should happen to stock?",
+    voidRestore: "Restore stock",
+    voidRestoreHint: "Milk returns to the tank, linked livestock become active again, and money records reverse.",
+    voidWriteoff: "Write off without restoring",
+    voidWriteoffHint: "Delete the sale without putting stock back — for dumped or spoiled milk.",
+    voidReason: "Reason for deletion", voidReasonPh: "Type why this sale is being deleted…",
+    voidReasonNeeded: "Type a reason (at least 3 characters).",
+    voidModeNeeded: "Choose restore stock or write-off.",
+    voidNoSales: "No sales to delete.",
+    voidMissingSale: "One of the selected sales was not found.",
+    voidTankOverflow: "Putting the milk back would overflow the tank.",
+    voidConfirm: "Confirm delete",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
     quickSale: "Quick Sale", quickSaleHint: "Customer or walk-in · product · qty — then cashier: full or partial",
@@ -2274,7 +2311,7 @@ const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
   profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
 });
-const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse"]);
+const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
@@ -3366,20 +3403,30 @@ function backupCSV(data, t, lang) {
 }
 
 /* ============================ UI KIT ============================ */
-let sh1, sh2, inp, primaryBtn, secondaryBtn, rowBtn;
+let sh1, sh2, inp, primaryBtn, secondaryBtn, outlineBtn, dangerBtn, rowBtn;
 const pad = { padding: 0 };
 function refreshUiTokens() {
   sh1 = `0 1px 2px ${C.shadow}, 0 0 0 1px ${C.line}`;
   sh2 = `0 8px 24px ${C.shadow}, 0 0 0 1px ${C.line}`;
-  inp = { border: `1px solid ${C.line}`, borderRadius: 10,
-    padding: "13px 14px", fontSize: 16.5, fontFamily: "var(--body)", background: C.card, color: C.ink, width: "100%", outline: "none",
+  inp = { border: `1px solid ${C.line}`, borderRadius: 12,
+    padding: "11px 14px", fontSize: 16, fontFamily: "var(--body)", background: C.card, color: C.ink, width: "100%", outline: "none",
+    minHeight: 44, lineHeight: 1.35, letterSpacing: "-.011em",
     transition: "border-color .15s ease, box-shadow .15s ease" };
-  primaryBtn = { background: `linear-gradient(180deg, ${C.field} 0%, ${C.fieldDeep} 100%)`, color: "#fff", border: "none",
-    borderRadius: 10, padding: "15px 18px", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)",
-    width: "100%", minHeight: 44, letterSpacing: ".01em", boxShadow: `0 6px 16px ${C.field}33` };
-  secondaryBtn = { background: C.paper, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 10,
-    padding: "14px 18px", fontSize: 15.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--body)", width: "100%",
-    minHeight: 44, boxShadow: `0 1px 2px ${C.shadow}` };
+  primaryBtn = { background: C.field, color: "#fff", border: "none",
+    borderRadius: 12, padding: "12px 18px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)",
+    width: "100%", minHeight: 44, letterSpacing: ".01em", boxShadow: `0 1px 2px ${C.shadow}, 0 6px 16px ${C.field}2a`,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  secondaryBtn = { background: C.card, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 12,
+    padding: "12px 18px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "var(--body)", width: "100%",
+    minHeight: 44, boxShadow: `0 1px 2px ${C.shadow}`,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  outlineBtn = { background: "transparent", color: C.field, border: `1.5px solid ${C.field}`, borderRadius: 12,
+    padding: "12px 18px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)", width: "100%",
+    minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  dangerBtn = { background: C.red, color: "#fff", border: "none", borderRadius: 12,
+    padding: "12px 18px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "var(--body)", width: "100%",
+    minHeight: 44, boxShadow: `0 6px 16px ${C.red}33`,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 };
   rowBtn = { display: "flex", alignItems: "center", gap: 13, background: C.card, border: `1px solid ${C.line}`,
     borderInlineStart: `4px solid ${C.field}`, borderRadius: 12, padding: 14, cursor: "pointer",
     textAlign: "start", fontFamily: "var(--body)", width: "100%", color: C.ink,
@@ -3481,6 +3528,19 @@ function Chip({ active, onClick, children, color = C.field }) {
     fontFamily: "var(--body)", flexShrink: 0, minHeight: 44, minWidth: 44,
     transition: "transform .12s ease, box-shadow .12s ease" }}>{children}</button>;
 }
+function placeMenu(anchor, { minW = 220, maxW = 480, estH = 280 } = {}) {
+  if (!anchor) return { top: 8, left: 8, width: minW };
+  const r = anchor.getBoundingClientRect();
+  const w = Math.min(maxW, Math.max(minW, r.width, Math.min(window.innerWidth - 16, r.width)));
+  const rtl = typeof document !== "undefined" && document.documentElement.dir === "rtl";
+  let left = rtl ? r.right - w : r.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if (top + Math.min(estH, 280) > window.innerHeight - 8 && r.top > 160) {
+    top = Math.max(8, r.top - Math.min(estH, r.top - 8) - 6);
+  }
+  return { top, left, width: w };
+}
 function partyNeedle(item, q) {
   const n = (q || "").trim().toLowerCase();
   if (!n) return true;
@@ -3492,6 +3552,7 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
   const [q, setQ] = useState("");
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
   const catalog = [...extras, ...items];
   const selected = catalog.find((x) => String(x.id) === String(value ?? ""));
   const shownExtras = extras.filter((x) => partyNeedle(x, q));
@@ -3499,7 +3560,10 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
   const shown = [...shownExtras, ...shownItems];
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onDoc = (e) => {
+      if (wrapRef.current?.contains(e.target) || listRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", onDoc);
     window.addEventListener("keydown", onKey);
@@ -3512,6 +3576,37 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
   }, [open]);
   const pick = (id) => { onChange(id); setQ(""); setOpen(false); };
   const openList = () => { setOpen(true); setQ(""); };
+  const [pos, setPos] = useState({ top: 8, left: 8, width: 280 });
+  const place = useCallback(() => {
+    if (wrapRef.current) setPos(placeMenu(wrapRef.current, { minW: 220, estH: 320 }));
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place, shown.length]);
+  const menu = open ? createPortal(
+    <div ref={listRef} className="spick-list spick-list-port" role="listbox"
+      style={{ top: pos.top, left: pos.left, width: pos.width }}>
+      {shown.length === 0
+        ? <div className="spick-empty">{emptyLabel || t("noPartyMatch")}</div>
+        : shown.map((x) => {
+          const on = String(x.id) === String(value ?? "");
+          return <button type="button" key={String(x.id)} role="option" aria-selected={on}
+            className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(x.id)}>
+            {x.icon ? <span className="spick-em">{x.icon}</span> : null}
+            <span className="spick-opt-copy">
+              <span className="spick-opt-lb">{x.label}</span>
+              {x.hint ? <span className="spick-opt-hint">{x.hint}</span> : null}
+            </span>
+          </button>;
+        })}
+    </div>, document.body) : null;
   return (
     <div className="spick-row">
       <div className="spick" ref={wrapRef}>
@@ -3533,23 +3628,75 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
               </span>}
           <span className="spick-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
         </div>
-        {open && <div className="spick-list" role="listbox">
-          {shown.length === 0
-            ? <div className="spick-empty">{emptyLabel || t("noPartyMatch")}</div>
-            : shown.map((x) => {
-              const on = String(x.id) === String(value ?? "");
-              return <button type="button" key={String(x.id)} role="option" aria-selected={on}
-                className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(x.id)}>
-                {x.icon ? <span className="spick-em">{x.icon}</span> : null}
-                <span className="spick-opt-copy">
-                  <span className="spick-opt-lb">{x.label}</span>
-                  {x.hint ? <span className="spick-opt-hint">{x.hint}</span> : null}
-                </span>
-              </button>;
-            })}
-        </div>}
+        {menu}
       </div>
       {onAdd ? <button type="button" className="spick-add" title={addLabel} aria-label={addLabel} onClick={onAdd}>➕</button> : null}
+    </div>
+  );
+}
+function NiceSelect({ value, onChange, options = [], placeholder, emptyLabel, ariaLabel, className, searchable }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const wrapRef = useRef(null);
+  const popRef = useRef(null);
+  const inputRef = useRef(null);
+  const [pos, setPos] = useState({ top: 8, left: 8, width: 280 });
+  const selected = options.find((o) => String(o.value) === String(value ?? ""));
+  const useSearch = searchable === true || (searchable !== false && options.length >= 8);
+  const shown = options.filter((o) => {
+    if (!q.trim()) return true;
+    return `${o.label || ""} ${o.search || o.value || ""}`.toLowerCase().includes(q.trim().toLowerCase());
+  });
+  const place = useCallback(() => {
+    if (wrapRef.current) setPos(placeMenu(wrapRef.current, { minW: 200, estH: 300 }));
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const onDoc = (e) => {
+      if (wrapRef.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    const tmr = setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch (err) { /* */ } }, 20);
+    return () => {
+      clearTimeout(tmr);
+      document.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
+  const pick = (v) => { onChange(v); setQ(""); setOpen(false); };
+  return (
+    <div className={`ui-select ${className || ""}`.trim()} ref={wrapRef}>
+      <button type="button" className={`ui-select-btn${open ? " open" : ""}`}
+        aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}
+        onClick={() => setOpen((o) => !o)}>
+        <span className={`ui-select-val${selected ? "" : " ph"}`}>
+          {selected ? selected.label : (placeholder || ariaLabel || "—")}
+        </span>
+        <span className="spick-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && createPortal(
+        <div ref={popRef} className="spick-list spick-list-port" role="listbox"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          {useSearch ? <input ref={inputRef} className="ui-select-search" value={q}
+            onChange={(e) => setQ(e.target.value)} placeholder={placeholder || "…"} /> : null}
+          {shown.length === 0
+            ? <div className="spick-empty">{emptyLabel || "—"}</div>
+            : shown.map((o) => {
+              const on = String(o.value) === String(value ?? "");
+              return <button type="button" key={String(o.value)} role="option" aria-selected={on}
+                className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(o.value)}>
+                <span className="spick-opt-lb">{o.label}</span>
+              </button>;
+            })}
+        </div>, document.body)}
     </div>
   );
 }
@@ -3711,13 +3858,13 @@ function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
 function DeleteConfirmBlock({ t, warn, onDelete }) {
   const [confirm, setConfirm] = useState(false);
   if (!confirm) {
-    return <button type="button" style={{ ...secondaryBtn, marginTop: 10, color: C.red, borderColor: C.red }}
+    return <button type="button" style={{ ...outlineBtn, marginTop: 10, color: C.red, borderColor: C.red }}
       onClick={() => setConfirm(true)}>🗑️ {t("deleteTx")}</button>;
   }
-  return <div style={{ marginTop: 10, background: "#F5E2E4", borderRadius: 4, padding: 12 }}>
+  return <div style={{ marginTop: 10, background: "#F5E2E4", borderRadius: 12, padding: 12 }}>
     <div style={{ fontSize: 13, fontWeight: 600, color: "#7A1A2E", marginBottom: 9 }}>{warn}</div>
     <div style={{ display: "flex", gap: 8 }}>
-      <button type="button" style={{ ...primaryBtn, flex: 1, background: C.red, padding: "11px 8px", fontSize: 14 }}
+      <button type="button" style={{ ...dangerBtn, flex: 1, padding: "11px 8px", fontSize: 14 }}
         onClick={onDelete}>{t("confirmDelete")}</button>
       <button type="button" style={{ ...secondaryBtn, flex: 1, padding: "11px 8px", fontSize: 14 }}
         onClick={() => setConfirm(false)}>{t("cancel")}</button>
@@ -4113,23 +4260,21 @@ function MoneyStepper({ usd, onChange, rate, lang, t, step = 5, big, currency, s
   </div>;
 }
 
-function Sheet({ title, children, onClose, onBack, backLabel, sub, keepPrint }) {
+function Sheet({ title, children, onClose, onBack, backLabel, sub, keepPrint, footer }) {
   return <div className={`sheet-wrap${keepPrint ? " keep-print" : ""}`}><div className="sheet">
     <div className="grabber" />
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 10 }}>
+    <header className="sheet-head">
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0, flex: 1 }}>
-        {onBack && <button type="button" onClick={onBack} title={backLabel || "Back"}
-          style={{ width: 40, height: 40, borderRadius: 4, border: `1px solid ${C.line}`, background: C.paper,
-            fontSize: 22, cursor: "pointer", flexShrink: 0, color: C.ink, lineHeight: 1 }}>‹</button>}
+        {onBack && <button type="button" className="sheet-icon-btn" onClick={onBack} title={backLabel || "Back"}>‹</button>}
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 20 }}>{title}</div>
-          {sub && <div style={{ fontSize: 13, color: C.inkSoft, fontWeight: 500, marginTop: 2 }}>{sub}</div>}
+          <div className="sheet-title">{title}</div>
+          {sub && <div className="sheet-sub">{sub}</div>}
         </div>
       </div>
-      <button type="button" onClick={onClose} style={{ width: 40, height: 40, borderRadius: 4, border: `1px solid ${C.line}`,
-        background: C.paper, fontSize: 18, cursor: "pointer", flexShrink: 0, color: C.ink }}>✕</button>
-    </div>
-    {children}
+      <button type="button" className="sheet-icon-btn" onClick={onClose} aria-label="✕">✕</button>
+    </header>
+    <div className="sheet-body">{children}</div>
+    {footer ? <footer className="sheet-foot">{footer}</footer> : null}
   </div></div>;
 }
 function Empty({ icon, title, sub, cta, onCta }) {
@@ -12717,11 +12862,22 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .banner.green{background:#E6F6F0;color:#0F5C4D;border-radius:12px;margin:8px 12px 0;border:1px solid ${C.green}44}
 .banner.red{background:#F8E9EC;color:#7A1A2E;border-radius:12px;margin:8px 12px 0;border:1px solid ${C.red}44}
 .sheet-wrap{position:fixed;inset:0;background:${C.overlay};display:flex;align-items:center;
-  justify-content:center;z-index:20;animation:fade .14s ease;padding:16px}
-.sheet{background:${C.paper};color:${C.ink};width:100%;max-width:560px;max-height:86vh;max-height:86dvh;overflow-y:auto;
+  justify-content:center;z-index:20;animation:fade .14s ease;padding:16px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.sheet{background:${C.paper};color:${C.ink};width:100%;max-width:560px;max-height:86vh;max-height:86dvh;
+  display:flex;flex-direction:column;overflow:hidden;
   overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
-  border-radius:18px;border-top:3px solid ${C.tag};padding:12px 18px 18px;
+  border-radius:18px;border-top:3px solid ${C.tag};padding:0;
   box-shadow:0 24px 60px rgba(12,58,49,.28);animation:rise .22s var(--ease)}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+  padding:14px 18px 12px;border-bottom:1px solid ${C.line};flex-shrink:0}
+.sheet-title{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.02em;line-height:1.25}
+.sheet-sub{font-size:13px;color:${C.inkSoft};font-weight:500;margin-top:2px;line-height:1.4}
+.sheet-body{padding:16px 18px 18px;overflow-y:auto;flex:1;min-height:0}
+.sheet-foot{padding:12px 18px 16px;border-top:1px solid ${C.line};flex-shrink:0}
+.sheet-icon-btn{width:40px;height:40px;border-radius:10px;border:1px solid ${C.line};background:${C.paper};
+  font-size:18px;cursor:pointer;flex-shrink:0;color:${C.ink};line-height:1;display:inline-grid;place-items:center;padding:0}
+.sheet-icon-btn:hover{border-color:${C.field};background:${C.card}}
 .grabber{display:none}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:${C.fieldDeep};color:#fff;
   border-radius:999px;padding:12px 22px;font-weight:600;z-index:30;animation:rise .18s var(--ease);
@@ -12977,6 +13133,16 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .spick-list{position:absolute;z-index:50;left:0;right:0;top:calc(100% + 6px);max-height:min(50vh,320px);
   overflow:auto;background:${C.card};border:1px solid ${C.line};border-radius:12px;
   box-shadow:0 12px 32px ${C.shadow};padding:6px}
+.spick-list-port{position:fixed;z-index:130;right:auto;top:auto}
+.ui-select{position:relative;min-width:0;width:100%}
+.ui-select-btn{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:1.5px solid ${C.line};
+  border-radius:12px;background:${C.paper};padding:0 10px 0 12px;cursor:pointer;font-family:var(--body);
+  color:${C.ink};text-align:start}
+.ui-select-btn.open{border-color:${C.field};box-shadow:0 0 0 3px ${C.field}22}
+.ui-select-val{flex:1;min-width:0;font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ui-select-val.ph{font-weight:500;color:${C.inkSoft}}
+.ui-select-search{width:100%;border:1px solid ${C.line};border-radius:8px;padding:8px 10px;margin-bottom:6px;
+  font-family:var(--body);font-size:14px;background:${C.paper};color:${C.ink}}
 .spick-empty{padding:14px 12px;color:${C.inkSoft};font-weight:600;font-size:13.5px}
 .spick-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:start;border:none;background:transparent;
   border-radius:8px;padding:10px;cursor:pointer;font-family:var(--body);color:${C.ink};min-height:44px}

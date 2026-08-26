@@ -4,7 +4,7 @@
   "description": "",
   "main": "sw.js",
   "scripts": {
-    "test": "node --test statusTone.test.mjs walkthroughFarm.test.mjs settlement.test.mjs salesPosting.test.mjs",
+    "test": "node --test statusTone.test.mjs walkthroughFarm.test.mjs settlement.test.mjs salesPosting.test.mjs salesVoid.test.mjs",
     "build": "node build.mjs"
   },
   "keywords": [],
