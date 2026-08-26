@@ -30,9 +30,23 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.17", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.18", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.18": {
+    ar: [
+      "بيع الحليب واستخدامه يُحفظان حتى لو تجاوزا المخزون الحالي — للقيود التاريخية",
+      "المخزون يُعاد حسابه من تواريخ الإنتاج والبيع والاستخدام، دون منع الحفظ",
+      "صندوق البيع السريع: أدخل النقد المستلم، تظهر الفكة، ثم بيع جديد",
+      "بيع الزبون العابر يبقى في حساب «زبون عابر» حتى لو دُفع بالكامل",
+    ],
+    en: [
+      "Milk sales and farm use save even when they exceed current stock — so historical entries can be logged",
+      "On-hand milk is recalculated from production, sale, and use dates instead of blocking the save",
+      "Quick Sale cashier: enter cash received, see change to return, then start the next sale",
+      "Walk-in cash sales stay on the Walk-in account even when paid in full",
+    ],
+  },
   "2.9.17": {
     ar: [
       "المبيعات أوضح: البيع السريع للدفع، والحسابات للبحث والمستحق وتسجيل الدفعة",
@@ -1191,6 +1205,9 @@ const T = {
     cashierPartialHint: "الباقي يبقى على حساب الزبون",
     cashierLaterHint: "الفاتورة كاملة على الحساب — بدون دفعة الآن",
     cashTendered: "النقد المستلم", changeDue: "الفكة",
+    exactCash: "تمام", returnChange: "أرجع الفكة", nextSale: "بيع جديد",
+    tenderShort: "النقد المستلم أقل من المطلوب", paidExact: "بدون فكة",
+    cashBills: "فئات سريعة",
     salesPos: "بيع سريع", salesAccounts: "حسابات الزبائن",
     salesPosSub: "منتج · كمية · نقد — مع فكة",
     expenseOffset: "حسم مصروف", offsetCategory: "بند المصروف",
@@ -1659,6 +1676,9 @@ const T = {
     cashierPartialHint: "The remainder stays on the customer account",
     cashierLaterHint: "Whole invoice on account — no payment now",
     cashTendered: "Cash tendered", changeDue: "Change due",
+    exactCash: "Exact", returnChange: "Return change", nextSale: "Next sale",
+    tenderShort: "Cash received is less than the total", paidExact: "No change",
+    cashBills: "Quick cash",
     salesPos: "Quick Sale", salesAccounts: "Customer accounts",
     salesPosSub: "Product · qty · cash — with change",
     expenseOffset: "Expense offset", offsetCategory: "Expense category",
@@ -2290,6 +2310,16 @@ function migrate(farm) {
     };
   });
   f.entries = migrateSalesEntries(f.entries);
+  /* Walk-in POS sales must still have a customer row so Accounts can open the ledger after a full cash pay. */
+  if ((f.entries || []).some((e) => e.customerId === "cust-walkin")) {
+    const rows = f.customers || [];
+    if (!rows.some((c) => c.id === "cust-walkin" || c.kind === "walkin")) {
+      f.customers = [...rows, {
+        id: "cust-walkin", kind: "walkin", name: "Walk-in", product: "milk",
+        priceL: 0, defaultQty: 0, at: iso(Date.now()),
+      }];
+    }
+  }
   return f;
 }
 const mergeById = (base = [], next = []) => { const m = new Map((base || []).map((x) => [x.id, x])); (next || []).forEach((x) => m.set(x.id, x)); return [...m.values()]; };
@@ -2472,6 +2502,8 @@ function milkStock(list, asOf = dayKey(Date.now())) {
     return { ...l, remaining, consumed: take, ageH, fresh: milkFreshBand(ageH) };
   });
   const produced = +lots.reduce((s, l) => s + l.liters, 0).toFixed(2);
+  /* On-hand display floors at zero. Sales, use, and production still save when
+     a backdated row would briefly exceed stock; later dated lots bring it back. */
   const available = Math.max(0, +(produced - deduct).toFixed(2));
   return {
     produced, sold, used, available,
@@ -4732,6 +4764,108 @@ function CashierPayPrompt({ t, lang, S, amount, err, onConfirm, busy }) {
   </>;
 }
 
+function posCashChips(dueUsd) {
+  const due = Math.max(0, +dueUsd || 0);
+  const bills = [1, 5, 10, 20, 50, 100];
+  const seen = new Set();
+  const out = [];
+  const add = (v) => {
+    const x = Math.round((+v || 0) * 100) / 100;
+    if (!(x > 0.009) || seen.has(x)) return;
+    seen.add(x);
+    out.push(x);
+  };
+  bills.forEach((b) => { if (b + 0.001 >= due) add(b); });
+  [5, 10, 20].forEach((n) => {
+    const up = Math.ceil(due / n) * n;
+    if (up > due + 0.001) add(up);
+  });
+  return out.sort((a, b) => a - b).slice(0, 8);
+}
+
+/* POS till: cash in, live change out. Used by Quick Sale only — account New Sale keeps CashierPayPrompt. */
+function PosTillPrompt({ t, lang, S, amount, err, onConfirm, busy, walkIn }) {
+  const [tender, setTender] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const dueC = Math.max(0, toCents(amount));
+  const ch = posChangeCents({ dueC, tenderC: toCents(tender) });
+  const paid = fromCents(ch.paidC);
+  const change = fromCents(ch.changeC);
+  const remainder = fromCents(Math.max(0, dueC - ch.paidC));
+  const exact = ch.tenderC === dueC && dueC > 0;
+  const enough = ch.tenderC >= dueC;
+  const locked = !!(busy || saving);
+  const canPartial = !walkIn && ch.paidC > 0 && !enough;
+  const ready = !locked && (enough || canPartial);
+  const confirmLabel = locked ? t("savingPayment")
+    : enough && change > 0.009 ? `💵 ${t("charge")} · ${t("returnChange")} ${fmtC(change, S.rate, lang)}`
+    : enough ? `💵 ${t("chargeFull")} · ${fmtC(amount, S.rate, lang)}`
+    : canPartial ? `💵 ${t("takePartial")} · ${fmtC(paid, S.rate, lang)}`
+    : t("cashTendered");
+  const submit = async () => {
+    if (!ready) return;
+    setSaving(true);
+    try {
+      await onConfirm({ paid: enough ? fromCents(dueC) : paid, tender: fromCents(ch.tenderC) });
+    } finally { setSaving(false); }
+  };
+  return <>
+    <div style={{ background: C.field, color: "#fff", borderRadius: 10, padding: "16px 16px 14px", marginBottom: 12,
+      textAlign: "center" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".04em", opacity: .85, marginBottom: 4 }}>{t("amountDue")}</div>
+      <Money usd={amount} rate={S.rate} lang={lang} size={34} tone="#fff" />
+    </div>
+    <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8, textAlign: "center" }}>{t("cashTendered")}</div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+      <MoneyStepper big usd={fromCents(ch.tenderC)} onChange={(v) => setTender(fromCents(Math.max(0, toCents(v))))}
+        rate={S.rate} lang={lang} t={t} step={1} />
+    </div>
+    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.slate, marginBottom: 8, textAlign: "center" }}>{t("cashBills")}</div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, justifyContent: "center" }}>
+      <Chip active={exact} onClick={() => setTender(fromCents(dueC))}>{t("exactCash")}</Chip>
+      {posCashChips(amount).map((v) => (
+        <Chip key={v} active={Math.abs(tender - v) < 0.009} onClick={() => setTender(v)}>{fmtC(v, S.rate, lang)}</Chip>
+      ))}
+    </div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+      background: enough ? "#ECFDF5" : C.paper, border: `1px solid ${enough ? "#A7F3D0" : C.line}`,
+      borderRadius: 8, padding: "14px 16px", marginBottom: 12, fontWeight: 800 }}>
+      <span style={{ color: enough ? C.emerald : C.slate }}>{enough ? t("changeDue") : t("remainder")}</span>
+      <Money usd={enough ? change : remainder} rate={S.rate} lang={lang} size={24}
+        tone={enough ? C.emerald : (remainder > 0.009 ? C.rose : C.ink)} />
+    </div>
+    {walkIn && !enough && ch.tenderC > 0 && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10, fontSize: 13.5 }}>
+      ⚠️ {t("tenderShort")}</div>}
+    {!walkIn && canPartial && <div style={{ fontSize: 12.5, color: C.slate, fontWeight: 600, margin: "-4px 0 12px" }}>
+      💡 {t("cashierPartialHint")}</div>}
+    {!walkIn && <button type="button" disabled={locked} onClick={async () => {
+      if (locked) return;
+      setSaving(true);
+      try { await onConfirm({ paid: 0, tender: 0 }); }
+      finally { setSaving(false); }
+    }} style={{
+      ...secondaryBtn, marginBottom: 12,
+      borderColor: C.line, background: C.paper }}>📋 {t("payLater")} · {t("putOnAccount")}</button>}
+    {err && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
+    <button type="button" disabled={!ready} style={{ ...primaryBtn, opacity: ready ? 1 : .45, padding: "16px 18px", fontSize: 17 }}
+      onClick={submit}>{confirmLabel}</button>
+  </>;
+}
+
+function PosChangeDone({ t, lang, S, change, onNext }) {
+  const none = !(change > 0.009);
+  return <div style={{ textAlign: "center", padding: "8px 0 4px" }}>
+    <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
+      {none ? t("paidExact") : t("returnChange")}</div>
+    <div style={{ background: none ? C.paper : "#ECFDF5", border: `1px solid ${none ? C.line : "#A7F3D0"}`,
+      borderRadius: 12, padding: "22px 16px", marginBottom: 16 }}>
+      <Money usd={change} rate={S.rate} lang={lang} size={40} tone={none ? C.inkSoft : C.emerald} />
+    </div>
+    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17 }} onClick={onNext}>
+      {t("nextSale")} ›</button>
+  </div>;
+}
+
 function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSave, onClose }) {
   const u = "kg";
   const [am, setAm] = useState(() => milkFromLiters(existing.am || 0, u));
@@ -4761,15 +4895,15 @@ function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSav
   </Sheet>;
 }
 
-function MilkUseSheet({ lang, t, stock, date, onSave, onClose, savedReasons = [] }) {
+function MilkUseSheet({ lang, t, stock, entries, date, onSave, onClose, savedReasons = [] }) {
   const unit = "kg";
   const [qty, setQty] = useState(0);
   const [reason, setReason] = useState("home");
   const [customName, setCustomName] = useState("");
   const [useDate, setUseDate] = useState(date || dayKey(Date.now()));
-  const availL = stock?.available || 0;
+  const asOf = entries ? milkStock(entries, useDate) : stock;
+  const availL = asOf?.available || 0;
   const avail = milkFromLiters(availL, unit);
-  const needL = milkToLiters(qty, unit);
   const u = milkUnitLb(unit, t);
   const presets = [
     ["home", t("milkUseHome")], ["calves", t("milkUseCalves")], ["waste", t("milkUseWaste")],
@@ -4777,7 +4911,7 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, savedReasons = []
   const customs = (savedReasons || []).map((name) => String(name || "").trim()).filter(Boolean);
   const pick = customName.trim();
   const chosenCustom = reason.startsWith("custom:") ? reason.slice(7) : "";
-  const canSave = qty > 0 && needL <= availL + 0.001 && (reason !== "new" || pick);
+  const canSave = qty > 0 && (reason !== "new" || pick);
   return <Sheet title={`🥛 ${t("milkUse")}`} onClose={onClose}>
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13.5 }}>
@@ -4810,8 +4944,6 @@ function MilkUseSheet({ lang, t, stock, date, onSave, onClose, savedReasons = []
       onChange={(e) => { setCustomName(e.target.value); setReason("new"); }}
       placeholder={t("milkUseAddReason")} style={{ ...inp, marginBottom: 12 }} />
     <DatePick value={useDate} max={dayKey(Date.now())} onChange={setUseDate} />
-    {qty > avail + 0.001 && <div style={{ background: "#F8E9EC", borderRadius: 8, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: C.red, fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(avail)} {u})</div>}
     <button style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
       onClick={() => {
         if (!canSave) return;
@@ -5990,11 +6122,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const discC = Math.min(toCents(amount), Math.max(0, toCents(discount)));
   const netAmount = fromCents(Math.max(0, toCents(amount) - discC));
   const discountOver = toCents(discount) > toCents(amount);
-  const milkAvail = milkStock(entries || [], date).available;
-  const milkNeed = product === "milk" ? milkToLiters(qty, "kg") : 0;
-  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver })
-    || (oversell ? t("oversellWarn") : "");
+  const milkAvail = product === "milk" ? milkStock(entries || [], date).available : null;
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver });
   const goTill = () => {
     if (block) return setErr(block);
     setErr("");
@@ -6019,11 +6148,11 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     {till
       ? <CashierPayPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveSale} busy={busy} />
       : <>
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
+    {product === "milk" && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.red }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
-    </div>
+      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.inkSoft }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
+    </div>}
     <Step n="1" label={t("pickCustomer")} />
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
       items={customers.map((x) => ({
@@ -6092,8 +6221,6 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    {oversell && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>⚠️ {t("oversellWarn")} ({n1(milkFromLiters(milkAvail, "kg"))} {t("kg")})</div>}
     {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
     <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
@@ -6115,6 +6242,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [adv, setAdv] = useState(false);
+  const [changeGive, setChangeGive] = useState(null);
   const milkSaleUnit = "kg";
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
   useEffect(() => {
@@ -6130,31 +6258,54 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const unitLb = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
   const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
-  const milkAvail = milkStock(entries || []).available;
-  const milkNeed = product === "milk" ? milkToLiters(qty, milkSaleUnit) : 0;
-  const oversell = product === "milk" && milkNeed > milkAvail + 0.001;
+  const milkAvail = product === "milk" ? milkStock(entries || []).available : null;
   const switchPriceMode = (next) => {
     if (next === priceMode) return;
     if (next === "total") setTotal(qtyMoney(qty, price));
     else if (qty > 0) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode })
-    || (oversell ? t("oversellWarn") : "");
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode });
   const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
-  const saveQuick = (pay) => {
+  const resetQuick = () => {
+    setTill(false);
+    setChangeGive(null);
+    setNote("");
+    setAdv(false);
+    setErr("");
+    setCid(WALKIN_ID);
+    setProduct("milk");
+    setQty(0);
+    setPriceMode("unit");
+  };
+  const saveQuick = async (pay) => {
     if (block) return setErr(block);
     const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
     const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
-    onSave({
-      customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
-      unit: product === "milk" ? milkSaleUnit : undefined,
-      payNow, tender, at: iso(Date.now()),
-    });
+    const ch = posChangeCents({ dueC: toCents(amount), tenderC: toCents(tender) });
+    try {
+      const ok = await onSave({
+        customerId: cid, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
+        unit: product === "milk" ? milkSaleUnit : undefined,
+        payNow, tender, at: iso(Date.now()),
+      });
+      if (ok === false) return;
+    } catch (e) {
+      setErr(t("needAmount"));
+      return;
+    }
+    if (!(payNow > 0.009) && !(tender > 0.009)) {
+      resetQuick();
+      return;
+    }
+    setChangeGive({ change: fromCents(ch.changeC) });
+    setTill(false);
   };
   const who = walkIn ? t("walkIn") : (c ? c.name : "");
-  const form = till
-    ? <CashierPayPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} />
+  const form = changeGive
+    ? <PosChangeDone t={t} lang={lang} S={S} change={changeGive.change} onNext={resetQuick} />
+    : till
+    ? <PosTillPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} walkIn={walkIn} />
     : <>
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
       extras={[{ id: WALKIN_ID, label: t("walkIn"), icon: "🛍️" }]}
@@ -6203,8 +6354,8 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
       onClick={goTill}>💵 {t("charge")} ›</button>
       </>;
   if (embedded) return <div>{form}</div>;
-  return <Sheet title={till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
-    sub={who || undefined}
+  return <Sheet title={changeGive ? `💵 ${t("changeDue")}` : till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
+    sub={changeGive ? undefined : (who || undefined)}
     onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
     {form}
   </Sheet>;
@@ -6398,11 +6549,9 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
     {milkLeft != null && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, fontWeight: 700, fontSize: 13.5, display: "flex", justifyContent: "space-between" }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkToLiters(milkQty, milkSaleUnit) > (milkLeft || 0) + 0.001 ? C.red : C.field }}>
+      <span style={{ fontFamily: "var(--mono)", color: C.field }}>
         {n1(milkFromLiters(milkLeft, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}{milkQty > 0 ? ` · −${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}` : ""}</span>
     </div>}
-    {milkLeft != null && milkToLiters(milkQty, milkSaleUnit) > (milkLeft || 0) + 0.001 && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: 10, marginBottom: 12,
-      fontWeight: 600, color: "#7A5312", fontSize: 13 }}>⚠️ {t("oversellWarn")}</div>}
     <div style={{ display: "grid", gap: 10 }}>
       {regulars.map((c) => {
         const r = rows[c.id] || { qty: 0, paid: false, skip: false };
@@ -8882,12 +9031,16 @@ function FarmApp() {
   const animals = (data && data.animals) || [];
   const workers = (data && data.workers) || [];
   const obligations = (data && data.obligations) || [];
-  const customers = (data && data.customers) || [];
+  const entries = (data && data.entries) || [];
   const suppliers = (data && data.suppliers) || [];
+  const customers = useMemo(() => {
+    const list = (data && data.customers) || [];
+    const hasWalkInTx = (entries || []).some((e) => e.customerId === WALKIN_ID);
+    return hasWalkInTx ? withWalkInCustomer(list) : list;
+  }, [data, entries]);
   const activeCustomers = useMemo(() => customers.filter((c) => !c.archived), [customers]);
   const archivedCustomers = useMemo(() => customers.filter((c) => c.archived), [customers]);
   const activeSuppliers = useMemo(() => suppliers.filter((s) => !s.archived), [suppliers]);
-  const entries = (data && data.entries) || [];
   const D = draftS || S;
   const dirty = JSON.stringify(D) !== JSON.stringify(S);
   const speciesPresent = SP_KEYS.filter((k) => animals.some((a) => a.species === k));
@@ -11115,9 +11268,9 @@ function FarmApp() {
                   tenderC: toCents(p.tender != null ? p.tender : p.payNow),
                   currency: "usd", rateUsed: S.rate, at: p.at, note: p.note, idFn: uid,
                 });
-                if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
+                if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
                 const needWalkIn = p.customerId === WALKIN_ID;
-                await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
+                return await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
               }} />
           </DeskCard>
           <DeskCard pad={0} title={`🧾 ${t("posRecent")}`}>
@@ -11566,7 +11719,7 @@ function FarmApp() {
             }} />;
         })()}
 
-        {sheet?.k === "milkUse" && <MilkUseSheet lang={lang} t={t} stock={milkStock(entries)} date={dayKey(Date.now())}
+        {sheet?.k === "milkUse" && <MilkUseSheet lang={lang} t={t} entries={entries} date={dayKey(Date.now())}
           savedReasons={S.milkUseReasons || []}
           onClose={() => setSheet(null)}
           onSave={(v) => {
@@ -12025,11 +12178,9 @@ function FarmApp() {
               payNowC: toCents(payNow), tenderC: toCents(tender != null ? tender : payNow),
               currency: "usd", rateUsed: S.rate, at, note, idFn: uid,
             });
-            if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
+            if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
             const needWalkIn = customerId === WALKIN_ID;
-            await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
-            if (salesChannel === "pos") { setSheet(null); return; }
-            returnToAccount(customerId);
+            return await commit(built.entries, needWalkIn ? { customers: withWalkInCustomer(customers) } : null);
           }} />}
 
         {sheet?.k === "round" && <DailyRoundSheet lang={lang} t={t} S={S} customers={activeCustomers} ledger={ledger}
