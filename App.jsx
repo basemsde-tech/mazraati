@@ -11,7 +11,7 @@ import {
   savePreWalkthrough, readPreWalkthrough, clearPreWalkthrough,
 } from "./walkthroughFarm.mjs";
 import {
-  milkUnitOf, milkOtherUnit, parseMilkQty, milkToLiters, milkFromLiters,
+  milkUnitOf, parseMilkQty, milkToLiters, milkFromLiters,
   milkConvertQty, milkPack, milkRecordLiters, milkEqAmount,
 } from "./milkUnits.mjs";
 import {
@@ -30,9 +30,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.18", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.19", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.19": {
+    ar: [
+      "كميات الحليب تظهر بالكغ في السجل والإجمالي، والليتر يظهر عند تمرير المؤشر على الرقم",
+    ],
+    en: [
+      "Milk amounts stay in kg on the log and totals; hover a kg value to preview litres",
+    ],
+  },
   "2.9.18": {
     ar: [
       "بيع الحليب واستخدامه يُحفظان حتى لو تجاوزا المخزون الحالي — للقيود التاريخية",
@@ -4051,7 +4059,7 @@ function fmtDue(usd, rate, lang, forceView) {
   return isOwing(usd) ? fmtC(usd, rate, lang, forceView) : "—";
 }
 
-function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact }) {
+function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact, tip }) {
   const [typing, setTyping] = useState(null);
   const s = big ? 66 : compact ? 36 : 52;
   const btn = (l, d) => <button type="button" onClick={() => { setTyping(null); onChange(Math.max(0, +((value || 0) + d).toFixed(2))); }}
@@ -4061,7 +4069,8 @@ function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact }) 
   const shown = typing !== null ? typing : (((value || 0) % 1 === 0) ? String(value || 0) : (value || 0).toFixed(decimals || 2));
   return <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 10, justifyContent: "center" }}>
     {btn("−", -step)}
-    <div style={{ minWidth: big ? 116 : compact ? 72 : 98, textAlign: "center" }}>
+    <div className={tip ? "milk-kg" : undefined} data-tip={tip || undefined} title={tip || undefined}
+      style={{ minWidth: big ? 116 : compact ? 72 : 98, textAlign: "center" }}>
       <input value={shown} inputMode="decimal"
         onFocus={(e) => { setTyping(String(value || 0)); setTimeout(() => e.target.select(), 0); }}
         onChange={(e) => {
@@ -4612,18 +4621,26 @@ function ReproSheet({ animal, lang, t, onAct, onClose, onBack, backLabel }) {
 }
 
 function milkUnitLb(u, t) { return milkUnitOf(u) === "kg" ? t("kg") : t("L"); }
-function milkEqHint(qty, unit, t) {
+function milkLPreview(qty, unit, t) {
+  if (milkUnitOf(unit) !== "kg") return "";
   const n = parseMilkQty(qty);
-  if (!(n > 0)) return null;
-  const other = milkOtherUnit(unit);
-  const equiv = milkEqAmount(n, unit);
-  const shown = (Math.round(equiv * 10) / 10).toFixed(1);
-  return <div className="milk-unit-eq">{`(~${shown} ${milkUnitLb(other, t)})`}</div>;
+  if (!(n > 0)) return "";
+  const liters = milkEqAmount(n, "kg");
+  if (!(liters > 0)) return "";
+  return `~${(Math.round(liters * 10) / 10).toFixed(1)} ${t("L")}`;
+}
+function milkLPreviewLiters(liters, t) {
+  return milkLPreview(milkFromLiters(liters || 0, "kg"), "kg", t);
+}
+function MilkKg({ children, tip, liters, qty, unit = "kg", t }) {
+  const label = tip || (liters != null ? milkLPreviewLiters(liters, t) : milkLPreview(qty, unit, t));
+  if (!label) return children || null;
+  return <span className="milk-kg" data-tip={label} title={label}>{children}</span>;
 }
 function milkKgLine(e, t) {
   const liters = milkRecordLiters(e);
   const kg = milkFromLiters(liters, "kg");
-  return `${n1(kg)} ${t("kg")} (~${n1(liters)} ${t("L")})`;
+  return <MilkKg liters={liters} t={t}>{`${n1(kg)} ${t("kg")}`}</MilkKg>;
 }
 function saleQtyUnit(sale, lang, t) {
   if ((sale?.product || "milk") === "milk") return t("kg");
@@ -4883,13 +4900,13 @@ function BulkMilkSheet({ lang, t, date, setDate, existing, lastAm, lastPm, onSav
     {[["am", `🌅 ${t("morningMilk")}`, am, setAm], ["pm", `🌙 ${t("eveningMilk")}`, pm, setPm]].map(([k, label, v, set]) => (
       <div key={k} style={{ background: C.card, borderRadius: 6, border: `1px solid ${C.line}`, padding: 15, marginBottom: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{label}</div>
-        <Stepper big value={v} onChange={(n) => set(Math.max(0, n))} step={5} suffix={suffix} decimals={2} />
-        {milkEqHint(v, u, t)}
+        <Stepper big value={v} onChange={(n) => set(Math.max(0, n))} step={5} suffix={suffix} decimals={2}
+          tip={milkLPreview(v, u, t)} />
       </div>))}
     <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 14, marginBottom: 12,
       display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <span style={{ fontWeight: 600 }}>{t("dayMilkTotal")}</span>
-      <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 24 }}>{n1(total)} {suffix}</span>
+      <MilkKg qty={total} unit={u} t={t}><span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 24 }}>{n1(total)} {suffix}</span></MilkKg>
     </div>
     <button style={primaryBtn} onClick={() => onSave({ am, pm, unit: u })}>✓ {t("saveDayMilk")}</button>
   </Sheet>;
@@ -4916,12 +4933,12 @@ function MilkUseSheet({ lang, t, stock, entries, date, onSave, onClose, savedRea
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13.5 }}>
       <span>{t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: avail > 0 ? C.field : C.red }}>{n1(avail)} {u}</span>
+      <MilkKg qty={avail} unit={unit} t={t}><span style={{ fontFamily: "var(--mono)", color: avail > 0 ? C.field : C.red }}>{n1(avail)} {u}</span></MilkKg>
     </div>
     <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("qty")}</div>
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <Stepper big value={qty} onChange={(n) => setQty(Math.max(0, n))} step={1} suffix={u} decimals={2} />
-      {milkEqHint(qty, unit, t)}
+      <Stepper big value={qty} onChange={(n) => setQty(Math.max(0, n))} step={1} suffix={u} decimals={2}
+        tip={milkLPreview(qty, unit, t)} />
     </div>
     <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 8 }}>{t("lossReason")}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -4972,7 +4989,8 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
       background: C.field, color: "#fff", borderRadius: 8, padding: "14px 16px" }}>
       <div>
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 28 }}>{show(s.available)} {u}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 28 }}>
+          <MilkKg liters={s.available} t={t}>{show(s.available)} {u}</MilkKg></div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{useBtn}{kit}</div>
     </div>;
@@ -4982,13 +5000,14 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
       display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
       <div>
         <div style={{ fontSize: 12, opacity: .85, fontWeight: 600 }}>{t("milkLeft")}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26 }}>{show(s.available)} {u}</div>
+        <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26 }}>
+          <MilkKg liters={s.available} t={t}>{show(s.available)} {u}</MilkKg></div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ fontSize: 12, opacity: .9, textAlign: "end", fontWeight: 600, lineHeight: 1.45 }}>
-          <div>{t("milkProduced")} {show(s.produced)} {u}</div>
-          <div>{t("milkSoldToday")} {show(s.sold)} {u}</div>
-          <div>{t("milkUsed")} {show(s.used)} {u}</div>
+          <div>{t("milkProduced")} <MilkKg liters={s.produced} t={t}>{show(s.produced)} {u}</MilkKg></div>
+          <div>{t("milkSoldToday")} <MilkKg liters={s.sold} t={t}>{show(s.sold)} {u}</MilkKg></div>
+          <div>{t("milkUsed")} <MilkKg liters={s.used} t={t}>{show(s.used)} {u}</MilkKg></div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{useBtn}{kit}</div>
       </div>
@@ -5004,7 +5023,8 @@ function MilkStockCard({ stock, lang, t, onUse, unit = "L", simple }) {
         borderInlineStart: `4px solid ${tone[lot.fresh] || C.line}`,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>{show(lot.remaining)} {u}</span>
+          <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>
+            <MilkKg liters={lot.remaining} t={t}>{show(lot.remaining)} {u}</MilkKg></span>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: tone[lot.fresh] }}>{label[lot.fresh]}</span>
         </div>
         <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 4 }}>
@@ -6151,7 +6171,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     {product === "milk" && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
       marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
       <span>🥛 {t("milkLeft")}</span>
-      <span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.inkSoft }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span>
+      <MilkKg liters={milkAvail} t={t}><span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.inkSoft }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span></MilkKg>
     </div>}
     <Step n="1" label={t("pickCustomer")} />
     <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
@@ -6178,8 +6198,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     </div>
     <Step n="3" label={`${t("qty")} (${unit})`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1} />
-      {product === "milk" && milkEqHint(qty, "kg", t)}
+      <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1}
+        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
     </div>
     <Step n="4" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
@@ -6325,14 +6345,14 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
         </button>;
       })}
     </div>
-    {product === "milk" && milkEqHint(qty, "kg", t)}
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
-      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb} />
+      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb}
+        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
     </div>
     <FoldPanel open={adv} onToggle={() => setAdv((v) => !v)}
       label={t("customPricing")}
-      hint={product === "milk" ? `${t("milkLeft")} ${n1(milkFromLiters(milkAvail, "kg"))} ${t("kg")}` : null}>
+      hint={product === "milk" ? <>{t("milkLeft")} <MilkKg liters={milkAvail} t={t}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</MilkKg></> : null}>
       <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
@@ -6550,7 +6570,8 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
       marginBottom: 12, fontWeight: 700, fontSize: 13.5, display: "flex", justifyContent: "space-between" }}>
       <span>🥛 {t("milkLeft")}</span>
       <span style={{ fontFamily: "var(--mono)", color: C.field }}>
-        {n1(milkFromLiters(milkLeft, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}{milkQty > 0 ? ` · −${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}` : ""}</span>
+        <MilkKg liters={milkLeft} t={t}>{n1(milkFromLiters(milkLeft, milkSaleUnit))} {milkUnitLb(milkSaleUnit, t)}</MilkKg>
+        {milkQty > 0 ? <> · <MilkKg qty={milkQty} unit="kg" t={t}>{`−${n1(milkQty)} ${milkUnitLb(milkSaleUnit, t)}`}</MilkKg></> : ""}</span>
     </div>}
     <div style={{ display: "grid", gap: 10 }}>
       {regulars.map((c) => {
@@ -6568,8 +6589,8 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
             </span>
             <span><Money usd={r.qty * priceOf(c)} rate={S.rate} lang={lang} size={18} tone={C.field} /></span>
           </div>
-          <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={rowUnit} />
-          {(c.product || "milk") === "milk" && milkEqHint(r.qty, "kg", t)}
+          <Stepper value={r.qty} onChange={(v) => set(c.id, { qty: v })} step={5} suffix={rowUnit}
+            tip={(c.product || "milk") === "milk" ? milkLPreview(r.qty, "kg", t) : ""} />
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button type="button" onClick={() => set(c.id, { paid: !r.paid, skip: false })} style={{ flex: 1, background: r.paid ? C.green : C.card,
               color: r.paid ? "#fff" : C.ink, border: `1.5px solid ${r.paid ? C.green : C.line}`, borderRadius: 5,
@@ -6709,10 +6730,10 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
         </button>;
       })}
     </div>
-    {product === "milk" && milkEqHint(qty, "kg", t)}
     <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
-      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit} /></div>
+      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit}
+        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} /></div>
     <Step n="3" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
     <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
@@ -7306,7 +7327,7 @@ function LogRow({ e, lang, t, animals, workers, customers, rate = 0, custom, onR
   const m = MED[e.medType];
   const pr = PRODUCTS.find((p) => p[0] === e.product);
   const map = {
-    milk: ["🥛", `${backdated(e) ? "📅 " : ""}${e.session === "am" ? t("morning") : e.session === "pm" ? t("evening") : t("dayMilkTotal")} · ${a ? animalLabel(a) : t("herdTotal")}`, `${n1(e.liters)} ${t("L")}`],
+    milk: ["🥛", `${backdated(e) ? "📅 " : ""}${e.session === "am" ? t("morning") : e.session === "pm" ? t("evening") : t("dayMilkTotal")} · ${a ? animalLabel(a) : t("herdTotal")}`, milkKgLine(e, t)],
     eggs: ["🥚", `${backdated(e) ? "📅 " : ""}${t("collect")} · ${a ? animalLabel(a) : "—"}`, `${nf(e.count)} ${t("eggsUnit")}`],
     med: [m ? m.i : "💉", `${m ? (lang === "ar" ? m.ar : m.en) : ""}${e.name ? ` (${e.name})` : ""} · ${a ? animalLabel(a) : "—"}`, fmtC(e.cost, rate, lang)],
     attend: [e.present ? "✅" : "❌", w ? w.name : "—", e.present ? t("present") : t("absent")],
@@ -10981,13 +11002,17 @@ function FarmApp() {
             {[["am", `🌅 ${t("morningMilk")}`], ["pm", `🌙 ${t("eveningMilk")}`]].map(([sess, label]) => (
               <div key={sess} style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 14px" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, textAlign: "center", marginBottom: 10 }}>{label}</div>
-                <input value={bulkFor(sess)} inputMode="decimal" onFocus={(e) => e.target.select()}
-                  onChange={(e) => setBatch((p) => ({ ...p, [`bulk:${sess}`]: e.target.value.replace(/[^0-9.]/g, "") }))}
-                  placeholder="0" aria-label={label}
-                  style={{ width: "100%", textAlign: "center", padding: "14px 8px", borderRadius: 8,
-                    border: `1.5px solid ${C.field}`, background: C.card,
-                    fontFamily: "var(--mono)", fontWeight: 800, fontSize: 34, color: C.ink, outline: "none" }} />
-                {milkEqHint(bulkFor(sess), milkUnit, t)}
+                <div className={milkLPreview(bulkFor(sess), milkUnit, t) ? "milk-kg" : undefined}
+                  data-tip={milkLPreview(bulkFor(sess), milkUnit, t) || undefined}
+                  title={milkLPreview(bulkFor(sess), milkUnit, t) || undefined}>
+                  <input value={bulkFor(sess)} inputMode="decimal" onFocus={(e) => e.target.select()}
+                    onChange={(e) => setBatch((p) => ({ ...p, [`bulk:${sess}`]: e.target.value.replace(/[^0-9.]/g, "") }))}
+                    placeholder="0" aria-label={label}
+                    style={{ width: "100%", textAlign: "center", padding: "14px 8px", borderRadius: 8,
+                      border: `1.5px solid ${C.field}`, background: C.card,
+                      fontFamily: "var(--mono)", fontWeight: 800, fontSize: 34, color: C.ink, outline: "none" }} />
+                  <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginTop: 6 }}>{milkU}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -10998,8 +11023,9 @@ function FarmApp() {
             onUse={() => setSheet({ k: "milkUse" })} />
 
           <div style={{ fontSize: 13, color: C.inkSoft, textAlign: "center", fontWeight: 600 }}>
-            {t("dayMilkTotal")}: {n1(draftTotal)} {milkU}
-            {` · ${t("morningMilk")} ${n1(draftAm)} · ${t("eveningMilk")} ${n1(draftPm)}`}
+            {t("dayMilkTotal")}: <MilkKg qty={draftTotal} unit={milkUnit} t={t}>{n1(draftTotal)} {milkU}</MilkKg>
+            {` · ${t("morningMilk")} `}<MilkKg qty={draftAm} unit={milkUnit} t={t}>{n1(draftAm)}</MilkKg>
+            {` · ${t("eveningMilk")} `}<MilkKg qty={draftPm} unit={milkUnit} t={t}>{n1(draftPm)}</MilkKg>
           </div>
 
           <button type="button" disabled={busy} onClick={commitDayMilk}
@@ -11092,9 +11118,9 @@ function FarmApp() {
         </div>
 
         <div style={{ padding: "12px 14px" }} className="adapt-grid">
-          <Kpi label={t("milkLogPreview")} value={`${n1(milkFromLiters(milkLogView.totalQty, milkUnit))} ${milkU}`} tone={C.field} />
-          <Kpi label={t("morningMilk")} value={`${n1(milkFromLiters(milkLogView.amQty, milkUnit))} ${milkU}`} />
-          <Kpi label={t("eveningMilk")} value={`${n1(milkFromLiters(milkLogView.pmQty, milkUnit))} ${milkU}`} />
+          <Kpi label={t("milkLogPreview")} value={<MilkKg liters={milkLogView.totalQty} t={t}>{`${n1(milkFromLiters(milkLogView.totalQty, milkUnit))} ${milkU}`}</MilkKg>} tone={C.field} />
+          <Kpi label={t("morningMilk")} value={<MilkKg liters={milkLogView.amQty} t={t}>{`${n1(milkFromLiters(milkLogView.amQty, milkUnit))} ${milkU}`}</MilkKg>} />
+          <Kpi label={t("eveningMilk")} value={<MilkKg liters={milkLogView.pmQty} t={t}>{`${n1(milkFromLiters(milkLogView.pmQty, milkUnit))} ${milkU}`}</MilkKg>} />
           <Kpi label={t("txCount")} value={nf(milkLogView.rows.length)} tone={C.inkSoft} />
         </div>
 
@@ -11106,7 +11132,7 @@ function FarmApp() {
               title={dmy(r.day)}
               subtitle={hhmm(new Date(r.loggedAt || r.at))}
               who={<WhoHint e={r} lang={lang} />}
-              meta={`🌅 ${n1(milkFromLiters(r.am || 0, milkUnit))} · 🌙 ${n1(milkFromLiters(r.pm || 0, milkUnit))} · ${n1(milkFromLiters(r.total || 0, milkUnit))} ${milkU}`}
+              meta={<MilkKg liters={r.total} t={t}>{`🌅 ${n1(milkFromLiters(r.am || 0, milkUnit))} · 🌙 ${n1(milkFromLiters(r.pm || 0, milkUnit))} · ${n1(milkFromLiters(r.total || 0, milkUnit))} ${milkU}`}</MilkKg>}
               onClick={() => { setEntryDate(r.day); setBatch({}); }}
             />
           ))}
@@ -11130,9 +11156,9 @@ function FarmApp() {
                     onClick={() => { setEntryDate(r.day); setBatch({}); }}>
                     <Td mono>{dmy(r.day)}</Td>
                     <Td mono tone={C.inkSoft}>{hhmm(new Date(r.loggedAt || r.at))}</Td>
-                    <Td align="end" mono>{n1(milkFromLiters(r.am || 0, milkUnit))}</Td>
-                    <Td align="end" mono>{n1(milkFromLiters(r.pm || 0, milkUnit))}</Td>
-                    <Td align="end" mono strong>{n1(milkFromLiters(r.total || 0, milkUnit))}</Td>
+                    <Td align="end" mono><MilkKg liters={r.am} t={t}>{n1(milkFromLiters(r.am || 0, milkUnit))}</MilkKg></Td>
+                    <Td align="end" mono><MilkKg liters={r.pm} t={t}>{n1(milkFromLiters(r.pm || 0, milkUnit))}</MilkKg></Td>
+                    <Td align="end" mono strong><MilkKg liters={r.total} t={t}>{n1(milkFromLiters(r.total || 0, milkUnit))}</MilkKg></Td>
                     <Td tone={C.inkSoft}>{milkU}</Td>
                     <Td align="center"><WhoHint e={r} lang={lang} /></Td>
                   </tr>
@@ -11141,9 +11167,9 @@ function FarmApp() {
               <tfoot>
                 <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
                   <Td colSpan={2} strong>{t("milkLogPreview")}</Td>
-                  <Td align="end" mono>{n1(milkLogView.amQty)}</Td>
-                  <Td align="end" mono>{n1(milkLogView.pmQty)}</Td>
-                  <Td align="end" mono strong tone={C.field}>{n1(milkLogView.totalQty)}</Td>
+                  <Td align="end" mono><MilkKg liters={milkLogView.amQty} t={t}>{n1(milkFromLiters(milkLogView.amQty, milkUnit))}</MilkKg></Td>
+                  <Td align="end" mono><MilkKg liters={milkLogView.pmQty} t={t}>{n1(milkFromLiters(milkLogView.pmQty, milkUnit))}</MilkKg></Td>
+                  <Td align="end" mono strong tone={C.field}><MilkKg liters={milkLogView.totalQty} t={t}>{n1(milkFromLiters(milkLogView.totalQty, milkUnit))}</MilkKg></Td>
                   <Td tone={C.inkSoft}>{milkU}</Td>
                   <Td />
                 </tr>
@@ -11193,7 +11219,7 @@ function FarmApp() {
               <tfoot>
                 <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
                   <Td colSpan={3} strong>{t("milkUsed")}</Td>
-                  <Td align="end" mono strong tone={C.field}>{n1(milkFromLiters(milkUseLog.totalQty, "kg"))} {t("kg")}</Td>
+                  <Td align="end" mono strong tone={C.field}><MilkKg liters={milkUseLog.totalQty} t={t}>{n1(milkFromLiters(milkUseLog.totalQty, "kg"))} {t("kg")}</MilkKg></Td>
                   <Td />
                 </tr>
               </tfoot>
@@ -12807,6 +12833,15 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .dk-pill.on{background:${C.field};border-color:${C.field};color:#fff;box-shadow:0 4px 12px ${C.field}33}
 .milk-am-pm{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:520px){.milk-am-pm{grid-template-columns:1fr}}
+.milk-kg{position:relative;cursor:help;display:inline-block}
+.milk-kg[data-tip]{border-bottom:1px dotted currentColor}
+@media (hover:hover){
+  .milk-kg[data-tip]:hover::after,.milk-kg[data-tip]:focus-visible::after{
+    content:attr(data-tip);position:absolute;z-index:40;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+    background:${C.ink};color:#fff;border-radius:6px;padding:5px 9px;font-size:12px;font-weight:700;
+    white-space:nowrap;font-family:var(--mono);box-shadow:0 8px 18px rgba(0,0,0,.18);pointer-events:none
+  }
+}
 .cash-overview{display:grid;grid-template-columns:minmax(230px,1.35fr) repeat(4,minmax(120px,1fr))}
 .cash-closing{background:${C.card};color:${C.ink};padding:18px 20px;display:grid;align-content:center;gap:5px;min-height:104px;
   border-inline-start:4px solid ${C.field}}
