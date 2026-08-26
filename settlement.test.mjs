@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEDUCTION_REIMBURSEMENT, isDeductionReimbursement, deductionCents,
-  deductionMemo, settleAmounts,
+  deductionMemo, settleAmounts, recordPaymentSplit, cashBoxFromPayment,
 } from "./settlement.mjs";
 
 describe("settlement deductions", () => {
@@ -31,5 +31,48 @@ describe("settlement deductions", () => {
     assert.equal(s.netC, 3000);
     assert.equal(s.dueC, 0);
     assert.equal(s.creditC, 1000);
+  });
+
+  it("closes a $100 owing with $50 pocket expense and $50 cash taken", () => {
+    const s = settleAmounts({ grossC: 10000, deductC: 5000, paidC: 5000 });
+    assert.equal(s.netC, 5000);
+    assert.equal(s.dueC, 0);
+    assert.equal(s.paidC, 5000);
+    assert.equal(s.deductC, 5000);
+    assert.equal(s.creditC, 0);
+  });
+});
+
+describe("record payment split", () => {
+  it("does not net the expense deduction off the cash collected", () => {
+    const p = recordPaymentSplit({ dueC: 10000, cashC: 5000, deductC: 5000 });
+    assert.equal(p.cashC, 5000);
+    assert.equal(p.deductC, 5000);
+    assert.equal(p.appliedC, 10000);
+    assert.equal(p.remainingC, 0);
+    assert.equal(p.suggestedCashC, 5000);
+  });
+
+  it("suggests cash as owing minus deductions so the cashier only takes the remainder", () => {
+    const p = recordPaymentSplit({ dueC: 10000, cashC: 10000, deductC: 5000 });
+    assert.equal(p.suggestedCashC, 5000);
+    assert.equal(p.remainingC, 0);
+    assert.equal(p.creditC, 5000);
+  });
+
+  it("allows a deduction-only close with no cash taken", () => {
+    const p = recordPaymentSplit({ dueC: 10000, cashC: 0, deductC: 10000 });
+    assert.equal(p.cashC, 0);
+    assert.equal(p.remainingC, 0);
+    assert.equal(p.suggestedCashC, 0);
+  });
+});
+
+describe("cash box from a payment reimbursement", () => {
+  it("posts the deduction as a cash-out expense and keeps drawer net equal to cash taken", () => {
+    const box = cashBoxFromPayment({ cashC: 5000, deductC: 5000 });
+    assert.equal(box.inC, 10000);
+    assert.equal(box.outC, 5000);
+    assert.equal(box.netC, 5000);
   });
 });

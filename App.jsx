@@ -16,6 +16,7 @@ import {
 } from "./milkUnits.mjs";
 import {
   DEDUCTION_REIMBURSEMENT, isDeductionReimbursement, deductionCents, deductionMemo,
+  settleAmounts, recordPaymentSplit,
 } from "./settlement.mjs";
 
 /* =====================================================================
@@ -25,9 +26,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.14", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.15", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.15": {
+    ar: [
+      "تسجيل الدفعة: مصروف الزبون من جيبه يُحسم من المستحق، والنقد المأخوذ منفصل — مثال: عليه 100$، صرف 50$ للمزرعة، تأخذ 50$ ويُقفَل الحساب",
+      "الحسم يُسجَّل مصروف مزرعة وصرفًا في صندوق النقد",
+    ],
+    en: [
+      "Record Payment: a customer’s pocket farm expense comes off what they owe, cash taken is separate — owe 100, spent 50 for the farm, take 50, account closes",
+      "That deduction logs as a farm expense and as a cash-box cash-out",
+    ],
+  },
   "2.9.14": {
     ar: [
       "الحسومات تُقيَّد رصيدًا على إجمالي المبيعات لا كدفعة نقد منفصلة — الصافي = الإجمالي − الحسومات − المحصّل",
@@ -766,6 +777,8 @@ function relatedEntryIds(list, seedId) {
     src.forEach((e) => { if (e.id && e.saleId === seed.id) ids.add(e.id); });
   } else if (seed.type === "saleReimburse") {
     src.forEach((e) => { if (e.id && e.saleReimburseId === seed.id) ids.add(e.id); });
+  } else if (seed.type === "payment") {
+    src.forEach((e) => { if (e.id && e.paymentId === seed.id) ids.add(e.id); });
   } else if (seed.type === "expense") {
     src.forEach((e) => { if (e.id && e.expenseId === seed.id) ids.add(e.id); });
     if (seed.saleReimburseId) ids.add(seed.saleReimburseId);
@@ -1076,8 +1089,8 @@ const T = {
     chooseOrAddExpenseType: "اختر نوعًا محفوظًا أو اكتب نوعًا جديدًا — سيُحفظ تلقائيًا للاستخدام لاحقًا.",
     addReimbursement: "إضافة تعويض", removeReimbursement: "حذف سطر التعويض", grossSubtotal: "الإجمالي قبل التعويض", reimbursementTotal: "إجمالي التعويضات",
     netInvoiceTotal: "صافي الفاتورة", reimburseNameNeeded: "اختر نوع المصروف لكل مبلغ تعويض.",
-    reimburseOverGross: "لا يمكن أن يتجاوز التعويض مبلغ هذه الدفعة.",
-    reimburseFromBalance: "يُقيَّد التعويض رصيدًا على حساب الزبون (لا يُدفع نقدًا منفصلًا) ويُسجَّل مصروف مزرعة. لا يتجاوز مبلغ هذه الدفعة.",
+    reimburseOverGross: "لا يمكن أن يتجاوز التعويض مستحقات هذا الزبون.",
+    reimburseFromBalance: "إذا دفع الزبون مصروف مزرعة من جيبه يُحسم من مستحقاته، والنقد الذي تأخذه منفصل. يُسجَّل الحسم مصروفًا وصرفًا في الصندوق.",
     cashToDrawer: "النقد الداخل",
     reimburseMemo: "ملاحظة (اختياري)", reimburseOnSale: "من هذا البيع", reimburseOnAccount: "من رصيد الحساب",
     resultingBalance: "رصيد الحساب بعد القيد", netDueNow: "المطلوب الآن",
@@ -1088,7 +1101,7 @@ const T = {
     milkUseHistory: "سجل استخدام المزرعة", milkUseEmpty: "لا استخدام مزرعة في هذه الفترة.", reimburseReadOnly: "التعويضات المرتبطة محفوظة وتظهر هنا للقراءة فقط.",
     creditsCollected: "الرصيد الدائن / المحصّل", actualPaid: "المدفوع فعليًا",
     accountTotal: "إجمالي الحساب", deductions: "الحسومات والتعويضات", noDeductions: "لا حسومات في هذه الفترة.",
-    deductHint: "الحسومات تعويضات من المزرعة تُقيَّد مباشرة على رصيد الحساب بدل دفعها نقدًا على حدة.",
+    deductHint: "الحسومات تعويضات من المزرعة تُقيَّد على رصيد الحساب، وتُسجَّل مصروفًا وصرفًا في الصندوق.",
     settlementNet: "صافي المستحق",
     accountReimburse: "تعويض على الحساب",
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
@@ -1132,7 +1145,7 @@ const T = {
     deleteWarn: "سيُحذف هذا البيع نهائيًا مع دفعاته وتعويضات المصاريف المرتبطة به من المبيعات وصندوق النقد.",
     deleteExpenseWarn: "سيُحذف هذا المصروف مع دفعة الصندوق وحركة المورد المرتبطة به.",
     deletePayWarn: "ستُلغى دفعة الصندوق هذه ويُحدَّث حساب المورد/المصاريف حتى لا تبقى حركة بلا مقابل.",
-    deletePaymentWarn: "ستُحذف دفعة الصندوق هذه ويُحدَّث حساب الزبون. تبقى فاتورة البيع إن وُجدت.",
+    deletePaymentWarn: "ستُحذف دفعة الصندوق هذه وتعويضات المصروف المرتبطة بها ويُحدَّث حساب الزبون. تبقى فاتورة البيع إن وُجدت.",
     deleteMedWarn: "سيُحذف علاج الدواء من المصاريف وصندوق النقد.",
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
     discount: "خصم", discountNote: "سبب الخصم",
@@ -1531,8 +1544,8 @@ const T = {
     chooseOrAddExpenseType: "Choose a saved type or enter a new one — it will be saved automatically for future sales.",
     addReimbursement: "Add reimbursement", removeReimbursement: "Remove reimbursement row", grossSubtotal: "Gross subtotal", reimbursementTotal: "Reimbursement total",
     netInvoiceTotal: "Net invoice total", reimburseNameNeeded: "Choose an expense category for every reimbursement amount.",
-    reimburseOverGross: "Reimbursement cannot exceed this payment.",
-    reimburseFromBalance: "The reimbursement is credited to this customer’s sales balance instead of a separate cash payout, and is logged as a farm expense. It cannot exceed the payment amount.",
+    reimburseOverGross: "Reimbursement cannot exceed this customer’s owing.",
+    reimburseFromBalance: "If the customer paid a farm expense from their pocket, it comes off what they owe — cash you take is separate. The deduction logs as a farm expense and a cash-box cash-out.",
     cashToDrawer: "Cash in",
     reimburseMemo: "Note (optional)", reimburseOnSale: "Off this sale", reimburseOnAccount: "Off account balance",
     resultingBalance: "Account balance after posting", netDueNow: "Due now",
@@ -1543,7 +1556,7 @@ const T = {
     milkUseHistory: "Farm-use log", milkUseEmpty: "No farm-use milk in this period.", reimburseReadOnly: "Linked reimbursements are preserved and shown here read-only.",
     creditsCollected: "Credits / Collected", actualPaid: "Actual paid",
     accountTotal: "Account total", deductions: "Reimbursements & deductions", noDeductions: "No deductions in this range.",
-    deductHint: "Deductions represent farm reimbursements credited directly to the account balance instead of paid separately.",
+    deductHint: "Deductions are farm reimbursements credited to the account, and logged as expenses and cash-box cash-out.",
     settlementNet: "Net due",
     accountReimburse: "Account reimbursement",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
@@ -1587,7 +1600,7 @@ const T = {
     deleteWarn: "This sale, its payments, and linked expense reimbursements will be removed from Sales and Cash Box.",
     deleteExpenseWarn: "This expense and its linked cash/supplier payment will be removed.",
     deletePayWarn: "This cash payment will be removed and the supplier/expense balance will be updated so nothing is left unpaid in cash only.",
-    deletePaymentWarn: "This cash receipt will be removed and the customer balance updated. The sale invoice stays if it exists.",
+    deletePaymentWarn: "This cash receipt and its linked expense reimbursements will be removed, and the customer balance updated. The sale invoice stays if it exists.",
     deleteMedWarn: "This medicine cost will be removed from Expenses and Cash Box.",
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
     discount: "Discount", discountNote: "Discount note",
@@ -2551,7 +2564,8 @@ function initials(name) {
 }
 
 /* Cash box: real money in (payments) and out (paid expenses / supplier pays / medicine).
-   Payment reimbursements are farm expenses (cash out). Older sale reimbursements stay
+   Payment reimbursements are farm expenses (cash out). The receipt is grossed up by the
+   deduction so drawer net equals cash actually taken. Older sale reimbursements stay
    as non-cash offsets so historical drawers still reconcile. */
 function cashMoveAmount(e) {
   if (e.type === "payment") return +(e.amount || 0);
@@ -6087,8 +6101,11 @@ function reimburseTypeOptions(S, entries) {
 function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose }) {
   const open = ledger.list.filter((x) => x.customerId === customer.id && isOwing(x.due));
   const b = ledger.byCustomer[customer.id] || { due: 0 };
-  const [amount, setAmount] = useState(b.due);
+  const dueC = Math.max(0, toCents(b.due));
+  const [amount, setAmount] = useState(fromCents(dueC));
+  const [cashTouched, setCashTouched] = useState(false);
   const [saleId, setSaleId] = useState("");
+  const [suggestFromC, setSuggestFromC] = useState(dueC);
   const [method, setMethod] = useState("cash");
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
@@ -6097,9 +6114,12 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
   const [err, setErr] = useState("");
   const types = reimburseTypeOptions(S, entries);
   const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
-  const payC = Math.max(0, toCents(amount));
-  const reimburseOver = reimbC > payC;
-  const cashC = Math.max(0, payC - reimbC);
+  const typedCashC = cashTouched ? Math.max(0, toCents(amount)) : 0;
+  const split = recordPaymentSplit({ dueC: suggestFromC, deductC: reimbC, cashC: typedCashC });
+  const payC = cashTouched ? split.cashC : split.suggestedCashC;
+  const settled = settleAmounts({ grossC: dueC, deductC: reimbC, paidC: payC });
+  const remainingC = settled.dueC;
+  const creditC = settled.creditC;
   const updateReimb = (id, patch) => {
     setErr("");
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
@@ -6108,10 +6128,9 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
     const rows = reimbRows.filter((r) => toCents(r.amount) > 0)
       .map((r) => ({ name: String(r.name || "").trim(), amount: fromCents(toCents(r.amount)) }));
     if (rows.some((r) => !r.name)) { setErr(t("reimburseNameNeeded")); return null; }
-    if (reimburseOver) { setErr(t("reimburseOverGross")); return null; }
     return rows;
   };
-  const canSave = payC > 0 && !reimburseOver;
+  const canSave = (payC > 0 || reimbC > 0);
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div style={{ background: C.card, borderRadius: 6, padding: 13, marginBottom: 12, boxShadow: sh1,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
@@ -6120,9 +6139,10 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
         ? <Money usd={b.due} rate={S.rate} lang={lang} size={20} tone={C.red} />
         : <span style={{ fontFamily: "var(--mono)", color: C.inkSoft }}>—</span>}
     </div>
-    <Step n="1" label={`${t("paymentAmount")} — ${t("payCurrency")}`} />
+    <Step n="1" label={`${t("cashToDrawer")} — ${t("payCurrency")}`} />
     <div style={{ background: C.card, borderRadius: 6, padding: 15, marginBottom: 12, boxShadow: sh1 }}>
-      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={10} currency={cur} setCurrency={setCur} />
+      <MoneyStepper big usd={fromCents(payC)} onChange={(v) => { setCashTouched(true); setAmount(v); }}
+        rate={S.rate} lang={lang} t={t} step={10} currency={cur} setCurrency={setCur} />
     </div>
     <Step n="2" label={t("method")} />
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
@@ -6141,8 +6161,10 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <Step n="4" label={t("invoice")} />
     <Scroller>
-      <Chip active={!saleId} onClick={() => setSaleId("")}>⚡ {t("allTypes")}</Chip>
-      {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => { setSaleId(iv.id); setAmount(iv.due); }}>
+      <Chip active={!saleId} onClick={() => { setSaleId(""); setSuggestFromC(dueC); setCashTouched(false); }}>⚡ {t("allTypes")}</Chip>
+      {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => {
+        setSaleId(iv.id); setSuggestFromC(toCents(iv.due)); setCashTouched(false); setAmount(iv.due);
+      }}>
         {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
     </Scroller>
     <Step n="5" label={t("reimbursements")} />
@@ -6178,21 +6200,23 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
     </div>
     <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14, display: "grid", gap: 7 }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontWeight: 600 }}>{t("paymentAmount")}</span>
-        <Money usd={fromCents(payC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
+        <span style={{ fontWeight: 600 }}>{t("due")}</span>
+        <Money usd={fromCents(dueC)} rate={S.rate} lang={lang} size={18} tone="#fff" />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
         <span style={{ fontWeight: 600 }}>{t("reimbursementTotal")}</span>
         <span>− <Money usd={fromCents(reimbC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
       </div>
+      <div style={{ display: "flex", justifyContent: "space-between", opacity: .92 }}>
+        <span style={{ fontWeight: 600 }}>{t("cashToDrawer")}</span>
+        <span>− <Money usd={fromCents(payC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
+      </div>
       <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
         justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{t("cashToDrawer")}</span>
-        <Money usd={fromCents(cashC)} rate={S.rate} lang={lang} size={26} tone="#fff" />
+        <span style={{ fontWeight: 800 }}>{creditC > 0 ? t("credit") : t("netDueNow")}</span>
+        <Money usd={fromCents(creditC > 0 ? creditC : remainingC)} rate={S.rate} lang={lang} size={26} tone="#fff" />
       </div>
     </div>
-    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 600, color: "#7A5312", fontSize: 13.5 }}>{t("reimburseOverGross")}</div>}
     <Step n="6" label={`${t("notes2")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
     {(err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
@@ -6201,7 +6225,7 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose })
         const rows = reimbursements();
         if (!rows || !canSave) return;
         onSave({
-          amount: fromCents(payC), cashAmount: fromCents(cashC), saleId, method, currency: cur, rateUsed: S.rate,
+          amount: fromCents(payC), cashAmount: fromCents(payC), saleId, method, currency: cur, rateUsed: S.rate,
           at: dayStamp(date), note: note.trim(), reimbursements: rows,
         });
       }}>✓ {t("save")}</button>
@@ -8788,6 +8812,11 @@ function FarmApp() {
     const direct = entries.flatMap((e) => {
       if (e.type === "med" && (e.cost || 0) > 0) return [e];
       if (e.type !== "expense" || e.supplierId) return [];
+      if (e.origin === "payment_reimbursement" || (isDeductionReimbursement(e) && e.type === "expense")) {
+        const amt = fromCents(deductionCents(e) || toCents(e.amount));
+        return [{ ...e, amount: amt, paidAmount: amt, payStatus: "paid",
+          sourceExpenseId: e.id, paidSource: "expense" }];
+      }
       if (isCustomerPaidExpense(e)) {
         return [{ ...e, amount: fromCents(toCents(e.amount)), paidAmount: fromCents(toCents(e.amount)),
           payStatus: "paid", sourceExpenseId: e.id, paidSource: "customerReimburse" }];
@@ -9511,7 +9540,7 @@ function FarmApp() {
             const cat = e.type === "med" ? "medicine" : (e.category || "other");
             if (expCat !== "all" && cat !== expCat) return false;
             const isReimb = e.paidSource === "customerReimburse" || isCustomerPaidExpense(e)
-              || e.origin === "customer_reimbursement" || e.origin === "payment_reimbursement";
+              || e.origin === "customer_reimbursement";
             if (expSource === "reimburse" && !isReimb) return false;
             if (expSource === "cash" && isReimb) return false;
             if (!expQ.trim()) return true;
@@ -11801,7 +11830,8 @@ function FarmApp() {
             const payId = `pay-${uid()}`;
             const cash = fromCents(toCents(cashAmount != null ? cashAmount : amount));
             const es = [];
-            if (toCents(cash) > 0) {
+            const hasCash = toCents(cash) > 0;
+            if (hasCash) {
               es.push({ id: payId, type: "payment", customerId: cust.id, saleId: saleId || null, amount: cash,
                 method, currency, rateUsed, at, note, loggedAt });
             }
@@ -11811,7 +11841,7 @@ function FarmApp() {
               es.push({
                 id: `exp-${uid()}`, type: "expense", category: cat, group: expGroupOf(cat),
                 amount: amt, paidAmount: amt, payStatus: "paid",
-                customerId: cust.id, paymentId: payId,
+                customerId: cust.id, paymentId: hasCash ? payId : null,
                 vendor: customerNameById(customers, cust.id, t) || "",
                 note: r.name, name: r.name, memo: r.name, origin: "payment_reimbursement",
                 kind: DEDUCTION_REIMBURSEMENT, deductions: amt,

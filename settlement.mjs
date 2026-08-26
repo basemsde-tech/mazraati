@@ -30,3 +30,33 @@ export function settleAmounts({ grossC = 0, deductC = 0, paidC = 0 } = {}) {
   return { grossC: g, deductC: d, paidC: p, netC, dueC, creditC };
 }
 
+/* Record Payment: cash collected is independent of expense deductions.
+   Example: owing 100, pocket farm expense 50, take 50 cash → due 0.
+   Cash is stored as the payment; deductions post as farm expenses / cash-out. */
+export function recordPaymentSplit({ dueC = 0, cashC = 0, deductC = 0 } = {}) {
+  const due = Math.max(0, Math.round(dueC));
+  const cash = Math.max(0, Math.round(cashC));
+  const deduct = Math.max(0, Math.round(deductC));
+  const settled = settleAmounts({ grossC: due, deductC: deduct, paidC: cash });
+  return {
+    dueC: due,
+    cashC: cash,
+    deductC: deduct,
+    suggestedCashC: Math.max(0, due - deduct),
+    appliedC: cash + deduct,
+    remainingC: settled.dueC,
+    creditC: settled.creditC,
+    netC: settled.netC,
+  };
+}
+
+/* Gross cash-box view of a payment with expense deductions:
+   receipt is cash + deductions, the deduction is a cash-out expense,
+   so drawer net equals cash actually taken. */
+export function cashBoxFromPayment({ cashC = 0, deductC = 0 } = {}) {
+  const cash = Math.max(0, Math.round(cashC));
+  const deduct = Math.max(0, Math.round(deductC));
+  const inC = cash + deduct;
+  const outC = deduct;
+  return { inC, outC, netC: inC - outC };
+}
