@@ -21,6 +21,7 @@ import {
 import {
   OFFSET_CATEGORIES, offsetCategoryLabel, buildAccountPayment, buildQuickSale,
   migrateSalesEntries, paymentCashCents, posChangeCents, isOneTimeSale,
+  saleDiscountCents, saleDiscountPctOf,
 } from "./salesPosting.mjs";
 import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
 
@@ -31,9 +32,19 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.22", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.23", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.23": {
+    ar: [
+      "الإعدادات أوضح: مجموعات يومية وجهاز وشركة، والإعدادات المتقدمة مطوية حتى تحتاجها",
+      "نوافذ البيع أوضح، والخصم اختياري ومطوي — بالمبلغ أو بالنسبة",
+    ],
+    en: [
+      "Settings is grouped into Everyday, This device, and Company, with Advanced folded away until you need it",
+      "Sale sheets are quieter, and discount is optional and folded away — amount or percent",
+    ],
+  },
   "2.9.22": {
     ar: [
       "البيع السريع: شراء لمرة واحدة يبقى في الصندوق فقط، أو ضعه على حساب زبون",
@@ -1249,6 +1260,8 @@ const T = {
     milkUseVoidWriteoff: "شطب بيع",
     discount: "خصم", discountNote: "سبب الخصم",
     discountOverNet: "الخصم أكبر من صافي الفاتورة بعد التعويضات.",
+    discountPct: "نسبة ٪", discountUsd: "مبلغ",
+    moreSaleOpts: "التاريخ والملاحظات",
     quickSale: "بيع سريع", quickSaleHint: "شراء لمرة واحدة أو حساب زبون · منتج · كمية — ثم الصندوق",
     walkIn: "زبون عابر", walkInHint: "بيع لمرة واحدة — لا حاجة لاسم",
     oneTimePurchase: "شراء لمرة واحدة",
@@ -1298,6 +1311,15 @@ const T = {
     setCatFarm: "المزرعة", setCatMoney: "الأسعار والعملة", setCatMilk: "تسجيل الحليب",
     setCatWeather: "الطقس والموقع", setCatPeople: "الأشخاص والأمان", setCatData: "النسخ والمزامنة",
     setCatSystem: "التطبيق والتخزين", setDanger: "منطقة خطر",
+    setCatDisplay: "العرض",
+    setTipDisplay: "المظهر وعرض العملة على هذا الجهاز فقط — لا يغيّر أسعار المزرعة.",
+    setGroupEveryday: "الاستخدام اليومي",
+    setGroupDevice: "هذا الجهاز",
+    setGroupCompany: "الشركة والنسخ",
+    setGroupAdvanced: "إعدادات متقدمة",
+    setAdvHint: "الطقس، شكل الفواتير، التخزين، والمزامنة القديمة",
+    setAdvShow: "إظهار الإعدادات المتقدمة",
+    setAdvHide: "إخفاء الإعدادات المتقدمة",
     setTipFarm: "الاسم والشعار يظهران على الفواتير والتقارير. الهاتف والعنوان اختياريان.",
     setTipRate: "يحوّل الدولار إلى الليرة في كل المبالغ المعروضة. حدّثه عند تغيّر السوق.",
     setTipMoneyView: "اختر إظهار دولار فقط، ليرة فقط، أو الاثنين معًا. يتوفّر أيضًا من الشريط العلوي.",
@@ -1740,6 +1762,8 @@ const T = {
     milkUseVoidWriteoff: "Sale write-off",
     discount: "Discount", discountNote: "Discount note",
     discountOverNet: "Discount cannot exceed the invoice net after reimbursements.",
+    discountPct: "Percent %", discountUsd: "Amount",
+    moreSaleOpts: "Date & notes",
     quickSale: "Quick Sale", quickSaleHint: "One-time or customer account · product · qty — then cashier",
     walkIn: "Walk-in", walkInHint: "One-off sale — no name needed",
     oneTimePurchase: "One-time purchase",
@@ -1789,6 +1813,15 @@ const T = {
     setCatFarm: "Farm", setCatMoney: "Prices & currency", setCatMilk: "Milk logging",
     setCatWeather: "Weather & location", setCatPeople: "People & security", setCatData: "Backup & sync",
     setCatSystem: "App & storage", setDanger: "Danger zone",
+    setCatDisplay: "Display",
+    setTipDisplay: "Theme and currency display on this device only — farm prices stay unchanged.",
+    setGroupEveryday: "Everyday",
+    setGroupDevice: "This device",
+    setGroupCompany: "Company & backup",
+    setGroupAdvanced: "Advanced",
+    setAdvHint: "Weather, invoice layout, storage, and legacy sync",
+    setAdvShow: "Show advanced settings",
+    setAdvHide: "Hide advanced settings",
     setTipFarm: "Name and logo appear on invoices and reports. Phone and address are optional.",
     setTipRate: "Converts USD to LBP on every amount. Update it when the market moves.",
     setTipMoneyView: "Show USD only, LBP only, or both. Also available from the top bar.",
@@ -3529,8 +3562,9 @@ function HelpTip({ text }) {
     {on && <span role="tooltip" className="help-tip-pop" onClick={(e) => e.stopPropagation()}>{text}</span>}
   </span>;
 }
-function SetSection({ open, onToggle, icon, title, tip, summary, accent, children }) {
-  return <div className="set-sec" style={accent ? { borderInlineStart: `3px solid ${accent}` } : undefined}>
+function SetSection({ open, onToggle, icon, title, tip, summary, accent, jumpKey, jumpRef, children }) {
+  return <div className="set-sec" ref={(el) => { if (jumpRef && jumpKey) jumpRef.current[jumpKey] = el; }}
+    style={accent ? { borderInlineStart: `3px solid ${accent}` } : undefined}>
     <button type="button" className="set-sec-head" onClick={onToggle} aria-expanded={open}>
       <span className="set-sec-ic" aria-hidden="true">{icon}</span>
       <span className="set-sec-title">{title}{tip ? <HelpTip text={tip} /> : null}</span>
@@ -3539,6 +3573,30 @@ function SetSection({ open, onToggle, icon, title, tip, summary, accent, childre
     </button>
     {open && <div className="set-sec-body">{children}</div>}
   </div>;
+}
+function SetGroup({ k, label, hint, jumpRef, children }) {
+  return <section className="set-group" ref={(el) => { if (jumpRef) jumpRef.current[k] = el; }}>
+    {label ? <div className="set-group-label">
+      <span>{label}</span>
+      {hint ? <span className="set-group-hint">{hint}</span> : null}
+    </div> : null}
+    <div className="set-group-body">{children}</div>
+  </section>;
+}
+function SetAdvanced({ open, onToggle, t, summary, jumpRef, children }) {
+  return <section className={`set-group set-group-adv${open ? " open" : ""}`}
+    ref={(el) => { if (jumpRef) jumpRef.current.advanced = el; }}>
+    <button type="button" className="set-adv-head" onClick={onToggle} aria-expanded={open}>
+      <span className="set-sec-ic" aria-hidden="true">🛠️</span>
+      <span className="set-adv-copy">
+        <b>{t("setGroupAdvanced")}</b>
+        <small>{open ? t("setAdvHide") : t("setAdvHint")}</small>
+      </span>
+      {!open && summary ? <span className="set-sec-sum">{summary}</span> : <span style={{ flex: 1 }} />}
+      <span className={`nav-group-chev${open ? " open" : ""}`} aria-hidden="true">›</span>
+    </button>
+    {open && <div className="set-adv-body">{children}</div>}
+  </section>;
 }
 function SetLabel({ children, tip }) {
   return <div style={{ display: "flex", alignItems: "center", fontSize: 12.5, fontWeight: 700, color: C.inkSoft, marginBottom: 5 }}>
@@ -4209,6 +4267,64 @@ function FoldPanel({ open, onToggle, label, hint, children }) {
     {open && <div className="fold-body">{children}</div>}
   </div>;
 }
+function FieldLabel({ children, hint }) {
+  return <div className="sale-label">{children}{hint ? <span className="sale-label-hint">{hint}</span> : null}</div>;
+}
+function ProductPick({ value, onChange, lang }) {
+  return <div className="sale-products" role="group">
+    {PRODUCTS.map(([k, ic, ar, en]) => (
+      <button type="button" key={k} className={value === k ? "on" : ""} onClick={() => onChange(k)}>
+        <span aria-hidden="true">{ic}</span>
+        <b>{lang === "ar" ? ar : en}</b>
+      </button>))}
+  </div>;
+}
+function DiscountFold({ t, lang, S, baseC, mode, onMode, usd, onUsd, pct, onPct, note, onNote, currency, setCurrency }) {
+  const discC = saleDiscountCents(baseC, { mode, amount: usd, pct });
+  const [open, setOpen] = useState(discC > 0);
+  const over = mode !== "pct" && toCents(usd) > baseC;
+  const hint = discC > 0
+    ? (mode === "pct" ? `${String(pct).replace(/\.0+$/, "")}%` : fmtC(fromCents(discC), S.rate, lang))
+    : t("optional");
+  const setMode = (next) => {
+    if (next === mode) return;
+    if (next === "pct") onPct(saleDiscountPctOf(toCents(usd), baseC));
+    else onUsd(fromCents(saleDiscountCents(baseC, { mode: "pct", pct })));
+    onMode(next);
+  };
+  return <FoldPanel open={open} onToggle={() => setOpen((v) => !v)} label={t("discount")} hint={hint}>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+      <Chip active={mode !== "pct"} onClick={() => setMode("usd")}>{t("discountUsd")}</Chip>
+      <Chip active={mode === "pct"} onClick={() => setMode("pct")}>{t("discountPct")}</Chip>
+    </div>
+    {mode === "pct" ? <>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {[5, 10, 15, 20, 25].map((p) => (
+          <Chip key={p} active={+pct === p} onClick={() => onPct(p)}>{p}%</Chip>))}
+      </div>
+      <Stepper compact value={pct} step={1} suffix="%" onChange={(v) => onPct(Math.min(100, Math.max(0, +(+v).toFixed(2))))} />
+    </> : <MoneyStepper usd={usd} onChange={onUsd} rate={S.rate} lang={lang} t={t} step={1}
+      currency={currency} setCurrency={setCurrency} />}
+    <input value={note} onChange={(e) => onNote(e.target.value)} placeholder={t("discountNote")}
+      style={{ ...inp, marginTop: 10 }} />
+    {over && <div style={{ color: C.red, fontWeight: 700, marginTop: 8, fontSize: 13 }}>⚠️ {t("discountOverNet")}</div>}
+  </FoldPanel>;
+}
+function SaleTotalBar({ t, lang, S, gross, discC, net, reimb }) {
+  const showBreak = discC > 0 || (reimb || 0) > 0;
+  return <div className="sale-total">
+    {showBreak && <>
+      <div className="sale-total-row"><span>{t("grossSubtotal")}</span>
+        <Money usd={gross} rate={S.rate} lang={lang} size={16} tone="#fff" /></div>
+      {(reimb || 0) > 0 && <div className="sale-total-row dim"><span>{t("reimbursementTotal")}</span>
+        <span>− <Money usd={reimb} rate={S.rate} lang={lang} size={16} tone="#fff" /></span></div>}
+      {discC > 0 && <div className="sale-total-row dim"><span>{t("discount")}</span>
+        <span>− <Money usd={fromCents(discC)} rate={S.rate} lang={lang} size={16} tone="#fff" /></span></div>}
+    </>}
+    <div className="sale-total-row net"><span>{t("netInvoiceTotal")}</span>
+      <Money usd={net} rate={S.rate} lang={lang} size={24} tone="#fff" /></div>
+  </div>;
+}
 function DateFilterPills({ t, from, to, onChange }) {
   const today = datePresetBounds("today");
   const week = datePresetBounds("week");
@@ -4262,10 +4378,9 @@ function SalePriceToggle({ t, S, lang, priceMode, onMode, qty, unitPrice, amount
   </>;
 }
 function Step({ n, label }) {
-  return <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "2px 0 8px" }}>
-    <span style={{ width: 22, height: 22, borderRadius: 3, background: C.field, color: "#fff",
-      display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12, fontFamily: "var(--mono)" }}>{n}</span>
-    <span style={{ fontWeight: 700, fontSize: 14.5, color: C.inkSoft }}>{label}</span>
+  return <div className="sale-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <span className="step-n">{n}</span>
+    <span>{label}</span>
   </div>;
 }
 /* Display preference, chosen per device in Settings: usd | lbp | both */
@@ -5762,7 +5877,8 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
   const last = lastPriceOf(feedType, unit);
   const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
   return <Sheet title={`🌾 ${t("feedCost")}`} onClose={onClose} onBack={onBack} backLabel={backLabel}>
-    <Step n="1" label={t("feedType")} />
+    <div className="sale-sheet">
+    <FieldLabel>{t("feedType")}</FieldLabel>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
       {FEEDS.map(([k, ic]) => <button key={k} onClick={() => setFeedType(k)} style={{ background: feedType === k ? C.field : C.paper,
         color: feedType === k ? "#fff" : C.ink, border: `1px solid ${feedType === k ? C.field : C.line}`,
@@ -5770,7 +5886,7 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
         <div style={{ fontSize: 20 }}>{ic}</div>
         <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{t(k)}</div></button>)}
     </div>
-    <Step n="2" label={t("qtyUnit")} />
+    <FieldLabel>{t("qtyUnit")}</FieldLabel>
     <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
       <Chip active={unit === "bag"} onClick={() => setUnit("bag")}>🛍️ {t("bag")}</Chip>
       <Chip active={unit === "kg"} onClick={() => setUnit("kg")}>⚖️ {t("kgU")}</Chip>
@@ -5779,7 +5895,7 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
       <Stepper big value={qty} onChange={setQty} step={unit === "bag" ? 1 : 25} suffix={unit === "bag" ? t("bag") : t("kgU")} />
     </div>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 400, marginBottom: 14 }}>💡 {t("bagHint")}</div>
-    <Step n="3" label={`${t("unitPriceFeed")} — ${unit === "bag" ? t("bag") : t("kgU")}`} />
+    <FieldLabel hint={unit === "bag" ? t("bag") : t("kgU")}>{t("unitPriceFeed")}</FieldLabel>
     {last > 0 && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 400, marginBottom: 8 }}>
       🕘 {t("lastPrice")}: <span style={{ fontFamily: "var(--mono)" }}>${last}</span></div>}
     <div style={{ background: C.card, borderRadius: 4, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
@@ -5795,13 +5911,13 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
         {t("feedPerHead")}: <Money usd={+(total / heads).toFixed(2)} rate={S.rate} lang={lang} size={13} tone="#fff" /></div>}
     </div>
     {species.length > 1 && <>
-      <Step n="4" label={`${t("forWhich")} — ${t("optional")}`} />
+      <FieldLabel hint={t("optional")}>{t("forWhich")}</FieldLabel>
       <Scroller>
         <Chip active={!sp} onClick={() => setSp("")}>{t("all")}</Chip>
         {species.map((k) => <Chip key={k} active={sp === k} onClick={() => setSp(k)} color={SPECIES[k].color}>
           {SPECIES[k].icon} {spName(k, lang)}</Chip>)}
       </Scroller></>}
-    <Step n={species.length > 1 ? "5" : "4"} label={`${t("supplier")} — ${t("optional")}`} />
+    <FieldLabel hint={t("optional")}>{t("supplier")}</FieldLabel>
     <SearchPick t={t} value={supplierId || ""}
       onChange={(id) => {
         if (!id) { setSupplierId(null); return; }
@@ -5814,7 +5930,7 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
     {!supplierId && <input value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ ...inp, marginBottom: 14 }}
       placeholder={t("newSupplier")} />}
     {supplierId && <div style={{ height: 8 }} />}
-    <Step n={species.length > 1 ? "6" : "5"} label={`${t("attachment")} — ${t("optional")}`} />
+    <FieldLabel hint={t("optional")}>{t("attachment")}</FieldLabel>
     <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
     <button style={{ ...primaryBtn, opacity: total > 0 ? 1 : .45 }} onClick={() => total > 0 && onSave({
       category: "feed", feedType, unit, qty, unitPrice: price, amount: total, species: sp,
@@ -5822,6 +5938,7 @@ function FeedSheet({ lang, t, S, species, lastPriceOf, animals, onSave, onClose,
       supplierId: supplierId || null, vendor: (supplierId ? (activeSuppliers.find((s) => s.id === supplierId) || {}).name : supplier).trim() || supplier.trim(),
       payStatus: "paid", paidAmount: total,
       currency: cur, rateUsed: S.rate, receipt })}>✓ {t("save")}</button>
+    </div>
   </Sheet>;
 }
 
@@ -6009,11 +6126,12 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
   };
   return <Sheet title={initial ? `✏️ ${t("logSupplierBill")}` : `🧾 ${t("supplierBuy")}`}
     sub={supplier.name} onClose={onClose}>
+    <div className="sale-sheet">
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 6, padding: "10px 12px",
-      marginBottom: 14, fontSize: 13, fontWeight: 600, color: C.inkSoft, lineHeight: 1.45 }}>
+      fontSize: 13, fontWeight: 600, color: C.inkSoft, lineHeight: 1.45 }}>
       💡 {t("supplierBuySub")}
     </div>
-    <Step n="1" label={t("supplierWhatBought")} />
+    <FieldLabel>{t("supplierWhatBought")}</FieldLabel>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 14 }}>
       {cats.map((c) => {
         const on = cat === c.key;
@@ -6038,7 +6156,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
             <div style={{ fontSize: 18 }}>{ic}</div>{t(k)}</button>)}
         </div>
       </>}
-      <Step n="2" label={t("purchaseQty")} />
+      <FieldLabel>{t("purchaseQty")}</FieldLabel>
       {qtyMeta.units.length > 1 && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 9 }}>
         {qtyMeta.units.map((u) => <Chip key={u} active={unit === u} onClick={() => setUnit(u)}>
           {u === "bag" ? "🛍️" : "⚖️"} {purchaseUnitLabel(u, t)}</Chip>)}
@@ -6049,7 +6167,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
       </div>
       {unit === "bag" && <div style={{ fontSize: 12.5, color: C.inkSoft, margin: "-5px 0 12px" }}>💡 {t("bagHint")}</div>}
     </>}
-    <Step n={qtyMeta ? "3" : "2"} label={t("billTotal")} />
+    <FieldLabel>{t("billTotal")}</FieldLabel>
     {qtyMeta && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
       <Chip active={priceMode === "total"} onClick={() => choosePriceMode("total")}>{t("priceAsTotal")}</Chip>
       <Chip active={priceMode === "unit"} onClick={() => choosePriceMode("unit")}>{t("pricePerUnit")}</Chip>
@@ -6070,7 +6188,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
         : <MoneyStepper big usd={amount} onChange={setBill} rate={S.rate} lang={lang} t={t}
           step={5} currency={cur} setCurrency={setCur} />}
     </div>
-    <Step n={qtyMeta ? "4" : "3"} label={t("amountPaid")} />
+    <FieldLabel>{t("amountPaid")}</FieldLabel>
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
       <Chip active={mode === "later"} onClick={() => setMode("later")} color={C.red}>{t("payLater")}</Chip>
       <Chip active={mode === "now"} onClick={() => setMode("now")} color={C.green}>{t("payNowMode")}</Chip>
@@ -6082,7 +6200,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
       <DatePick value={dueDate} onChange={setDueDate} />
     </>}
-    <Step n={qtyMeta ? "5" : "4"} label={`${t("colDate")} — ${dmy(date)}`} />
+    <FieldLabel hint={dmy(date)}>{t("colDate")}</FieldLabel>
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("notes2")} — {t("optional")}</div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")}
@@ -6091,6 +6209,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
       style={{ ...primaryBtn, opacity: locked || invalid ? .45 : 1 }}
       onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
     {initial && onDelete && <DeleteConfirmBlock t={t} warn={t("deleteExpenseWarn")} onDelete={onDelete} />}
+    </div>
   </Sheet>;
 }
 
@@ -6426,7 +6545,10 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
   const [cur, setCur] = useState("usd");
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
+  const [more, setMore] = useState(false);
   const [discount, setDiscount] = useState(0);
+  const [discountPct, setDiscountPct] = useState(0);
+  const [discMode, setDiscMode] = useState("usd");
   const [discountNote, setDiscountNote] = useState("");
   const [err, setErr] = useState("");
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
@@ -6450,9 +6572,9 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     else if (qty > 0.0001) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const discC = Math.min(toCents(amount), Math.max(0, toCents(discount)));
+  const discC = saleDiscountCents(toCents(amount), { mode: discMode, amount: discount, pct: discountPct });
   const netAmount = fromCents(Math.max(0, toCents(amount) - discC));
-  const discountOver = toCents(discount) > toCents(amount);
+  const discountOver = discMode !== "pct" && toCents(discount) > toCents(amount);
   const milkAvail = product === "milk" ? milkStock(entries || [], date).available : null;
   const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, discountOver });
   const goTill = () => {
@@ -6466,7 +6588,8 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
     const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
     onSave({ customerId: cid, product, qty, price: unitPrice, amount, priceMode, payNow, tender,
-      discountAmount: fromCents(discC), discountNote: discountNote.trim(),
+      discountAmount: fromCents(discC), discountPct: discMode === "pct" ? discountPct : 0,
+      discountNote: discountNote.trim(),
       unit: product === "milk" ? "kg" : undefined,
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
   };
@@ -6478,84 +6601,64 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
     onClose={onClose} onBack={till ? () => setTill(false) : undefined} backLabel={t("prev")}>
     {till
       ? <CashierPayPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveSale} busy={busy} />
-      : <>
-    {product === "milk" && <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px",
-      marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 13.5 }}>
+      : <div className="sale-sheet">
+    {product === "milk" && <div className="sale-stock">
       <span>🥛 {t("milkLeft")}</span>
       <MilkKg liters={milkAvail} t={t}><span style={{ fontFamily: "var(--mono)", color: milkAvail > 0 ? C.field : C.inkSoft }}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</span></MilkKg>
     </div>}
-    <Step n="1" label={t("pickCustomer")} />
-    <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
-      items={customers.map((x) => ({
-        id: x.id, label: customerLabel(x, t),
-        hint: isWalkInCustomer(x) ? "" : (x.phone || ""),
-        icon: isWalkInCustomer(x) ? "🛍️" : undefined,
-        search: `${x.name || ""} ${x.phone || ""}`,
-      }))}
-      onAdd={onAddCustomer} addLabel={t("addCustomer")} />
-    <Step n="2" label={t("product")} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-      {PRODUCTS.map(([k, ic, ar, en]) => {
-        const on = product === k;
-        return <button type="button" key={k} onClick={() => setProduct(k)} style={{
-          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
-          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 5, padding: "11px 6px",
-          cursor: "pointer", boxShadow: sh1, fontFamily: "var(--body)" }}>
-          <div style={{ fontSize: 22, lineHeight: 1 }}>{ic}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, lineHeight: 1.25,
-            color: on ? "#fff" : C.ink }}>{lang === "ar" ? ar : en}</div>
-        </button>;
-      })}
+    <div>
+      <FieldLabel>{t("pickCustomer")}</FieldLabel>
+      <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
+        items={customers.map((x) => ({
+          id: x.id, label: customerLabel(x, t),
+          hint: isWalkInCustomer(x) ? "" : (x.phone || ""),
+          icon: isWalkInCustomer(x) ? "🛍️" : undefined,
+          search: `${x.name || ""} ${x.phone || ""}`,
+        }))}
+        onAdd={onAddCustomer} addLabel={t("addCustomer")} />
     </div>
-    <Step n="3" label={`${t("qty")} (${unit})`} />
-    <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1}
-        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
+    <div>
+      <FieldLabel>{t("product")}</FieldLabel>
+      <ProductPick value={product} onChange={setProduct} lang={lang} />
     </div>
-    <Step n="4" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
-    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
-    <div style={{ background: C.card, borderRadius: 6, padding: 14, marginBottom: 12, boxShadow: sh1 }}>
-      {priceMode === "unit"
-        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t}
-            step={product === "animal" ? 25 : 0.05} currency={cur} setCurrency={setCur} />
-        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
-            step={1} currency={cur} setCurrency={setCur} />}
-      {qty > 0 && amount > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 12,
-        paddingTop: 10, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}>
-        <span style={{ color: C.inkSoft }}>{priceMode === "unit" ? t("calculatedTotal") : t("calculatedUnit")}</span>
-        <Money usd={priceMode === "unit" ? amount : unitPrice} rate={S.rate} lang={lang} tone={C.field} />
-      </div>}
-    </div>
-    <div style={{ background: C.field, color: "#fff", borderRadius: 6, padding: 15, marginBottom: 14,
-      display: "grid", gap: 7 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 600 }}>{t("grossSubtotal")}</span><Money usd={amount} rate={S.rate} lang={lang} size={18} tone="#fff" />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", opacity: .9 }}>
-        <span style={{ fontWeight: 600 }}>{t("discount")}</span><span>− <Money usd={fromCents(discC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span>
-      </div>
-      <div style={{ borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 8, display: "flex",
-        justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span><Money usd={netAmount} rate={S.rate} lang={lang} size={27} tone="#fff" />
+    <div>
+      <FieldLabel hint={unit}>{t("qty")}</FieldLabel>
+      <div className="sale-box">
+        <Stepper big value={qty} onChange={setQty} step={product === "animal" ? 1 : 5} suffix={unit} decimals={1}
+          tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
       </div>
     </div>
-    {discountOver && <div style={{ background: "#F5E2E4", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
-      fontWeight: 700, color: "#7A1A2E", fontSize: 13.5 }}>⚠️ {t("discountOverNet")}</div>}
-    <Step n="5" label={t("discount")} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
-      <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
-        step={1} currency={cur} setCurrency={setCur} />
+    <div>
+      <FieldLabel>{priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</FieldLabel>
+      <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
+      <div className="sale-box">
+        {priceMode === "unit"
+          ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t}
+              step={product === "animal" ? 25 : 0.05} currency={cur} setCurrency={setCur} />
+          : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t}
+              step={1} currency={cur} setCurrency={setCur} />}
+        {qty > 0 && amount > 0 && <div className="sale-calc">
+          <span>{priceMode === "unit" ? t("calculatedTotal") : t("calculatedUnit")}</span>
+          <Money usd={priceMode === "unit" ? amount : unitPrice} rate={S.rate} lang={lang} tone={C.field} />
+        </div>}
+      </div>
     </div>
-    <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
-      style={{ ...inp, marginBottom: 12 }} />
-    <Step n="6" label={`${t("saleDate")} — ${dmy(date)}`} />
-    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
-    <Step n="7" label={`${t("notes2")} — ${t("optional")}`} />
-    <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    {(block || err) && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
-    <button type="button" style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block ? .45 : 1 }}
+    <DiscountFold t={t} lang={lang} S={S} baseC={toCents(amount)} mode={discMode} onMode={setDiscMode}
+      usd={discount} onUsd={setDiscount} pct={discountPct} onPct={setDiscountPct}
+      note={discountNote} onNote={setDiscountNote} currency={cur} setCurrency={setCur} />
+    <FoldPanel open={more} onToggle={() => setMore((v) => !v)} label={t("moreSaleOpts")}
+      hint={`${dmy(date)}${note.trim() ? " · …" : ""}`}>
+      <FieldLabel hint={dmy(date)}>{t("saleDate")}</FieldLabel>
+      <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+      <FieldLabel hint={t("optional")}>{t("notes2")}</FieldLabel>
+      <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp }} />
+    </FoldPanel>
+    <SaleTotalBar t={t} lang={lang} S={S} gross={amount} discC={discC} net={netAmount} />
+    {discountOver && <div style={{ color: C.red, fontWeight: 700, fontSize: 13.5 }}>⚠️ {t("discountOverNet")}</div>}
+    {(block || err) && <div style={{ color: C.red, fontWeight: 700 }}>⚠️ {err || block}</div>}
+    <button type="button" style={{ ...primaryBtn, padding: "14px 16px", fontSize: 16, opacity: block ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
-      </>}
+      </div>}
   </Sheet>;
 }
 
@@ -6575,6 +6678,10 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [adv, setAdv] = useState(false);
+  const [discount, setDiscount] = useState(0);
+  const [discountPct, setDiscountPct] = useState(0);
+  const [discMode, setDiscMode] = useState("usd");
+  const [discountNote, setDiscountNote] = useState("");
   const [changeGive, setChangeGive] = useState(null);
   const milkSaleUnit = "kg";
   const defPrice = (p) => (c && c.priceL > 0 && (c.product || "milk") === p ? c.priceL : p === "eggs" ? S.eggPrice : p === "milk" ? S.milkPrice : 0);
@@ -6591,6 +6698,9 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const unitLb = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
   const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
   const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
+  const discC = saleDiscountCents(toCents(amount), { mode: discMode, amount: discount, pct: discountPct });
+  const netAmount = fromCents(Math.max(0, toCents(amount) - discC));
+  const discountOver = discMode !== "pct" && toCents(discount) > toCents(amount);
   const milkAvail = product === "milk" ? milkStock(entries || []).available : null;
   const switchPriceMode = (next) => {
     if (next === priceMode) return;
@@ -6598,7 +6708,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     else if (qty > 0) setPrice(unitFromTotal(total, qty));
     setPriceMode(next);
   };
-  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, allowNoCustomer: oneTime });
+  const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, allowNoCustomer: oneTime, discountOver });
   const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
   const resetQuick = () => {
     setTill(false);
@@ -6606,6 +6716,10 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     setNote("");
     setAdv(false);
     setErr("");
+    setDiscount(0);
+    setDiscountPct(0);
+    setDiscMode("usd");
+    setDiscountNote("");
     setOnAccount(!!namedPre);
     setCid(namedPre);
     setProduct("milk");
@@ -6616,11 +6730,13 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     if (block) return setErr(block);
     const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
     const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
-    const ch = posChangeCents({ dueC: toCents(amount), tenderC: toCents(tender) });
+    const ch = posChangeCents({ dueC: toCents(netAmount), tenderC: toCents(tender) });
     try {
       const ok = await onSave({
         customerId: onAccount ? cid : "", oneTime, product, qty, price: unitPrice, amount, priceMode, note: note.trim(),
         unit: product === "milk" ? milkSaleUnit : undefined,
+        discountAmount: fromCents(discC), discountPct: discMode === "pct" ? discountPct : 0,
+        discountNote: discountNote.trim(), discountMode: discMode,
         payNow, tender, at: iso(Date.now()),
       });
       if (ok === false) return;
@@ -6639,10 +6755,10 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   const form = changeGive
     ? <PosChangeDone t={t} lang={lang} S={S} change={changeGive.change} onNext={resetQuick} />
     : till
-    ? <PosTillPrompt t={t} lang={lang} S={S} amount={amount} err={err} onConfirm={saveQuick} busy={busy} walkIn={oneTime} />
-    : <>
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
-      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontWeight: 700, fontSize: 14.5, cursor: "pointer" }}>
+    ? <PosTillPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveQuick} busy={busy} walkIn={oneTime} />
+    : <div className="sale-sheet">
+    <div className="sale-box">
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
         <input type="checkbox" checked={onAccount}
           onChange={(e) => { setOnAccount(e.target.checked); setErr(""); if (!e.target.checked) setCid(""); }}
           style={{ marginTop: 3, width: 18, height: 18, flexShrink: 0 }} />
@@ -6656,46 +6772,35 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     {onAccount && <SearchPick t={t} value={cid} onChange={setCid} placeholder={t("searchParty")}
       items={named.map((x) => ({ id: x.id, label: x.name, hint: x.phone || "", search: `${x.name} ${x.phone || ""}` }))}
       onAdd={onAddCustomer} addLabel={t("addCustomer")} />}
-    <div className="sale-product-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "4px 0 12px" }}>
-      {PRODUCTS.map(([k, ic, ar, en]) => {
-        const on = product === k;
-        return <button type="button" key={k} onClick={() => setProduct(k)} style={{
-          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
-          border: `1px solid ${on ? C.field : C.line}`, borderRadius: 8, padding: "12px 6px",
-          cursor: "pointer", fontFamily: "var(--body)" }}>
-          <div style={{ fontSize: 22 }}>{ic}</div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4 }}>{lang === "ar" ? ar : en}</div>
-        </button>;
-      })}
-    </div>
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("qty")} · {unitLb}</div>
-      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb}
-        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
+    <ProductPick value={product} onChange={setProduct} lang={lang} />
+    <div>
+      <FieldLabel hint={unitLb}>{t("qty")}</FieldLabel>
+      <div className="sale-box">
+        <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={unitLb}
+          tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
+      </div>
     </div>
     <FoldPanel open={adv} onToggle={() => setAdv((v) => !v)}
       label={t("customPricing")}
       hint={product === "milk" ? <>{t("milkLeft")} <MilkKg liters={milkAvail} t={t}>{n1(milkFromLiters(milkAvail, "kg"))} {t("kg")}</MilkKg></> : null}>
       <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
-      <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
-          {priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</div>
+      <div className="sale-box" style={{ marginBottom: 10 }}>
+        <FieldLabel>{priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</FieldLabel>
         {priceMode === "unit"
           ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
           : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
       </div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
-        style={{ ...inp, marginBottom: 4 }} />
+        style={{ ...inp }} />
     </FoldPanel>
-    <div style={{ background: C.field, color: "#fff", borderRadius: 8, padding: 14, margin: "10px 0 12px",
-      display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <span style={{ fontWeight: 700 }}>{t("netInvoiceTotal")}</span>
-      <Money usd={amount} rate={S.rate} lang={lang} size={26} tone="#fff" />
-    </div>
-    {(block || err) && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err || block}</div>}
-    <button type="button" disabled={!!busy} style={{ ...primaryBtn, padding: "16px 18px", fontSize: 17, opacity: block || busy ? .45 : 1 }}
+    <DiscountFold t={t} lang={lang} S={S} baseC={toCents(amount)} mode={discMode} onMode={setDiscMode}
+      usd={discount} onUsd={setDiscount} pct={discountPct} onPct={setDiscountPct}
+      note={discountNote} onNote={setDiscountNote} />
+    <SaleTotalBar t={t} lang={lang} S={S} gross={amount} discC={discC} net={netAmount} />
+    {(block || err) && <div style={{ color: C.rose, fontWeight: 700 }}>⚠️ {err || block}</div>}
+    <button type="button" disabled={!!busy} style={{ ...primaryBtn, padding: "14px 16px", fontSize: 16, opacity: block || busy ? .45 : 1 }}
       onClick={goTill}>💵 {t("charge")} ›</button>
-      </>;
+      </div>;
   if (embedded) return <div>{form}</div>;
   return <Sheet title={changeGive ? `💵 ${t("changeDue")}` : till ? `💵 ${t("cashier")}` : `⚡ ${t("quickSale")}`}
     sub={changeGive ? undefined : (who || undefined)}
@@ -6762,7 +6867,8 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   const overpay = creditC > 0;
   const canSave = !locked && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 13, marginBottom: 12,
+    <div className="sale-sheet">
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 13,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
       <span style={{ color: isOwing(b.due) ? C.rose : C.slate }}>{t("due")}</span>
       {isOwing(b.due)
@@ -6870,6 +6976,7 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
           });
         } finally { setSaving(false); }
       }}>{locked ? t("savingPayment") : `✓ ${t("save")}`}</button>
+    </div>
   </Sheet>;
 }
 
@@ -7017,9 +7124,13 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const [priceMode, setPriceMode] = useState(sale.priceMode === "total" ? "total" : "unit");
   const [date, setDate] = useState(dayKey(sale.at));
   const [note, setNote] = useState(sale.note || "");
+  const [more, setMore] = useState(false);
   const [product, setProduct] = useState(sale.product || "milk");
   const [milkSaleUnit] = useState("kg");
+  const hadPct = +(sale.discountPct || 0) > 0;
+  const [discMode, setDiscMode] = useState(hadPct ? "pct" : "usd");
   const [discount, setDiscount] = useState(sale.discountAmount || 0);
+  const [discountPct, setDiscountPct] = useState(hadPct ? sale.discountPct : 0);
   const [discountNote, setDiscountNote] = useState(sale.discountNote || "");
   const amount = priceMode === "total" ? fromCents(toCents(total)) : qtyMoney(qty, price);
   const unitPrice = priceMode === "total" ? unitFromTotal(amount, qty) : price;
@@ -7032,84 +7143,67 @@ function EditSaleSheet({ sale, lang, t, S, onSave, onDelete, onClose }) {
   const reimbAmount = fromCents((sale.reimbRows || []).filter((r) => !r.accountAlloc)
     .reduce((sum, r) => sum + toCents(r.amount), 0));
   const afterReimbC = Math.max(0, toCents(amount) - toCents(reimbAmount));
-  const discC = Math.min(afterReimbC, Math.max(0, toCents(discount)));
+  const discC = saleDiscountCents(afterReimbC, { mode: discMode, amount: discount, pct: discountPct });
   const netAmount = fromCents(Math.max(0, afterReimbC - discC));
   const reimburseOver = toCents(reimbAmount) > toCents(amount);
-  const discountOver = toCents(discount) > afterReimbC;
+  const discountOver = discMode !== "pct" && toCents(discount) > afterReimbC;
   const pr = PRODUCTS.find((p) => p[0] === product) || PROD_OTHER;
   const qtyUnit = product === "milk" ? milkUnitLb(milkSaleUnit, t) : (lang === "ar" ? pr[4] : pr[5]);
+  const block = saleSaveReason(t, { cid: true, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
   return <Sheet title={`✏️ ${t("editTx")}`} sub={sale.no} onClose={onClose}>
-    <Step n="1" label={t("product")} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-      {PRODUCTS.map(([k, ic, ar, en]) => {
-        const on = product === k;
-        return <button type="button" key={k} onClick={() => setProduct(k)} style={{
-          background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
-          border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 4, padding: "10px 6px",
-          cursor: "pointer", fontFamily: "var(--body)" }}>
-          <div style={{ fontSize: 20, lineHeight: 1 }}>{ic}</div>
-          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 3, lineHeight: 1.25,
-            color: on ? "#fff" : C.ink }}>{lang === "ar" ? ar : en}</div>
-        </button>;
-      })}
+    <div className="sale-sheet">
+    <div>
+      <FieldLabel>{t("product")}</FieldLabel>
+      <ProductPick value={product} onChange={setProduct} lang={lang} />
     </div>
-    <Step n="2" label={`${t("qty")} (${qtyUnit})`} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
-      <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit}
-        tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} /></div>
-    <Step n="3" label={priceMode === "total" ? t("priceFull") : t("pricePerUnit")} />
-    <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
-      {priceMode === "unit"
-        ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
-        : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
+    <div>
+      <FieldLabel hint={qtyUnit}>{t("qty")}</FieldLabel>
+      <div className="sale-box">
+        <Stepper big value={qty} onChange={setQty} step={5} decimals={1} suffix={qtyUnit}
+          tip={product === "milk" ? milkLPreview(qty, "kg", t) : ""} />
+      </div>
     </div>
-    {(sale.reimbRows || []).length > 0 && <div style={{ background: C.paper, border: `1px solid ${C.line}`,
-      borderRadius: 6, padding: 12, marginBottom: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{t("reimbursements")}</div>
+    <div>
+      <FieldLabel>{priceMode === "total" ? t("priceFull") : t("pricePerUnit")}</FieldLabel>
+      <PriceModeToggle t={t} mode={priceMode} onChange={switchPriceMode} />
+      <div className="sale-box">
+        {priceMode === "unit"
+          ? <MoneyStepper usd={price} onChange={(v) => setPrice(+v.toFixed(4))} rate={S.rate} lang={lang} t={t} step={0.05} />
+          : <MoneyStepper usd={total} onChange={(v) => setTotal(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} />}
+      </div>
+    </div>
+    {(sale.reimbRows || []).length > 0 && <div className="sale-box">
+      <FieldLabel>{t("reimbursements")}</FieldLabel>
       <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 8 }}>{t("reimburseReadOnly")}</div>
       {sale.reimbRows.map((r) => <div key={r.id} style={{ display: "flex", justifyContent: "space-between",
         gap: 10, padding: "6px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 13.5 }}>
         <span>{r.accountAlloc ? t("accountReimburse") : r.name}</span><span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>−{fmtC(r.amount, S.rate, lang)}</span>
       </div>)}
     </div>}
-    <Step n="4" label={`${t("saleDate")} — ${dmy(date)}`} />
-    <DatePick value={date} onChange={setDate} />
-    <Step n="5" label={`${t("notes2")} — ${t("optional")}`} />
-    <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 14 }} />
-    <div style={{ background: C.field, color: "#fff", borderRadius: 4, padding: 14, marginBottom: 14,
-      display: "grid", gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("grossSubtotal")}</span>
-        <Money usd={amount} rate={S.rate} lang={lang} size={18} tone="#fff" /></div>
-      {reimbAmount > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("reimbursementTotal")}</span>
-        <span>− <Money usd={reimbAmount} rate={S.rate} lang={lang} size={18} tone="#fff" /></span></div>}
-      {discC > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("discount")}</span>
-        <span>− <Money usd={fromCents(discC)} rate={S.rate} lang={lang} size={18} tone="#fff" /></span></div>}
-      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,.35)", paddingTop: 7 }}>
-        <span style={{ fontWeight: 800 }}>{t("netInvoiceTotal")}</span>
-        <Money usd={netAmount} rate={S.rate} lang={lang} size={24} tone="#fff" /></div>
-    </div>
-    <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>{t("discount")}</div>
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 8 }}>
-      <MoneyStepper usd={discount} onChange={(v) => setDiscount(fromCents(toCents(v)))} rate={S.rate} lang={lang} t={t} step={1} /></div>
-    <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder={t("discountNote")}
-      style={{ ...inp, marginBottom: 12 }} />
-    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 4, padding: "10px 12px", marginBottom: 10,
+    <DiscountFold t={t} lang={lang} S={S} baseC={afterReimbC} mode={discMode} onMode={setDiscMode}
+      usd={discount} onUsd={setDiscount} pct={discountPct} onPct={setDiscountPct}
+      note={discountNote} onNote={setDiscountNote} />
+    <FoldPanel open={more} onToggle={() => setMore((v) => !v)} label={t("moreSaleOpts")}
+      hint={`${dmy(date)}${note.trim() ? " · …" : ""}`}>
+      <FieldLabel hint={dmy(date)}>{t("saleDate")}</FieldLabel>
+      <DatePick value={date} onChange={setDate} />
+      <FieldLabel hint={t("optional")}>{t("notes2")}</FieldLabel>
+      <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp }} />
+    </FoldPanel>
+    <SaleTotalBar t={t} lang={lang} S={S} gross={amount} discC={discC} net={netAmount} reimb={reimbAmount} />
+    {reimburseOver && <div style={{ background: "#F6EFDD", borderRadius: 8, padding: "10px 12px",
       fontWeight: 600, color: "#7A5312" }}>{t("reimburseOverGross")}</div>}
-    {discountOver && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("discountOverNet")}</div>}
-    {(() => {
-      const block = saleSaveReason(t, { cid: true, qty, price: unitPrice, amount, priceMode, reimburseOver, discountOver });
-      return <>
-        {block && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ {block}</div>}
-        <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
-          onClick={() => !block && onSave({ qty, price: unitPrice, amount, product, priceMode,
-            discountAmount: fromCents(discC), discountNote: discountNote.trim(),
-            unit: product === "milk" ? "kg" : undefined,
-            at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
-      </>;
-    })()}
-    {onDelete && <button type="button" style={{ ...outlineBtn, marginTop: 10, color: C.red, borderColor: C.red }}
+    {discountOver && <div style={{ color: C.red, fontWeight: 700 }}>⚠️ {t("discountOverNet")}</div>}
+    {block && <div style={{ color: C.red, fontWeight: 700 }}>⚠️ {block}</div>}
+    <button type="button" style={{ ...primaryBtn, opacity: block ? .45 : 1 }}
+      onClick={() => !block && onSave({ qty, price: unitPrice, amount, product, priceMode,
+        discountAmount: fromCents(discC), discountPct: discMode === "pct" ? discountPct : 0,
+        discountNote: discountNote.trim(),
+        unit: product === "milk" ? "kg" : undefined,
+        at: dayStamp(date), note: note.trim() })}>✓ {t("save")}</button>
+    {onDelete && <button type="button" style={{ ...outlineBtn, color: C.red, borderColor: C.red }}
       onClick={onDelete}>🗑️ {t("deleteTx")}</button>}
+    </div>
   </Sheet>;
 }
 
@@ -7201,7 +7295,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     ...(ledger.paymentDeductions || []).filter((r) => r.customerId === customer.id && inR(r.at))
       .map((r) => ({ id: r.id, at: r.at, label: `${t("reimbursement")} · ${deductionMemo(r) || "—"}`, amount: fromCents(deductionCents(r)), by: r })),
     ...rows.filter((x) => toCents(x.discountAmount) > 0.009)
-      .map((x) => ({ id: `${x.id}-disc`, at: x.at, label: `${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""} · ${x.no}`,
+      .map((x) => ({ id: `${x.id}-disc`, at: x.at, label: `${t("discount")}${x.discountPct > 0 ? ` ${x.discountPct}%` : ""}${x.discountNote ? ` · ${x.discountNote}` : ""} · ${x.no}`,
         amount: x.discountAmount })),
   ].sort((a, c) => cmpTx(a, c, sortNewest ? "newest" : "oldest"));
 
@@ -8741,7 +8835,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         label: `${x.no} · ${t("reimbursement")} · ${r.accountAlloc ? t("accountReimburse") : r.name}`,
         d: 0, m: r.amount, c: 0 })),
         ...((x.discountAmount || 0) > 0.009 ? [{ at: x.at, k: "d",
-          label: `${x.no} · ${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""}`,
+          label: `${x.no} · ${t("discount")}${x.discountPct > 0 ? ` ${x.discountPct}%` : ""}${x.discountNote ? ` · ${x.discountNote}` : ""}`,
           d: 0, m: x.discountAmount, c: 0 }] : [])];
     }),
       ...(ledger.paymentDeductions || []).filter((e) => e.customerId === doc.id).map((e) => ({
@@ -8834,7 +8928,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
           −{nf(r.amount * (r.rateUsed || iv.rateUsed || S.rate))}</td>}
       </tr>)}
       {(iv.discountAmount || 0) > 0.009 && <tr style={{ background: "#F4F8F6" }}>
-        <td style={{ ...docTd, color: C.field, fontWeight: 700 }}>{t("discount")}{iv.discountNote ? ` · ${iv.discountNote}` : ""}</td>
+        <td style={{ ...docTd, color: C.field, fontWeight: 700 }}>{t("discount")}{iv.discountPct > 0 ? ` ${iv.discountPct}%` : ""}{iv.discountNote ? ` · ${iv.discountNote}` : ""}</td>
         <td style={{ ...docTd, textAlign: "center" }}>—</td><td style={{ ...docTd, textAlign: "end" }}>—</td>
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nm(iv.discountAmount)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>
@@ -8851,7 +8945,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nf(iv.reimbAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>
       {(iv.discountAmount || 0) > 0.009 && <tr>
-        <td style={{ ...docTd, textAlign: "end" }} colSpan={3}>{t("discount")}</td>
+        <td style={{ ...docTd, textAlign: "end" }} colSpan={3}>{t("discount")}{iv.discountPct > 0 ? ` ${iv.discountPct}%` : ""}</td>
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nm(iv.discountAmount)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nf(iv.discountAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>}
@@ -9032,7 +9126,6 @@ function FarmApp() {
   const [draftS, setDraftS] = useState(null);
   const [cloudCfg, setCloudCfg] = useState({ url: "", token: "", on: false });
   const [cloudMsg, setCloudMsg] = useState("");
-  const [cloudAdv, setCloudAdv] = useState(false);
   const [co, setCo] = useState(() => getCompanyCloud());
   const [coEmail, setCoEmail] = useState("");
   const [coPass, setCoPass] = useState("");
@@ -9045,7 +9138,20 @@ function FarmApp() {
   const [theme, setTheme] = useState("light");
   const [navFarmOpen, setNavFarmOpen] = useState(true);
   const [navOfficeOpen, setNavOfficeOpen] = useState(true);
-  const [setOpen, setSetOpen] = useState({ farm: true, money: true, milk: false, docs: false, weather: false, people: false, data: false, system: false, danger: false });
+  const [setOpen, setSetOpen] = useState({ farm: true, money: true, display: false, milk: false, docs: false, weather: false, people: false, data: false, cloud: false, system: false, danger: false });
+  const [advOpen, setAdvOpen] = useState(false);
+  const setAnchors = useRef({});
+  const jumpSet = (k) => {
+    if (k === "advanced") setAdvOpen(true);
+    else {
+      setSetOpen((s) => ({ ...s, [k]: true }));
+      if (["weather", "docs", "milk", "cloud", "system", "danger"].includes(k)) setAdvOpen(true);
+    }
+    requestAnimationFrame(() => {
+      const el = setAnchors.current[k];
+      if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const [rateHistOpen, setRateHistOpen] = useState(false);
   const toggleSet = (k) => setSetOpen((s) => ({ ...s, [k]: !s[k] }));
   const [sideHidden, setSideHidden] = useState(false);
@@ -10433,7 +10539,15 @@ function FarmApp() {
           onClick={() => commit(Object.keys(D).filter((k) => D[k] !== S[k]).map((k) => ({ type: "setting", field: k, value: D[k] })), { settings: D })}>✓ {t("save")}</button>
       </div>}
 
+      <nav className="set-jump" aria-label={t("settings")}>
+        {[["farm", "🏷️", t("setCatFarm")], ["money", "💱", t("setCatMoney")], ["people", "👥", t("setCatPeople")],
+          ["display", "◐", t("setCatDisplay")], ["data", "💾", t("setCatData")], ["advanced", "🛠️", t("setGroupAdvanced")]].map(([k, ic, lb]) => (
+          <button key={k} type="button" className="set-jump-chip" onClick={() => jumpSet(k)}>{ic} {lb}</button>))}
+      </nav>
+
+      <SetGroup k="everyday" label={t("setGroupEveryday")} jumpRef={setAnchors}>
       <SetSection open={setOpen.farm} onToggle={() => toggleSet("farm")} icon="🏷️" title={t("setCatFarm")} tip={t("setTipFarm")}
+        jumpKey="farm" jumpRef={setAnchors}
         summary={D.farmName || t("setNotSet")} accent={!S.farmName ? C.tag : undefined}>
         <div className="set-grid-id">
           <label className="set-logo">
@@ -10471,6 +10585,7 @@ function FarmApp() {
       </SetSection>
 
       <SetSection open={setOpen.money} onToggle={() => toggleSet("money")} icon="💱" title={t("setCatMoney")} tip={t("setTipPrices")}
+        jumpKey="money" jumpRef={setAnchors}
         summary={`1$ = ${nf(S.rate || 0)} · ${fmtC(S.milkPrice || 0, S.rate, lang)}/${t("L")}`}
         accent={rateStale ? C.red : undefined}>
         <SetLabel tip={t("setTipRate")}>{t("rate")}</SetLabel>
@@ -10501,19 +10616,7 @@ function FarmApp() {
             <span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{nf(e.value)}</span></div>)}
         </>}
 
-        <div style={{ height: 12 }} />
-        <SetLabel tip={t("themeHint")}>{t("theme")}</SetLabel>
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <Chip active={theme === "light"} onClick={() => pickTheme("light")} color={C.field}>☀ {t("themeLight")}</Chip>
-          <Chip active={theme === "dark"} onClick={() => pickTheme("dark")} color={C.fieldDeep}>☾ {t("themeDark")}</Chip>
-        </div>
-
-        <SetLabel tip={t("setTipMoneyView")}>{t("moneyView")}</SetLabel>
-        <div style={{ marginBottom: 14 }}>
-          <MoneyToggle value={moneyView} onChange={pickMoneyView} rate={S.rate || 89500} lang={lang} t={t}
-            previewUsd={D.milkPrice > 0 ? D.milkPrice : 100} />
-        </div>
-
+        <div className="set-hr" />
         <div className="set-price-grid">
           <div>
             <SetLabel>{t("milkPrice")}</SetLabel>
@@ -10530,84 +10633,8 @@ function FarmApp() {
         </div>
       </SetSection>
 
-      <SetSection open={setOpen.docs} onToggle={() => toggleSet("docs")} icon="🧾" title={t("setCatDocs")} tip={t("setTipDocs")}
-        summary={(docTplOf(D).thanks || "").trim() ? "✦" : t("invoice")}>
-        {(() => {
-          const tpl = docTplOf(D);
-          const setTpl = (patch) => setDraftS({ ...D, docTpl: { ...tpl, ...patch } });
-          return <>
-            <SetLabel tip={t("docThanksHint")}>{t("docThanks")}</SetLabel>
-            <input value={tpl.thanks || ""} onChange={(e) => setTpl({ thanks: e.target.value })}
-              placeholder={t("thanks")} style={{ ...inp, padding: "9px 11px", fontSize: 13.5, marginBottom: 10 }} />
-            <SetLabel>{t("docFooterNote")}</SetLabel>
-            <input value={tpl.footerNote || ""} onChange={(e) => setTpl({ footerNote: e.target.value })}
-              style={{ ...inp, padding: "9px 11px", fontSize: 13.5, marginBottom: 10 }} />
-            <SetLabel tip={t("setTipMoneyView")}>{t("docPrintMoney")}</SetLabel>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-              {[["follow", t("docFollowView")], ["both", t("docAlwaysBoth")], ["usd", t("docUsdOnly")], ["lbp", t("docLbpOnly")]].map(([k, lb]) => (
-                <Chip key={k} active={tpl.printMoney === k} onClick={() => setTpl({ printMoney: k })}>{lb}</Chip>))}
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {[["showParty", t("docShowParty")], ["showSigns", t("docShowSigns")], ["showRate", t("docShowRate")]].map(([k, lb]) => (
-                <button key={k} type="button" onClick={() => setTpl({ [k]: tpl[k] === false })}
-                  style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.line}`,
-                    borderRadius: 4, padding: "8px 10px", cursor: "pointer", textAlign: "start", fontFamily: "var(--body)" }}>
-                  <span style={{ color: tpl[k] !== false ? C.field : C.line, fontSize: 14 }}>{tpl[k] !== false ? "☑" : "☐"}</span>
-                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>{lb}</span>
-                </button>))}
-            </div>
-          </>;
-        })()}
-      </SetSection>
-
-      <SetSection open={setOpen.milk} onToggle={() => toggleSet("milk")} icon="🥛" title={t("setCatMilk")} tip={t("kg")}
-        summary={t("kg")}>
-        <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "12px 14px", fontSize: 13.5, color: C.inkSoft, fontWeight: 500, lineHeight: 1.45 }}>
-          {t("milkDensityHint")} · {t("milkLogHint")}
-        </div>
-      </SetSection>
-
-      <SetSection open={setOpen.weather} onToggle={() => toggleSet("weather")}
-        icon="🌤️" title={t("setCatWeather")} tip={t("setTipWeather")}
-        summary={loc ? loc.name : t("setNotSet")} accent={!loc ? C.tag : undefined}>
-        {loc
-          ? <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px", marginBottom: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>📍 {loc.name}</span>
-                {weather && <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 18 }}>
-                  {wmo(weather.code, lang).icon} {weather.temp}°</span>}
-              </div>
-              {weather && <div style={{ marginTop: 6, fontSize: 12.5, color: C.inkSoft }}>
-                {t("feels")} {weather.feels}° · {t("humidity")} {weather.hum}% · {t("rainChance")} {weather.rain}%
-              </div>}
-              {wErr && <div style={{ marginTop: 6, color: C.red, fontWeight: 600, fontSize: 12.5 }}>⚠ {t("weatherOff")}</div>}
-            </div>
-          : <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 10 }}>{t("setLocation")}</div>}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "9px 12px", fontSize: 13, opacity: locBusy ? .6 : 1 }} onClick={() => {
-            setLocBusy(true);
-            if (!navigator.geolocation) { setLocBusy(false); return ping(t("locDenied")); }
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-              const p = { name: lang === "ar" ? "موقع المزرعة" : "Farm", lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) };
-              await commit([{ type: "setting", field: "loc", value: 1 }], { settings: { ...S, loc: p } });
-              setLocBusy(false);
-            }, () => { setLocBusy(false); ping(t("locDenied")); }, { timeout: 8000 });
-          }}>📍 {t("useMyLocation")}</button>
-          <input value={cityQ} onChange={(e) => setCityQ(e.target.value)} placeholder={t("searchCity")}
-            style={{ ...inp, flex: 1, minWidth: 140, padding: "9px 11px", fontSize: 13.5 }} />
-          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "9px 12px", fontSize: 13 }} onClick={async () => {
-            if (!cityQ.trim()) return;
-            setLocBusy(true);
-            try { const g = await geocode(cityQ.trim());
-              await commit([{ type: "setting", field: "loc", value: 1 }], { settings: { ...S, loc: g } });
-              setCityQ(""); }
-            catch (e) { ping(t("locNotFound")); }
-            setLocBusy(false);
-          }}>{locBusy ? "…" : t("search")}</button>
-        </div>
-      </SetSection>
-
       <SetSection open={setOpen.people} onToggle={() => toggleSet("people")} icon="👥" title={t("setCatPeople")} tip={t("setTipPeople")}
+        jumpKey="people" jumpRef={setAnchors}
         summary={`${(data.profiles || []).length} · ${workers.length} ${t("workers")} · ${activeCustomers.length}`}>
         <SetLabel>{t("people")}</SetLabel>
         <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
@@ -10621,7 +10648,6 @@ function FarmApp() {
             {p.pin && <span style={{ fontSize: 12 }}>🔒</span>}
           </div>)}
         </div>
-
         <SetLabel tip={t("passOptional")}>{t("security")}</SetLabel>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13 }}
@@ -10629,7 +10655,6 @@ function FarmApp() {
           {me.pin && <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13, color: C.red, borderColor: C.red }}
             onClick={() => setSheet({ k: "confirmRemovePass" })}>🔓 {t("removePass")}</button>}
         </div>
-
         <SetLabel>{t("workers")}</SetLabel>
         <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
           {workers.length === 0
@@ -10645,8 +10670,26 @@ function FarmApp() {
         {archivedCustomers.length > 0 && <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
           onClick={() => setSheet({ k: "archivedAccounts" })}>📦 {t("archivedAccounts")} ({archivedCustomers.length})</button>}
       </SetSection>
+      </SetGroup>
 
+      <SetGroup k="device" label={t("setGroupDevice")} hint={t("setTipDisplay")} jumpRef={setAnchors}>
+      <SetSection open={setOpen.display} onToggle={() => toggleSet("display")} icon="🎨" title={t("setCatDisplay")} tip={t("setTipDisplay")}
+        jumpKey="display" jumpRef={setAnchors}
+        summary={`${theme === "dark" ? t("themeDark") : t("themeLight")} · ${moneyView === "usd" ? t("usdOnly") : moneyView === "lbp" ? t("lbpOnly") : t("bothMoney")}`}>
+        <SetLabel tip={t("themeHint")}>{t("theme")}</SetLabel>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <Chip active={theme === "light"} onClick={() => pickTheme("light")} color={C.field}>☀ {t("themeLight")}</Chip>
+          <Chip active={theme === "dark"} onClick={() => pickTheme("dark")} color={C.fieldDeep}>☾ {t("themeDark")}</Chip>
+        </div>
+        <SetLabel tip={t("setTipMoneyView")}>{t("moneyView")}</SetLabel>
+        <MoneyToggle value={moneyView} onChange={pickMoneyView} rate={S.rate || 89500} lang={lang} t={t}
+          previewUsd={D.milkPrice > 0 ? D.milkPrice : 100} />
+      </SetSection>
+      </SetGroup>
+
+      <SetGroup k="company" label={t("setGroupCompany")} hint={t("setTipBackup")} jumpRef={setAnchors}>
       <SetSection open={setOpen.data} onToggle={() => toggleSet("data")} icon="💾" title={t("setCatData")} tip={t("setTipBackup")}
+        jumpKey="data" jumpRef={setAnchors}
         summary={co.companyId || cloudCfg.on ? t("setSynced") : t("setOnDevice")}>
         <SetLabel tip={t("setTipCloud")}>{t("cloud")}</SetLabel>
         <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 10, lineHeight: 1.45 }}>{t("cloudHint")}</div>
@@ -10708,37 +10751,6 @@ function FarmApp() {
         )}
         {coMsg && <div style={{ fontWeight: 700, fontSize: 13, color: coMsg.startsWith("✓") ? C.green : C.red, marginBottom: 10 }}>{coMsg}</div>}
 
-        <button type="button" style={{ background: "none", border: "none", color: C.field, fontWeight: 700, cursor: "pointer",
-          fontFamily: "var(--body)", fontSize: 12.5, padding: "4px 0 10px" }} onClick={() => setCloudAdv((v) => !v)}>
-          {cloudAdv ? "▾" : "▸"} {t("cloudAdvanced")}
-        </button>
-        {cloudAdv && (
-          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10, marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: C.amber, marginBottom: 8, fontWeight: 600 }}>{t("cloudSecret")}</div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-              <Chip active={!cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: false })} color={C.inkSoft}>{t("cloudOff")}</Chip>
-              <Chip active={cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: true })} color={C.green}>{t("cloudOn")}</Chip>
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
-              <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
-                placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudToken")}</div>
-              <input value={cloudCfg.token} onChange={(e) => setCloudCfg({ ...cloudCfg, token: e.target.value.trim() })}
-                style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }}
-                onClick={() => saveCloud({ ...cloudCfg, on: !!cloudCfg.url })}>{t("save")}</button>
-              <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
-              {cloudCfg.url && <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={copyCloudLink}>{t("cloudCopy")}</button>}
-            </div>
-            {cloudMsg && <div style={{ fontWeight: 700, fontSize: 13, color: cloudMsg.startsWith("✓") ? C.green : C.red, marginTop: 8 }}>{cloudMsg}</div>}
-          </div>
-        )}
-
         <SetLabel tip={t("setTipBackup")}>{t("backup")}</SetLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
           {[["json", "🗄️", t("fullBackup")], ["xls", "📊", t("sheetFile")],
@@ -10754,12 +10766,112 @@ function FarmApp() {
         <label style={{ ...secondaryBtn, display: "block", textAlign: "center", cursor: "pointer", padding: "9px 12px", fontSize: 13.5 }}>
           📂 {t("pickFile")}
           <input type="file" accept="application/json,.json" style={{ display: "none" }} onChange={onRestoreFile} /></label>
-        <SetLabel tip={t("walkthroughTip")}>{t("walkthrough")}</SetLabel>
-        {S.demoWalkthrough
-          ? <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
-              onClick={() => setSheet({ k: "exitWalkthrough" })}>↩ {t("walkthroughExit")}</button>
-          : <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
-              onClick={() => setSheet({ k: "walkthrough" })}>🧭 {t("walkthroughBtn")}</button>}
+      </SetSection>
+      </SetGroup>
+
+      <SetAdvanced open={advOpen} onToggle={() => setAdvOpen((v) => !v)} t={t} jumpRef={setAnchors}
+        summary={`${t("setCatWeather")} · ${t("setCatDocs")} · v${VERSION.code}`}>
+      <SetSection open={setOpen.weather} onToggle={() => toggleSet("weather")}
+        icon="🌤️" title={t("setCatWeather")} tip={t("setTipWeather")}
+        summary={loc ? loc.name : t("setNotSet")} accent={!loc ? C.tag : undefined}>
+        {loc
+          ? <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>📍 {loc.name}</span>
+                {weather && <span style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 18 }}>
+                  {wmo(weather.code, lang).icon} {weather.temp}°</span>}
+              </div>
+              {weather && <div style={{ marginTop: 6, fontSize: 12.5, color: C.inkSoft }}>
+                {t("feels")} {weather.feels}° · {t("humidity")} {weather.hum}% · {t("rainChance")} {weather.rain}%
+              </div>}
+              {wErr && <div style={{ marginTop: 6, color: C.red, fontWeight: 600, fontSize: 12.5 }}>⚠ {t("weatherOff")}</div>}
+            </div>
+          : <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 10 }}>{t("setLocation")}</div>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "9px 12px", fontSize: 13, opacity: locBusy ? .6 : 1 }} onClick={() => {
+            setLocBusy(true);
+            if (!navigator.geolocation) { setLocBusy(false); return ping(t("locDenied")); }
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+              const p = { name: lang === "ar" ? "موقع المزرعة" : "Farm", lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) };
+              await commit([{ type: "setting", field: "loc", value: 1 }], { settings: { ...S, loc: p } });
+              setLocBusy(false);
+            }, () => { setLocBusy(false); ping(t("locDenied")); }, { timeout: 8000 });
+          }}>📍 {t("useMyLocation")}</button>
+          <input value={cityQ} onChange={(e) => setCityQ(e.target.value)} placeholder={t("searchCity")}
+            style={{ ...inp, flex: 1, minWidth: 140, padding: "9px 11px", fontSize: 13.5 }} />
+          <button type="button" style={{ ...secondaryBtn, width: "auto", padding: "9px 12px", fontSize: 13 }} onClick={async () => {
+            if (!cityQ.trim()) return;
+            setLocBusy(true);
+            try { const g = await geocode(cityQ.trim());
+              await commit([{ type: "setting", field: "loc", value: 1 }], { settings: { ...S, loc: g } });
+              setCityQ(""); }
+            catch (e) { ping(t("locNotFound")); }
+            setLocBusy(false);
+          }}>{locBusy ? "…" : t("search")}</button>
+        </div>
+      </SetSection>
+
+      <SetSection open={setOpen.docs} onToggle={() => toggleSet("docs")} icon="🧾" title={t("setCatDocs")} tip={t("setTipDocs")}
+        summary={(docTplOf(D).thanks || "").trim() ? "✦" : t("invoice")}>
+        {(() => {
+          const tpl = docTplOf(D);
+          const setTpl = (patch) => setDraftS({ ...D, docTpl: { ...tpl, ...patch } });
+          return <>
+            <SetLabel tip={t("docThanksHint")}>{t("docThanks")}</SetLabel>
+            <input value={tpl.thanks || ""} onChange={(e) => setTpl({ thanks: e.target.value })}
+              placeholder={t("thanks")} style={{ ...inp, padding: "9px 11px", fontSize: 13.5, marginBottom: 10 }} />
+            <SetLabel>{t("docFooterNote")}</SetLabel>
+            <input value={tpl.footerNote || ""} onChange={(e) => setTpl({ footerNote: e.target.value })}
+              style={{ ...inp, padding: "9px 11px", fontSize: 13.5, marginBottom: 10 }} />
+            <SetLabel tip={t("setTipMoneyView")}>{t("docPrintMoney")}</SetLabel>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {[["follow", t("docFollowView")], ["both", t("docAlwaysBoth")], ["usd", t("docUsdOnly")], ["lbp", t("docLbpOnly")]].map(([k, lb]) => (
+                <Chip key={k} active={tpl.printMoney === k} onClick={() => setTpl({ printMoney: k })}>{lb}</Chip>))}
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {[["showParty", t("docShowParty")], ["showSigns", t("docShowSigns")], ["showRate", t("docShowRate")]].map(([k, lb]) => (
+                <button key={k} type="button" onClick={() => setTpl({ [k]: tpl[k] === false })}
+                  style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.line}`,
+                    borderRadius: 4, padding: "8px 10px", cursor: "pointer", textAlign: "start", fontFamily: "var(--body)" }}>
+                  <span style={{ color: tpl[k] !== false ? C.field : C.line, fontSize: 14 }}>{tpl[k] !== false ? "☑" : "☐"}</span>
+                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>{lb}</span>
+                </button>))}
+            </div>
+          </>;
+        })()}
+      </SetSection>
+
+      <SetSection open={setOpen.milk} onToggle={() => toggleSet("milk")} icon="🥛" title={t("setCatMilk")} tip={t("kg")}
+        summary={t("kg")}>
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 4, padding: "12px 14px", fontSize: 13.5, color: C.inkSoft, fontWeight: 500, lineHeight: 1.45 }}>
+          {t("milkDensityHint")} · {t("milkLogHint")}
+        </div>
+      </SetSection>
+
+      <SetSection open={setOpen.cloud} onToggle={() => toggleSet("cloud")} icon="🔗" title={t("cloudAdvanced")} tip={t("cloudSecret")}
+        summary={cloudCfg.on ? t("cloudOn") : t("cloudOff")}>
+        <div style={{ fontSize: 12, color: C.amber, marginBottom: 8, fontWeight: 600 }}>{t("cloudSecret")}</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+          <Chip active={!cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: false })} color={C.inkSoft}>{t("cloudOff")}</Chip>
+          <Chip active={cloudCfg.on} onClick={() => saveCloud({ ...cloudCfg, on: true })} color={C.green}>{t("cloudOn")}</Chip>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudUrl")}</div>
+          <input value={cloudCfg.url} onChange={(e) => setCloudCfg({ ...cloudCfg, url: e.target.value.trim() })}
+            placeholder="https://…" inputMode="url" style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("cloudToken")}</div>
+          <input value={cloudCfg.token} onChange={(e) => setCloudCfg({ ...cloudCfg, token: e.target.value.trim() })}
+            style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }}
+            onClick={() => saveCloud({ ...cloudCfg, on: !!cloudCfg.url })}>{t("save")}</button>
+          <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={testCloud}>🔌 {t("cloudTest")}</button>
+          {cloudCfg.url && <button type="button" style={{ ...secondaryBtn, padding: "8px 12px", fontSize: 13, width: "auto" }} onClick={copyCloudLink}>{t("cloudCopy")}</button>}
+        </div>
+        {cloudMsg && <div style={{ fontWeight: 700, fontSize: 13, color: cloudMsg.startsWith("✓") ? C.green : C.red, marginTop: 8 }}>{cloudMsg}</div>}
       </SetSection>
 
       <SetSection open={setOpen.system} onToggle={() => toggleSet("system")} icon="⚙" title={t("setCatSystem")} tip={t("setTipUpdate")}
@@ -10813,6 +10925,13 @@ function FarmApp() {
               +{notes.length - 3}…</div>}
           </div>;
         })()}
+        <div className="set-hr" />
+        <SetLabel tip={t("walkthroughTip")}>{t("walkthrough")}</SetLabel>
+        {S.demoWalkthrough
+          ? <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "exitWalkthrough" })}>↩ {t("walkthroughExit")}</button>
+          : <button type="button" style={{ ...secondaryBtn, padding: "9px 12px", fontSize: 13.5 }}
+              onClick={() => setSheet({ k: "walkthrough" })}>🧭 {t("walkthroughBtn")}</button>}
       </SetSection>
 
       <SetSection open={setOpen.danger} onToggle={() => toggleSet("danger")} icon="⚠" title={t("setDanger")}
@@ -10821,6 +10940,7 @@ function FarmApp() {
         <button type="button" style={{ ...secondaryBtn, color: C.red, borderColor: C.red, padding: "9px 12px", fontSize: 13.5 }}
           onClick={() => setSheet({ k: "reset" })}>{t("resetAll")}</button>
       </SetSection>
+      </SetAdvanced>
 
       <div style={{ textAlign: "center", padding: "6px 0 2px", fontSize: 11.5, color: C.inkSoft }}>
         {S.farmName ? `${S.farmName} · ` : ""}{t("appName")} v{VERSION.code}
@@ -11797,6 +11917,8 @@ function FarmApp() {
                   priceMode: p.priceMode, unit: p.unit, payNowC: toCents(p.payNow),
                   tenderC: toCents(p.tender != null ? p.tender : p.payNow),
                   currency: "usd", rateUsed: S.rate, at: p.at, note: p.note, idFn: uid,
+                  discountAmount: p.discountAmount || 0, discountPct: p.discountPct || 0,
+                  discountNote: p.discountNote || "", discountMode: p.discountMode || "usd",
                 });
                 if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
                 return await commit(built.entries);
@@ -12639,15 +12761,16 @@ function FarmApp() {
           entries={entries} ledger={ledger} busy={busy}
           onClose={() => returnToAccount(sheet.cid)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "newSale", cid: sheet.cid } })}
-          onSave={async ({ customerId, product, qty, price, amount, priceMode, payNow, tender, discountAmount, discountNote, unit, currency, rateUsed, at, note }) => {
+          onSave={async ({ customerId, product, qty, price, amount, priceMode, payNow, tender, discountAmount, discountPct, discountNote, unit, currency, rateUsed, at, note }) => {
             const saleId = `sale-${uid()}`;
             const loggedAt = iso(Date.now());
+            const netC = Math.max(0, toCents(amount) - toCents(discountAmount));
             const payC = Math.max(0, toCents(payNow));
             const es = [{ id: saleId, type: "sale", customerId, product, qty: +qty, unit, price: +price, amount: fromCents(toCents(amount)),
-              priceMode: priceMode || "unit", discountAmount: discountAmount || 0, discountNote: discountNote || "",
+              priceMode: priceMode || "unit", discountAmount: discountAmount || 0, discountPct: discountPct || 0, discountNote: discountNote || "",
               currency, rateUsed, at, loggedAt, note, channel: "accounts" }];
             if (payC > 0) {
-              const ch = posChangeCents({ dueC: toCents(amount), tenderC: toCents(tender != null ? tender : payNow) });
+              const ch = posChangeCents({ dueC: netC, tenderC: toCents(tender != null ? tender : payNow) });
               es.push({
                 id: `pay-${uid()}`, type: "payment", customerId, saleId,
                 amount: fromCents(payC), amount_cash: fromCents(payC), amount_expense_offset: 0,
@@ -12662,12 +12785,14 @@ function FarmApp() {
           entries={entries} busy={busy}
           onClose={() => setSheet(null)}
           onAddCustomer={() => setSheet({ k: "addCustomer", back: { k: "quickSale", cid: sheet.cid } })}
-          onSave={async ({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, tender, at, oneTime }) => {
+          onSave={async ({ customerId, product, qty, price, amount, priceMode, note, unit, payNow, tender, at, oneTime, discountAmount, discountPct, discountNote, discountMode }) => {
             const built = buildQuickSale({
               customerId: oneTime ? "" : customerId, oneTime: !!oneTime,
               product, qty: +qty, price: +price, amount: +amount, priceMode, unit,
               payNowC: toCents(payNow), tenderC: toCents(tender != null ? tender : payNow),
               currency: "usd", rateUsed: S.rate, at, note, idFn: uid,
+              discountAmount: discountAmount || 0, discountPct: discountPct || 0,
+              discountNote: discountNote || "", discountMode: discountMode || "usd",
             });
             if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
             return await commit(built.entries);
@@ -13082,6 +13207,10 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .app.theme-dark .pal-tile:hover,.app.theme-dark .pal-tile.on{background:${C.paper};box-shadow:0 8px 20px rgba(0,0,0,.25)}
 .app.theme-dark .pal-tile.starred{background:${C.paper}}
 .app.theme-dark .set-sec{background:${C.card}}
+.app.theme-dark .set-jump{background:${C.bg}}
+.app.theme-dark .set-jump-chip{background:${C.card};color:${C.ink}}
+.app.theme-dark .set-group-adv{background:${C.paper}}
+.app.theme-dark .set-adv-head:hover{background:${C.card}}
 .app.theme-dark .money-tog-seg{background:${C.card}}
 .app.theme-dark .ctx-menu{background:${C.card}}
 .app.theme-dark input, .app.theme-dark textarea{background:${C.paper};color:${C.ink}}
@@ -13217,6 +13346,28 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sheet-title{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.02em;line-height:1.25}
 .sheet-sub{font-size:13px;color:${C.inkSoft};font-weight:500;margin-top:2px;line-height:1.4}
 .sheet-body{padding:16px 18px 18px;overflow-y:auto;flex:1;min-height:0}
+.sale-sheet{display:grid;gap:14px}
+.sale-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  font-size:12.5px;font-weight:700;color:${C.inkSoft};margin:0 0 6px}
+.sale-label-hint{font-weight:600;font-size:12px;color:${C.inkSoft};font-family:var(--mono);opacity:.85}
+.sale-box{background:${C.card};border:1px solid ${C.line};border-radius:8px;padding:14px}
+.sale-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:8px}
+.sale-products button{background:${C.paper};color:${C.ink};border:1.5px solid ${C.line};border-radius:10px;
+  padding:10px 6px;cursor:pointer;font-family:var(--body)}
+.sale-products button.on{background:${C.field};color:#fff;border-color:${C.field}}
+.sale-products button span{display:block;font-size:20px;line-height:1}
+.sale-products button b{display:block;font-size:12px;font-weight:700;margin-top:4px}
+.sale-total{background:${C.field};color:#fff;border-radius:10px;padding:14px 16px}
+.sale-total-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:700;font-size:13.5px}
+.sale-total-row + .sale-total-row{margin-top:8px}
+.sale-total-row.dim{opacity:.88;font-weight:600;font-size:13px}
+.sale-total-row.net{padding-top:8px;margin-top:6px;border-top:1px solid rgba(255,255,255,.22);font-size:15px}
+.sale-stock{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  background:${C.paper};border:1px solid ${C.line};border-radius:8px;padding:10px 12px;font-weight:700;font-size:13.5px}
+.sale-calc{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;
+  border-top:1px solid ${C.line};font-weight:700}
+.step-n{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;
+  background:${C.card};border:1px solid ${C.line};font-size:11px;font-weight:800;color:${C.inkSoft}}
 .sheet-foot{padding:12px 18px 16px;border-top:1px solid ${C.line};flex-shrink:0}
 .sale-check{width:20px;height:20px;accent-color:${C.field};cursor:pointer;flex-shrink:0;margin:0}
 .sale-pick-all{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
@@ -13609,11 +13760,31 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .dk-quick-sep{width:1px;height:22px;background:${C.line};margin:0 4px;flex-shrink:0}
 .dk-body{padding:20px 28px 48px;width:100%;max-width:none}
 .dk-settings{max-width:640px}
-.dk-settings-inner{display:grid;gap:8px}
+.dk-settings-inner{display:grid;gap:10px}
 .set-savebar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;
-  background:#FFF8E8;border:1px solid ${C.tag};border-radius:4px;font-size:13px;font-weight:700;color:#7A5312;
-  position:sticky;top:0;z-index:2}
-.set-sec{background:${C.card};border:1px solid ${C.line};border-radius:5px;overflow:visible}
+  background:#FFF8E8;border:1px solid ${C.tag};border-radius:12px;font-size:13px;font-weight:700;color:#7A5312;
+  position:sticky;top:0;z-index:4}
+.set-jump{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:0;z-index:3;padding:4px 0 8px;background:${C.bg}}
+.set-jump-chip{border:1px solid ${C.line};background:${C.card};color:${C.ink};border-radius:99px;padding:6px 11px;
+  font-size:12px;font-weight:700;font-family:var(--body);cursor:pointer;white-space:nowrap}
+.set-jump-chip:hover{background:${C.paper};border-color:${C.field}}
+.set-group{display:grid;gap:8px;margin-top:2px}
+.set-group-label{display:flex;flex-direction:column;gap:2px;padding:2px 4px 0}
+.set-group-label>span:first-child{font-family:var(--display);font-weight:700;font-size:11.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:${C.inkSoft}}
+.set-group-hint{font-size:11.5px;font-weight:500;color:${C.inkSoft};line-height:1.4}
+.set-group-body{display:grid;gap:8px}
+.set-group-adv{border:1px dashed ${C.line};border-radius:12px;padding:2px;background:${C.paper}}
+.set-adv-head{display:flex;align-items:center;gap:8px;width:100%;background:transparent;border:none;
+  padding:12px;cursor:pointer;text-align:start;font-family:var(--body);color:${C.ink};border-radius:10px}
+.set-adv-head:hover{background:${C.card}}
+.set-adv-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.set-adv-copy b{font-family:var(--display);font-size:15px;font-weight:700}
+.set-adv-copy small{font-size:11.5px;font-weight:500;color:${C.inkSoft};line-height:1.35}
+.set-adv-body{display:grid;gap:8px;padding:0 8px 10px}
+.set-hr{height:1px;background:${C.line};margin:12px 0 14px;border:0}
+.set-sec{background:${C.card};border:1px solid ${C.line};border-radius:12px;overflow:visible;scroll-margin-top:56px}
+.set-group,.set-group-adv{scroll-margin-top:56px}
 .set-sec-head{display:flex;align-items:center;gap:8px;width:100%;background:transparent;border:none;
   padding:11px 12px;cursor:pointer;text-align:start;font-family:var(--body);color:${C.ink}}
 .set-sec-head:hover{background:${C.paper}}

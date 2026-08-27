@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   OFFSET_CATEGORIES, migratePaymentEntry, migrateSalesEntries, paymentCashCents,
   paymentOffsetCents, paymentCreditedCents, posChangeCents, buildAccountPayment,
-  buildQuickSale,
+  buildQuickSale, saleDiscountCents, saleDiscountPctOf,
 } from "./salesPosting.mjs";
 import { settleAmounts, recordPaymentSplit, cashBoxFromPayment } from "./settlement.mjs";
 
@@ -171,5 +171,36 @@ describe("quick sale POS tender", () => {
     assert.equal(built.ok, false);
     assert.equal(built.error, "tenderShort");
     assert.equal(built.entries.length, 0);
+  });
+
+  it("applies a percentage discount and charges the net", () => {
+    const built = buildQuickSale({
+      oneTime: true,
+      product: "milk",
+      qty: 10,
+      price: 10,
+      amount: 100,
+      discountMode: "pct",
+      discountPct: 10,
+      payNowC: 9000,
+      tenderC: 10000,
+      at: "2026-08-26T00:00:00.000Z",
+      idFn: () => "z",
+    });
+    assert.equal(built.ok, true);
+    assert.equal(built.entries[0].discountAmount, 10);
+    assert.equal(built.entries[0].discountPct, 10);
+    assert.equal(built.entries[1].amount_cash, 90);
+    assert.equal(built.entries[1].changeAmount, 10);
+    assert.equal(built.changeC, 1000);
+  });
+});
+
+describe("sale discount", () => {
+  it("takes a percent of the invoice cents", () => {
+    assert.equal(saleDiscountCents(10000, { mode: "pct", pct: 10 }), 1000);
+    assert.equal(saleDiscountCents(10000, { mode: "usd", amount: 12.5 }), 1250);
+    assert.equal(saleDiscountCents(500, { mode: "usd", amount: 20 }), 500);
+    assert.equal(saleDiscountPctOf(1000, 10000), 10);
   });
 });

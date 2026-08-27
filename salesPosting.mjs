@@ -18,6 +18,19 @@ export const OFFSET_CATEGORIES = [
 const toCents = (n) => Math.round((+(n || 0)) * 100);
 const fromCents = (c) => +((c || 0) / 100).toFixed(2);
 
+export function saleDiscountCents(baseC, { mode = "usd", amount = 0, pct = 0 } = {}) {
+  const base = Math.max(0, Math.round(baseC || 0));
+  if (mode === "pct") {
+    const p = Math.max(0, Math.min(100, +pct || 0));
+    return Math.min(base, Math.round(base * p / 100));
+  }
+  return Math.min(base, Math.max(0, toCents(amount)));
+}
+export function saleDiscountPctOf(partC, baseC) {
+  if (!(baseC > 0)) return 0;
+  return Math.min(100, Math.round((Math.max(0, partC) / baseC) * 10000) / 100);
+}
+
 export function offsetCategoryLabel(key, lang = "en") {
   const row = OFFSET_CATEGORIES.find((x) => x.key === key);
   if (!row) return key || "";
@@ -182,16 +195,19 @@ export function buildQuickSale({
   customerId, product, qty, price, amount, priceMode = "unit", unit,
   payNowC = 0, tenderC = 0, currency = "usd", rateUsed = 0,
   at, note = "", idFn, oneTime = false,
+  discountAmount = 0, discountPct = 0, discountNote = "", discountMode = "usd",
 } = {}) {
   const onAccount = !oneTime && !!customerId;
   if (!onAccount && !oneTime) return { ok: false, error: "needCustomer", entries: [] };
   const amtC = Math.max(0, toCents(amount));
   if (!(amtC > 0) || !(qty > 0)) return { ok: false, error: "needAmount", entries: [] };
+  const discC = saleDiscountCents(amtC, { mode: discountMode, amount: discountAmount, pct: discountPct });
+  const netC = Math.max(0, amtC - discC);
   const nid = typeof idFn === "function" ? idFn : () => `id-${Math.random().toString(36).slice(2, 9)}`;
   const saleId = `sale-${nid()}`;
-  const paidC = Math.max(0, Math.min(amtC, Math.round(payNowC)));
+  const paidC = Math.max(0, Math.min(netC, Math.round(payNowC)));
   const tender = Math.max(paidC, Math.round(tenderC || 0));
-  const changeC = Math.max(0, tender - amtC);
+  const changeC = Math.max(0, tender - netC);
   if (oneTime && !(paidC > 0)) return { ok: false, error: "tenderShort", entries: [] };
   const sale = {
     id: saleId,
@@ -202,6 +218,9 @@ export function buildQuickSale({
     price,
     amount: fromCents(amtC),
     priceMode,
+    discountAmount: fromCents(discC),
+    discountPct: discountMode === "pct" ? Math.max(0, Math.min(100, +discountPct || 0)) : 0,
+    discountNote: String(discountNote || "").trim(),
     at,
     note: String(note || "").trim(),
     currency,
