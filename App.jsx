@@ -24,6 +24,11 @@ import {
   saleDiscountCents, saleDiscountPctOf,
 } from "./salesPosting.mjs";
 import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
+import {
+  OWNER_FUND_TYPE, OWNER_FUNDED_BY, isOwnerInjection, isOwnerFundedExpense,
+  buildOwnerFund,
+} from "./ownerFunds.mjs";
+import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -32,9 +37,19 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.23", ar: "الموسم الأول", en: "First Season", date: "2026-08" };
+const VERSION = { code: "2.9.24", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.24": {
+    ar: [
+      "صندوق النقد: أودع رأس مال المالك برصيد جارٍ مستقل، وصرفه يظهر كمصروف مزرعة وفي الصندوق",
+      "حساب المورد: رصيد افتتاحي للديون القديمة، يُصفّى بدفعات المورد كالفواتير",
+    ],
+    en: [
+      "Cash box: record owner capital injections with their own running balance; spending posts as a farm expense and cash out",
+      "Supplier accounts: set an opening balance for legacy debts, cleared by supplier payments like bills",
+    ],
+  },
   "2.9.23": {
     ar: [
       "الإعدادات أوضح: مجموعات يومية وجهاز وشركة، والإعدادات المتقدمة مطوية حتى تحتاجها",
@@ -750,6 +765,7 @@ const EXPENSES = [
   ["loan", "🏦", "قروض", "Loans", "#6B4A7A", "finance"],
   ["rent", "🔑", "إيجار", "Rent", "#8A4A6A", "finance"],
   ["vendorPay", "🤝", "دفعات موردين", "Vendor payments", "#5A4A6B", "finance"],
+  ["opening", "📌", "رصيد افتتاحي", "Opening balance", "#5A4A6B", "finance"],
   ["labour", "👷", "عمال وأجور", "Labour", "#C4626F", "otherGrp"],
   ["packaging", "📦", "تغليف", "Packaging", "#7C3AED", "otherGrp"],
   ["other", "📦", "مصاريف أخرى", "Other", "#6C7488", "otherGrp"],
@@ -934,6 +950,7 @@ function deleteWarnFor(e, t, seedId) {
   if (e.type === "expense") return t("deleteExpenseWarn");
   if (e.type === "supplierPay") return t("deletePayWarn");
   if (e.type === "payment") return t("deletePaymentWarn");
+  if (e.type === "ownerFund") return t("deleteLinkedWarn");
   if (e.type === "med") return t("deleteMedWarn");
   return t("deleteLinkedWarn");
 }
@@ -970,6 +987,12 @@ const T = {
     cashNoResults: "لا توجد حركات تطابق هذا العرض.", cashNoResultsSub: "جرّب مسح البحث أو تغيير نوع الحركة.",
     cashExportComplete: "تصدير الفترة كاملة", cashOpenSource: "فتح القيد",
     cashCustomerReceipts: "قبض الزبائن", cashOtherOut: "مصروفات أخرى",
+    cashOwnerInject: "إيداع رأس مال المالك", cashOwnerSpend: "صرف من رأس المال",
+    ownerFund: "رأس مال المالك", ownerFundBal: "رصيد رأس المال", ownerFundInjected: "المودَع",
+    ownerFundSpent: "المصروف منه", ownerFundHint: "يزيد رصيد الصندوق، ويُتتبَّع برصيد جارٍ مستقل لرأس المال.",
+    ownerFundSpendHint: "الصرف من رأس المال يُسجَّل مصروف مزرعة ويظهر صرفًا في الصندوق.",
+    fromOwnerCapital: "من رأس مال المالك", fromOwnerCapitalHint: "يُخصم من رصيد رأس المال ويبقى في سجل المصاريف والصندوق.",
+    ownerFundNote: "ملاحظة الإيداع", ownerFundEmpty: "لا إيداعات لرأس المال بعد.",
     cashDeductedFrom: "حُسم من", cashDeductPaid: "حسم / صرف",
     cashTableSettings: "تخصيص الجدول", cashTableSettingsHint: "اسحب الأعمدة لترتيبها واضبط عرض كل عمود ظاهر.",
     cashDensity: "كثافة الصفوف", cashDensityCompact: "مضغوط", cashDensityComfortable: "مريح", cashDensitySpacious: "واسع",
@@ -996,6 +1019,8 @@ const T = {
     higherThanUsual: "أعلى من المعتاد", thisWeek: "هذا الأسبوع", thisMonth: "هذا الشهر", lastMonth: "الشهر الماضي",
     customRange: "فترة مخصصة", searchExpenses: "ابحث عن فاتورة أو مورد…", vendor: "المورد / الجهة",
     addSupplier: "إضافة مورد", supplierName: "اسم المورد", supplierNote: "ملاحظة",
+    supplierOpening: "رصيد افتتاحي", supplierOpeningHint: "دين قديم على المزرعة قبل تسجيل الفواتير هنا — يُصفّى بالدفعات.",
+    supplierOpeningNote: "رصيد افتتاحي", supplierOpeningBill: "افتتاحي",
     supplierCreated: "تم إنشاء المورد", noSuppliers: "لا موردين بعد.",
     noSuppliersSub: "أضف مورّد علف أو دواء أو خدمات لتتبع ما تدين به.",
     openSupplier: "فتح الحساب", paySupplier: "دفع للمورد", logSupplierBill: "تسجيل شراء",
@@ -1472,6 +1497,12 @@ const T = {
     cashNoResults: "No movements match this view.", cashNoResultsSub: "Clear the search or change the movement type.",
     cashExportComplete: "Export full period", cashOpenSource: "Open source",
     cashCustomerReceipts: "Customer receipts", cashOtherOut: "Other expenses",
+    cashOwnerInject: "Owner capital in", cashOwnerSpend: "Spend owner capital",
+    ownerFund: "Owner capital", ownerFundBal: "Owner fund balance", ownerFundInjected: "Injected",
+    ownerFundSpent: "Spent from fund", ownerFundHint: "Adds cash to the drawer and tracks an independent owner-fund running balance.",
+    ownerFundSpendHint: "Spending from owner capital posts a farm expense and a cash-box cash out.",
+    fromOwnerCapital: "From owner capital", fromOwnerCapitalHint: "Reduces the owner fund balance and stays on expenses and the cash box.",
+    ownerFundNote: "Deposit note", ownerFundEmpty: "No owner capital deposits yet.",
     cashDeductedFrom: "Deducted from", cashDeductPaid: "Deducted / Paid",
     cashTableSettings: "Customize table", cashTableSettingsHint: "Drag columns into order and adjust each visible column width.",
     cashDensity: "Row density", cashDensityCompact: "Compact", cashDensityComfortable: "Comfortable", cashDensitySpacious: "Spacious",
@@ -1498,6 +1529,8 @@ const T = {
     higherThanUsual: "Higher than usual", thisWeek: "This week", thisMonth: "This month", lastMonth: "Last month",
     customRange: "Custom dates", searchExpenses: "Search receipt or vendor…", vendor: "Vendor",
     addSupplier: "Add supplier", supplierName: "Supplier name", supplierNote: "Note",
+    supplierOpening: "Opening balance", supplierOpeningHint: "Legacy amount the farm already owed — cleared by supplier payments.",
+    supplierOpeningNote: "Opening balance", supplierOpeningBill: "Opening",
     supplierCreated: "Supplier created", noSuppliers: "No suppliers yet.",
     noSuppliersSub: "Add a feed, medicine or service supplier to track what you owe.",
     openSupplier: "Open account", paySupplier: "Pay supplier", logSupplierBill: "Log purchase",
@@ -2377,7 +2410,7 @@ const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
   profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
 });
-const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
+const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
@@ -2771,6 +2804,7 @@ function initials(name) {
    Older sale reimbursements stay non-cash so historical drawers still reconcile. */
 function cashMoveAmount(e) {
   if (e.type === "payment") return fromCents(paymentCashCents(e) || toCents(e.amount));
+  if (e.type === OWNER_FUND_TYPE || isOwnerInjection(e)) return +(e.amount || 0);
   if (e.type === "supplierPay") return +(e.amount || 0);
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
@@ -2792,7 +2826,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
   const src = withImpliedSupplierPays(entries);
   const byId = Object.fromEntries(src.filter((e) => e.type === "expense").map((e) => [e.id, e]));
   const moves = src.filter((e) => {
-    const amt = e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e);
+    const amt = (e.type === "payment" || isOwnerInjection(e)) ? (e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e)) : cashMoveAmount(e);
     const deduct = cashDeductAmount(e);
     if (!(amt > 0.0001) && !(deduct > 0.0001)) return false;
     const k = dayKey(e.at);
@@ -2807,7 +2841,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       const amt = e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e);
       if (!(amt > 0.0001)) return;
       if (dayKey(e.at) >= from) return;
-      if (e.type === "payment") opening += amt;
+      if (e.type === "payment" || isOwnerInjection(e)) opening += amt;
       else if (e.type === "supplierPay" || e.type === "expense" || e.type === "med") opening -= amt;
     });
   }
@@ -2837,13 +2871,20 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       };
     }
     const amt = +(e.type === "payment" ? paymentTenderAmount(e) : cashMoveAmount(e)).toFixed(2);
-    const isIn = e.type === "payment";
+    const isIn = e.type === "payment" || isOwnerInjection(e);
     if (isIn) { bal = +(bal + amt).toFixed(2); inN += amt; }
     else { bal = +(bal - amt).toFixed(2); outN += amt; }
-    const pref = isIn ? "RC" : (e.type === "supplierPay" ? "VP" : e.type === "med" ? "MD" : "PA");
+    const pref = isIn
+      ? (isOwnerInjection(e) ? "OF" : "RC")
+      : (e.type === "supplierPay" ? "VP" : e.type === "med" ? "MD" : "PA");
     const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
     let parts;
-    if (isIn) {
+    if (isOwnerInjection(e)) {
+      parts = [
+        { text: t("cashOwnerInject"), tone: "in" },
+        e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    } else if (e.type === "payment") {
       parts = [
         { text: t("cashReceivedFrom"), tone: "in" },
         { text: " " },
@@ -2853,7 +2894,9 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
     } else if (e.type === "supplierPay") {
       const who = e.vendor || supp(e.supplierId);
       const linked = e.expenseId ? byId[e.expenseId] : null;
-      const cat = linked ? catLabel(linked.category, lang, custom) : null;
+      const openingPay = isOpeningBillId(e.expenseId);
+      const cat = linked ? catLabel(linked.category, lang, custom)
+        : (openingPay ? t("supplierOpening") : null);
       parts = [
         { text: t("cashPaidFor"), tone: "out" },
         { text: " · " },
@@ -2874,13 +2917,16 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       ].filter(Boolean);
     } else {
       const payReimb = e.origin === "payment_reimbursement";
-      const label = payReimb ? (e.note || e.name || catLabel(e.category, lang, custom)) : catLabel(e.category, lang, custom);
+      const ownerSpend = isOwnerFundedExpense(e);
+      const label = payReimb ? (e.note || e.name || catLabel(e.category, lang, custom))
+        : catLabel(e.category, lang, custom);
       const who = e.vendor || e.party || (payReimb ? cust(e.customerId) : "");
       parts = [
-        { text: payReimb ? t("reimbursement") : t("cashPaidFor"), tone: "out" },
+        { text: payReimb ? t("reimbursement") : (ownerSpend ? t("cashOwnerSpend") : t("cashPaidFor")), tone: "out" },
         { text: " · " },
         { text: label, tone: "name" },
         who ? { text: ` · ${who}`, tone: "muted" } : null,
+        ownerSpend ? { text: ` · ${t("ownerFund")}`, tone: "muted" } : null,
         !payReimb && e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     }
@@ -3027,9 +3073,10 @@ function buildLedger(entries, customers) {
   });
   return { list, byCustomer, pays, reimbursements, paymentDeductions };
 }
-function buildSupplierLedger(entries, suppliers) {
+function buildSupplierLedger(entries, suppliers, t) {
   const src = withImpliedSupplierPays(entries);
-  const bills = src.filter((e) => e.type === "expense" && e.supplierId)
+  const openRows = openingBillsFor(suppliers, t);
+  const bills = [...openRows, ...src.filter((e) => e.type === "expense" && e.supplierId)]
     .slice().sort((a, b) => cmpTx(a, b, "oldest"));
   const pays = src.filter((e) => e.type === "supplierPay").slice().sort((a, b) => cmpTx(a, b, "oldest"));
   const recC = {}; bills.forEach((b) => { recC[b.id] = 0; });
@@ -3046,7 +3093,8 @@ function buildSupplierLedger(entries, suppliers) {
       recC[b.id] = billC;
     }
   });
-  const list = bills.map((b, i) => {
+  let billSeq = 0;
+  const list = bills.map((b) => {
     const billC = toCents(b.amount);
     let paidC = recC[b.id] || 0;
     const need = Math.max(0, billC - paidC);
@@ -3062,18 +3110,24 @@ function buildSupplierLedger(entries, suppliers) {
       if (!yy || !ty) return 0;
       return Math.max(0, Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(yy, mm - 1, dd)) / 864e5));
     })() : 0;
-    return { ...b, paidAmount, due, dueDate, no: `BILL-${String(i + 1).padStart(4, "0")}`,
+    const no = b.opening ? "OPEN" : `BILL-${String(++billSeq).padStart(4, "0")}`;
+    return { ...b, paidAmount, due, dueDate, no,
       status: moneyStatus(billC, toCents(paidAmount)), lateDays, overdue: due > 0 && lateDays > 0 };
   });
   const bySupplier = {};
-  const blank = () => ({ bought: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0, openCount: 0, overdueDue: 0, lastAt: null });
+  const blank = () => ({ bought: 0, paid: 0, due: 0, oldest: 0, count: 0, credit: 0, openCount: 0, overdueDue: 0, lastAt: null, opening: 0, openingDue: 0 });
   (suppliers || []).forEach((s) => { bySupplier[s.id] = blank(); });
   list.forEach((b) => {
     const row = bySupplier[b.supplierId] || (bySupplier[b.supplierId] = blank());
     row.bought = fromCents(toCents(row.bought) + toCents(b.amount));
     row.paid = fromCents(toCents(row.paid) + toCents(b.paidAmount));
     row.due = fromCents(toCents(row.due) + toCents(b.due));
-    row.count += 1;
+    if (b.opening) {
+      row.opening = fromCents(toCents(b.amount));
+      row.openingDue = fromCents(toCents(b.due));
+    } else {
+      row.count += 1;
+    }
     if (b.due > 0) {
       row.openCount += 1;
       row.oldest = Math.max(row.oldest, b.lateDays);
@@ -5665,7 +5719,7 @@ function ReceiptSheet({ src, title, sub, lang, t, onClose, onRemove, onPrint, on
   </Sheet>;
 }
 
-function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSave, onSaveFeed, onAddCategory, onClose, initial, onSaveAndNew, onDelete, suppliers = [], preSupplierId }) {
+function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSave, onSaveFeed, onAddCategory, onClose, initial, onSaveAndNew, onDelete, suppliers = [], preSupplierId, fundFromOwner }) {
   const fromSupplier = !initial && !!preSupplierId;
   const [step, setStep] = useState(initial ? 2 : 1);
   const [group, setGroup] = useState(initial ? expGroupOf(initial.category || "other") : null);
@@ -5689,11 +5743,15 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   const [paidAmount, setPaidAmount] = useState(fromSupplier ? 0 : initPay);
   const [paidTouched, setPaidTouched] = useState(!!initial || fromSupplier);
   const [dueDate, setDueDate] = useState(initial?.dueDate || dayKey(Date.now()));
+  const [fromOwner, setFromOwner] = useState(
+    !!(fundFromOwner || initial?.fundedBy === OWNER_FUNDED_BY || initial?.origin === "owner_fund"),
+  );
 
   const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
   const pickSupplier = (s) => {
     setSupplierId(s ? s.id : null);
     setVendor(s ? s.name : "");
+    if (s) setFromOwner(false);
     if (!initial) {
       if (s) {
         /* Linking a supplier → treat as AP unless the user already set a payment. */
@@ -5718,10 +5776,12 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
     .map((c) => ({ key: c.key, icon: c.icon || "📦", label: lang === "ar" ? c.ar : c.en || c.ar, color: c.color || "#6C7488" }));
   const items = [...builtins, ...customs];
   const pay = payState(amount, paidAmount);
+  const canFundFromOwner = !supplierId && !(vendor || "").trim() && pay.paid > 0.009;
 
   const buildPayload = () => {
     const chosen = activeSuppliers.find((s) => s.id === supplierId);
     const vendorName = (chosen ? chosen.name : vendor).trim();
+    const useOwner = !chosen && !vendorName && fromOwner && pay.paid > 0.009;
     return {
       category: cat, amount: pay.bill, note: note.trim(), vendor: vendorName,
       supplierId: chosen ? chosen.id : null,
@@ -5730,6 +5790,8 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       paidAmount: pay.paid,
       dueDate: pay.status === "paid" ? "" : dueDate,
       group: expGroupOf(cat) || group || "otherGrp",
+      fundedBy: useOwner ? OWNER_FUNDED_BY : null,
+      origin: useOwner ? "owner_fund" : (initial?.origin && initial.origin !== "owner_fund" ? initial.origin : null),
       ...(initial?.id ? { id: initial.id } : {}),
     };
   };
@@ -5753,7 +5815,8 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
 
   const linked = !!(supplierId || (vendor || "").trim());
   const sheetTitle = initial ? `✏️ ${t("editExpense")}`
-    : fromSupplier || supplierId ? `🧾 ${t("logSupplierBill")}` : `💸 ${t("logExpense")}`;
+    : fromSupplier || supplierId ? `🧾 ${t("logSupplierBill")}`
+      : fundFromOwner ? `🏦 ${t("cashOwnerSpend")}` : `💸 ${t("logExpense")}`;
   return <Sheet title={sheetTitle} onClose={onClose}
     onBack={step > 1 ? () => setStep((s) => s - 1) : undefined} backLabel={t("prev")}>
     {step === 1 && <>
@@ -5811,6 +5874,13 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       </div>
       <PaySplit amount={amount} paid={paidAmount} onChange={setPaid} rate={S.rate} lang={lang} t={t}
         supplierLinked={linked || fromSupplier} />
+      {canFundFromOwner && <>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <Chip active={fromOwner} onClick={() => setFromOwner((v) => !v)}>🏦 {t("fromOwnerCapital")}</Chip>
+        </div>
+        {fromOwner && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>
+          {t("fromOwnerCapitalHint")}</div>}
+      </>}
       {pay.status !== "paid" && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
         <DatePick value={dueDate} onChange={setDueDate} />
@@ -5838,12 +5908,20 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
         <input value={vendor} onChange={(e) => {
           const name = e.target.value;
           setVendor(name);
+          if (name.trim()) setFromOwner(false);
           if (!initial && name.trim() && !paidTouched) { setPaidTouched(true); setPaidAmount(0); }
         }} placeholder={t("newSupplier")}
           style={{ ...inp, marginBottom: 12 }} />
       </>}
       <PaySplit amount={amount} paid={paidAmount} onChange={setPaid} rate={S.rate} lang={lang} t={t}
         supplierLinked={linked} />
+      {canFundFromOwner && <>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <Chip active={fromOwner} onClick={() => setFromOwner((v) => !v)}>🏦 {t("fromOwnerCapital")}</Chip>
+        </div>
+        {fromOwner && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>
+          {t("fromOwnerCapitalHint")}</div>}
+      </>}
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("expenseNote")}</div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")} style={{ ...inp, marginBottom: 12 }} />
       <AttachPicker value={receipt} onPick={setReceipt} onClear={() => setReceipt("")} t={t} />
@@ -6213,11 +6291,13 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
   </Sheet>;
 }
 
-function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
+function SupplierForm({ lang, t, S, suppliers, initial, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [note, setNote] = useState(initial?.note || "");
   const [tags, setTags] = useState(initial?.tags || []);
+  const [openingBalance, setOpeningBalance] = useState(initial?.openingBalance || 0);
+  const [cur, setCur] = useState("usd");
   const [err, setErr] = useState("");
   const toggleTag = (k) => setTags((list) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]));
   return <Sheet title={initial ? `✏️ ${t("manageSupplier")}` : `➕ ${t("addSupplier")}`} onClose={onClose}>
@@ -6234,14 +6314,54 @@ function SupplierForm({ lang, t, suppliers, initial, onSave, onClose }) {
       {SUPPLIER_TAGS.map(([k, ic, lb]) => (
         <Chip key={k} active={tags.includes(k)} onClick={() => toggleTag(k)}>{ic} {t(lb)}</Chip>))}
     </div>
-    <Step n="4" label={`${t("supplierNote")} — ${t("optional")}`} />
+    <Step n="4" label={`${t("supplierOpening")} — ${t("optional")}`} />
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 8, lineHeight: 1.4 }}>
+      {t("supplierOpeningHint")}</div>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 14 }}>
+      <MoneyStepper usd={openingBalance} onChange={setOpeningBalance} rate={S?.rate || 0} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="5" label={`${t("supplierNote")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inp, marginBottom: 16 }} />
     <button type="button" style={primaryBtn} onClick={() => {
       const n = name.trim(); if (!n) return setErr(t("nameNeeded"));
       if ((suppliers || []).some((s) => s.id !== initial?.id && s.name.trim().toLowerCase() === n.toLowerCase())) return setErr(t("nameTaken"));
-      onSave({ id: initial?.id || uid(), name: n, phone: phone.trim(), note: note.trim(), tags,
-        at: initial?.at || iso(Date.now()), archived: initial?.archived || false });
+      onSave({
+        id: initial?.id || uid(), name: n, phone: phone.trim(), note: note.trim(), tags,
+        openingBalance: fromCents(toCents(openingBalance)),
+        openingAt: initial?.openingAt || (toCents(openingBalance) > 0 ? iso(Date.now()) : null),
+        at: initial?.at || iso(Date.now()), archived: initial?.archived || false,
+      });
     }}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
+function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
+  const [amount, setAmount] = useState(initial?.amount || 0);
+  const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
+  const [note, setNote] = useState(initial?.note || "");
+  const [cur, setCur] = useState(initial?.currency || "usd");
+  return <Sheet title={`🏦 ${initial ? t("editCashMove") : t("cashOwnerInject")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
+      {t("ownerFundHint")}</div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={10} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="2" label={t("paymentDate")} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <Step n="3" label={`${t("ownerFundNote")} — ${t("optional")}`} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
+      onClick={() => amount > 0 && onSave({
+        type: OWNER_FUND_TYPE, amount: fromCents(toCents(amount)), note: note.trim(),
+        at: dayStamp(date), currency: cur, rateUsed: S.rate,
+        ...(initial?.id ? { id: initial.id } : {}),
+      })}>✓ {t("save")}</button>
+    {initial && onDelete && <DeleteConfirmBlock t={t} warn={deleteWarnFor(initial, t, initial.id)} onDelete={onDelete} />}
   </Sheet>;
 }
 
@@ -6287,7 +6407,8 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
           <Chip key={bill.id} active={billId === bill.id}
             onClick={() => { setBillId(bill.id); setAmount(bill.due); }}
             color={bill.overdue ? C.red : C.amber}>
-            {bill.no} · {fmtC(bill.due, S.rate, lang)}{bill.overdue ? ` · ${t("overdue")}` : ""}
+            {bill.opening ? t("supplierOpeningBill") : bill.no} · {fmtC(bill.due, S.rate, lang)}
+            {bill.overdue ? ` · ${t("overdue")}` : ""}
           </Chip>))}
       </div>
     </>}
@@ -6327,17 +6448,18 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
       empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
       cards={rows.map((bill) => {
         const kind = billKind(bill);
+        const catTxt = bill.opening ? t("supplierOpening") : `${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`;
         return (
           <DataCard key={bill.id} kind={kind}
             status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
-            title={bill.no}
-            subtitle={`${dmy(bill.at)} · ${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`}
-            who={<WhoHint e={bill} lang={lang} />}
+            title={bill.opening ? t("supplierOpeningBill") : bill.no}
+            subtitle={`${dmy(bill.at)} · ${catTxt}`}
+            who={bill.opening ? null : <WhoHint e={bill} lang={lang} />}
             meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
             onClick={onEditBill ? () => onEditBill(bill.id) : undefined}
-            actions={(showPay && bill.due > 0.009) || onDoc ? (
+            actions={(showPay && bill.due > 0.009) || (onDoc && !bill.opening) ? (
               <>
-                {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
                   onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
                 {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
                   onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
@@ -6364,19 +6486,20 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
                   <tr key={bill.id} className={statusRowClass(kind)} style={{ cursor: onEditBill ? "pointer" : "default" }}
                     onClick={() => onEditBill && onEditBill(bill.id)}>
                     <Td mono>{dmy(bill.at)}</Td>
-                    <Td mono tone={C.field}>{bill.no}</Td>
-                    <Td>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                    <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
+                    <Td>{bill.opening ? t("supplierOpening")
+                      : <>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
                       {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
                         {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
-                      {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}
+                      {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</>}
                     </Td>
                     <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
                     <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
                     <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
                     <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
-                    <Td align="center"><WhoHint e={bill} lang={lang} /></Td>
+                    <Td align="center">{bill.opening ? "—" : <WhoHint e={bill} lang={lang} />}</Td>
                     {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                      {onDoc && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                      {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
                         onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
                       {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
                         onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
@@ -6464,6 +6587,9 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
     <div className="adapt-grid" style={{ marginBottom: 0 }}>
       <Kpi label={t("totalBought")} value={fmtC(b.bought, S.rate, lang)} />
       <Kpi label={t("paidToSupplier")} value={fmtC(b.paid, S.rate, lang)} tone={C.green} />
+      {(b.opening || 0) > 0.009 && <Kpi label={t("supplierOpening")}
+        value={fmtC(b.openingDue > 0.009 ? b.openingDue : b.opening, S.rate, lang)}
+        tone={moneyColor("due", b.openingDue || 0)} />}
       <Kpi label={t("supplierOpenBills")} value={nf(b.openCount || openBills.length)} tone={C.amber} />
       <Kpi label={t("supplierOverdueKpi")} value={fmtC(b.overdueDue || 0, S.rate, lang)}
         tone={moneyColor("due", b.overdueDue || 0)} />
@@ -9696,7 +9822,7 @@ function FarmApp() {
   }, [entries, range, from, to, days]);
 
   const ledger = useMemo(() => buildLedger(entries, customers), [entries, customers]);
-  const supplierLedger = useMemo(() => buildSupplierLedger(entries, suppliers), [entries, suppliers]);
+  const supplierLedger = useMemo(() => buildSupplierLedger(entries, suppliers, t), [entries, suppliers, t]);
   const paidExpenseEntries = useMemo(() => {
     const billOf = supplierLedger.byBill || {};
     const direct = entries.flatMap((e) => {
@@ -9798,6 +9924,7 @@ function FarmApp() {
   const cashBox = useMemo(() => buildCashBox(entries, {
       customers, suppliers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
     }), [entries, customers, suppliers, lang, t, S.categories, cashBounds]);
+  const ownerFund = useMemo(() => buildOwnerFund(entries), [entries]);
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
     const rows = cashBox.rows.filter((r) => {
@@ -9817,11 +9944,14 @@ function FarmApp() {
       if (r.nonCash) return;
       const e = r.source || {};
       let key;
-      if (r.dir === "in") key = t("cashCustomerReceipts");
-      else if (e.type === "supplierPay") {
+      if (r.dir === "in") {
+        key = isOwnerInjection(e) ? t("ownerFund") : t("cashCustomerReceipts");
+      } else if (e.type === "supplierPay") {
         const linked = e.expenseId && entries.find((x) => x.id === e.expenseId && x.type === "expense");
-        key = linked ? catLabel(linked.category, lang, S.categories) : t("supplierPays");
+        key = linked ? catLabel(linked.category, lang, S.categories)
+          : (isOpeningBillId(e.expenseId) ? t("supplierOpening") : t("supplierPays"));
       } else if (e.type === "med") key = t("medicine");
+      else if (isOwnerFundedExpense(e)) key = `${catLabel(e.category || "other", lang, S.categories)} · ${t("ownerFund")}`;
       else key = catLabel(e.category || "other", lang, S.categories) || t("cashOtherOut");
       const id = `${r.dir}:${key}`;
       if (!groups[id]) groups[id] = { id, label: key, dir: r.dir, amount: 0, count: 0 };
@@ -11052,6 +11182,10 @@ function FarmApp() {
       run: () => { navigate("entry", { clearSheet: false }); setSheet({ k: "milkUse" }); } },
     { key: "n6", icon: "💸", label: t("logExpense"), group: "action", rank: 2,
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense" }); } },
+    { key: "n6b", icon: "🏦", label: t("cashOwnerInject"), group: "action", rank: 2.2,
+      run: () => { navigate("dashboard", { clearSheet: false }); setSheet({ k: "ownerFund" }); } },
+    { key: "n6c", icon: "🏦", label: t("cashOwnerSpend"), hint: t("ownerFundSpendHint"), group: "action", rank: 2.3,
+      run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense", fundFromOwner: true, fresh: uid() }); } },
     { key: "n2q", icon: "⚡", label: t("quickSale"), hint: t("quickSaleHint"), group: "action", rank: 2.5,
       run: () => { navigate("sales", { clearSheet: false }); setSheet({ k: "quickSale" }); } },
     { key: "n2", icon: "🧾", label: t("newSale"), group: "action", rank: 3,
@@ -11142,8 +11276,9 @@ function FarmApp() {
       else setSheet({ k: "confirmDeleteEntry", id: e.id });
       return;
     }
-    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med") {
-      setSheet({ k: "editMoney", id: e.id });
+    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med" || e.type === OWNER_FUND_TYPE) {
+      if (e.type === OWNER_FUND_TYPE) setSheet({ k: "ownerFund", id: e.id });
+      else setSheet({ k: "editMoney", id: e.id });
       return;
     }
     if (e.type === "expense") {
@@ -11230,11 +11365,25 @@ function FarmApp() {
             [t("cashIn"), cashBox.totalIn, C.green],
             [t("cashOut"), cashBox.totalOut, C.red],
             [t("cashNet"), cashNet, cashNet >= 0 ? C.green : C.red],
+            [t("ownerFundBal"), ownerFund.balance, C.fieldDeep || C.field],
           ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
             <span>{label}</span>
             <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
           </div>)}
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund" })}>
+            🏦 {t("cashOwnerInject")}</button>
+          <button type="button" className="dk-pill"
+            onClick={() => setSheet({ k: "expense", fundFromOwner: true, fresh: uid() })}>
+            💸 {t("cashOwnerSpend")}</button>
+        </div>
+        {(ownerFund.injected > 0 || ownerFund.spent > 0) && (
+          <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>
+            {t("ownerFundInjected")} {fmtC(ownerFund.injected, S.rate, lang)}
+            {" · "}{t("ownerFundSpent")} {fmtC(ownerFund.spent, S.rate, lang)}
+          </div>
+        )}
       </DeskCard>
 
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
@@ -12098,7 +12247,10 @@ function FarmApp() {
               onPay={(billId) => setSheet({ k: "paySupplier", sid: selSupplier.id, billId: billId || null })}
               onDoc={(bill) => setSheet({ k: "docgen", scope: "supplier", sid: selSupplier.id,
                 id: bill.id, kinds: ["purchase", "statement"] })}
-              onEditBill={(id) => setSheet({ k: "supplierBill", sid: selSupplier.id, id })}
+              onEditBill={(id) => {
+                if (isOpeningBillId(id)) setSheet({ k: "editSupplier", sid: selSupplier.id });
+                else setSheet({ k: "supplierBill", sid: selSupplier.id, id });
+              }}
               onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
               onManage={() => setSheet({ k: "editSupplier", sid: selSupplier.id })} />
           </DeskCard>
@@ -12438,7 +12590,7 @@ function FarmApp() {
             onPrint={() => previewReceipt(e.receipt, title, sub, { k: "receipt", id: e.id, back: sheet.back })} />;
         })()}
 
-        {sheet?.k === "addSupplier" && <SupplierForm lang={lang} t={t} suppliers={suppliers}
+        {sheet?.k === "addSupplier" && <SupplierForm lang={lang} t={t} S={S} suppliers={suppliers}
           onClose={() => setSheet(null)}
           onSave={(s) => {
             commit([{ type: "supplierAdd", name: s.name }], { suppliers: [...suppliers, s] });
@@ -12448,7 +12600,7 @@ function FarmApp() {
         {sheet?.k === "editSupplier" && (() => {
           const s = suppliers.find((x) => x.id === sheet.sid);
           if (!s) return null;
-          return <SupplierForm lang={lang} t={t} suppliers={suppliers} initial={s}
+          return <SupplierForm lang={lang} t={t} S={S} suppliers={suppliers} initial={s}
             onClose={() => returnToSupplier(s.id)}
             onSave={(next) => {
               commit([{ type: "supplierAdd", name: next.name }], { suppliers: suppliers.map((x) => (x.id === s.id ? next : x)) });
@@ -12576,8 +12728,9 @@ function FarmApp() {
 
         {sheet?.k === "expense" && <ExpenseSheet key={sheet.fresh || "expense"} lang={lang} t={t} S={S} custom={S.categories} species={speciesPresent}
           animals={animals} suppliers={activeSuppliers} preSupplierId={sheet.preSupplierId}
+          fundFromOwner={!!sheet.fundFromOwner}
           onClose={() => (sheet.preSupplierId ? returnToSupplier(sheet.preSupplierId) : setSheet(null))}
-          onSaveFeed={() => setSheet({ k: "feed", back: { k: "expense", preSupplierId: sheet.preSupplierId } })}
+          onSaveFeed={() => setSheet({ k: "feed", back: { k: "expense", preSupplierId: sheet.preSupplierId, fundFromOwner: sheet.fundFromOwner } })}
           onAddCategory={(c) => commit([{ type: "setting", field: "categories", value: 1 }],
             { settings: { ...S, categories: [...(S.categories || []), c] } })}
           onSave={(v) => {
@@ -12591,8 +12744,21 @@ function FarmApp() {
             const { es, list, changed } = resolveSupplierPatch(v);
             commit(es, changed ? { suppliers: list } : null);
             ping(t("saved"));
-            setSheet({ k: "expense", fresh: uid(), preSupplierId: sheet.preSupplierId });
+            setSheet({ k: "expense", fresh: uid(), preSupplierId: sheet.preSupplierId, fundFromOwner: sheet.fundFromOwner });
           }} />}
+
+        {sheet?.k === "ownerFund" && (() => {
+          const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_TYPE) : null;
+          return <OwnerFundSheet lang={lang} t={t} S={S} initial={initial || undefined}
+            onClose={() => setSheet(null)}
+            onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
+            onSave={(v) => {
+              if (initial) updateEntry(initial.id, v);
+              else commit([{ ...v, type: OWNER_FUND_TYPE }]);
+              setSheet(null);
+              ping(t("saved"));
+            }} />;
+        })()}
 
         {sheet?.k === "editExpense" && (() => {
           const e = entries.find((x) => x.id === sheet.id && x.type === "expense");
