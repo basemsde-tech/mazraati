@@ -30,11 +30,19 @@ import {
 } from "./ownerFunds.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 import {
+  checkLineMath, checkStockCover, checkDiscount, checkPaymentSplit,
+  checkExpenseAmounts, checkTender, checkCashTrail, hasBlockingIssues,
+  formatIssues, worstSeverity,
+} from "./validate.mjs";
+import {
   WM_Z_BASE, normalizeGeom, focusWindow, upsertWindow, closeWindow as wmClose,
   moveWindow, toggleMinimize, sortByZ, activeWindowId,
   openTab as wmOpenTab, closeTab as wmCloseTab,
   MODULE_ROUTES, isModuleRoute, moduleWinId, openModule as wmOpenModule,
   closeModule as wmCloseModule, floatingModuleRoutes,
+  WIN_ACCENTS, WIN_ACCENT_KEYS, accentOf, snapWindow, tileSideBySide,
+  toggleMaximize, setWindowAccent, reflowSnapped, applySavedLayout,
+  sanitizeDeskLayoutPrefs, deskLayoutFromWindows,
 } from "./windowManager.mjs";
 
 /* =====================================================================
@@ -44,9 +52,29 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.28", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.30", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.30": {
+    ar: [
+      "تحقق ذكي من الأرقام والحسابات مع تنبيه واضح غير حاجب — يوضح الخطأ والسبب وكيف تصلحه",
+      "نوافذ: تقسيم جنب بعض، لون مميز، تصغير لشريط سفلي، وتكبير/استعادة دون فقدان النماذج",
+    ],
+    en: [
+      "Smart checks on numbers and ledger math with clear non-blocking alerts — what went wrong, why, and how to fix it",
+      "Windows: side-by-side snap, accent colors, minimize to tray, maximize/restore without losing form state",
+    ],
+  },
+  "2.9.29": {
+    ar: [
+      "نوافذ جنب بعض (يسار/يمين) مع لون مميز لكل نافذة — التمييز أسهل عند العمل على أقسام متعددة",
+      "تصغير إلى شريط سفلي وتعظيم/استعادة بالحجم السابق دون فقدان النماذج أو التمرير",
+    ],
+    en: [
+      "Side-by-side window docking with a distinct accent per window — easier to tell concurrent workspaces apart",
+      "Minimize to the bottom tray and maximize/restore to the prior size without losing forms or scroll",
+    ],
+  },
   "2.9.28": {
     ar: [
       "كل قسم (صندوق النقد، المبيعات، الموردون…) يبقى تبويبًا أو نافذة مستقلة — افتح عدة أقسام معًا دون فقدان الحالة",
@@ -1287,6 +1315,9 @@ const T = {
     openAccount: "فتح الحساب", closeTab: "إغلاق", noOpenAccounts: "لا حسابات مفتوحة",
     popOutWindow: "فتح في نافذة", dockWindow: "إرجاع للتبويب", minimizeWindow: "تصغير",
     restoreWindow: "استعادة", windowDock: "النوافذ المصغّرة", closeWindow: "إغلاق النافذة",
+    maximizeWindow: "تكبير", restoreSize: "استعادة الحجم",
+    splitLeft: "محاذاة يسار", splitRight: "محاذاة يمين", splitClear: "إلغاء التقسيم",
+    tileWindows: "نافذتان جنب بعض", windowAccent: "لون النافذة",
     winTabsHint: "اسحب حافة النافذة لتغيير الحجم · انقر للتركيز",
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
@@ -1428,6 +1459,52 @@ const T = {
     workspace: "مساحة العمل", emptyWorkspace: "الأقسام مفتوحة في نوافذ",
     emptyWorkspaceSub: "أرجع قسمًا من شريط النوافذ أو افتح قسمًا من القائمة الجانبية.",
     popOutModule: "فتح القسم في نافذة",
+    valNotNumber: "القيمة ليست رقمًا صالحًا",
+    valWhyNotNumber: "أدخل أرقامًا فقط (يمكن استخدام فاصلة أو نقطة عشرية).",
+    valEmpty: "الحقل فارغ",
+    valBelowMin: "القيمة أقل من الحد المسموح",
+    valWhyBelowMin: "لا يُسمح بأقل من {min}.",
+    valAboveMax: "القيمة أعلى من الحد المعتاد",
+    valWhyAboveMax: "الحد الأعلى المتوقع هو {max}.",
+    valNeedPositive: "يلزم مبلغ أكبر من صفر",
+    valWhyNeedPositive: "الصفر أو السالب لا يُسجَّل كحركة مالية.",
+    valNeedQty: "أدخل كمية أكبر من صفر",
+    valWhyNeedQty: "بدون كمية لا يمكن احتساب السطر.",
+    valNeedPrice: "أدخل سعرًا أكبر من صفر",
+    valWhyNeedPrice: "السعر مطلوب لاحتساب الإجمالي.",
+    valNeedAmount: "أدخل مبلغًا أكبر من صفر",
+    valWhyNeedAmount: "المبلغ صفر يمنع ترحيل القيد.",
+    valLineMismatch: "إجمالي السطر لا يطابق الكمية × السعر",
+    valWhyLineMismatch: "المتوقع {expected} لكن المُدخل {amount} (فرق {delta}). راجع الكمية أو السعر أو الإجمالي.",
+    valStockShort: "الكمية أكبر من المتاح في المخزون",
+    valWhyStockShort: "طلبت {qty} والمتاح {available}. يمكنك المتابعة لكن المخزون سيصبح سالبًا في العرض.",
+    valDiscountOver: "الخصم أكبر من إجمالي الفاتورة",
+    valWhyDiscountOver: "الخصم {discount} يتجاوز الإجمالي {amount}.",
+    valDiscountPctRange: "نسبة الخصم خارج النطاق",
+    valWhyDiscountPct: "النسبة يجب أن تكون بين 0 و 100 (الآن {pct}).",
+    valNeedSettlement: "لا يوجد مبلغ لتسجيله",
+    valWhyNeedSettlement: "أدخل نقدًا مستلمًا أو تعويض مصروف (أو كليهما).",
+    valDeductOverDue: "تعويض المصروف أكبر من المستحق",
+    valWhyDeductOverDue: "التعويض {deduct} أكبر من المستحق {due} — سيظهر رصيد لصالح الزبون.",
+    valOverpay: "الدفع أكبر من المستحق",
+    valWhyOverpay: "طُبّق {applied} على مستحق {due} → رصيد دائن {credit}.",
+    valPartialPay: "دفعة جزئية",
+    valWhyPartialPay: "سيبقى مستحقًا {remaining} بعد هذه الدفعة.",
+    valExpenseMath: "مبلغ المصروف لا يطابق الكمية × سعر الوحدة",
+    valWhyExpenseMath: "المتوقع {expected} والمُدخل {amount}.",
+    valTenderShort: "المبلغ المدفوع أقل من المطلوب",
+    valWhyTenderShort: "المطلوب {due} والمدفوع {tender} (ناقص {short}).",
+    valTenderPartial: "دفعة أقل من الإجمالي",
+    valWhyTenderPartial: "سيتبقى {remaining} على الحساب.",
+    valChangeDue: "باقي للزبون",
+    valWhyChangeDue: "أعد للزبون {change}.",
+    valCashNegMove: "حركة صندوق بإشارة سالبة",
+    valWhyCashNegMove: "الصف {row} يحتوي مدين/دائن سالب — راجع المصدر.",
+    valCashBothSides: "صف صندوق بمدين ودائن معًا",
+    valWhyCashBothSides: "الصف {row} فيه دخول وخروج معًا — عادة صف واحد لاتجاه واحد.",
+    valCashBalanceDrift: "رصيد الصندوق لا يتوافق مع الحركات",
+    valWhyCashBalanceDrift: "الصف {row}: المتوقع {expected} والمسجَّل {reported}.",
+    valFixHint: "صحّح الحقل المظلل ثم أعد المحاولة.",
     sharedNote: "يرى جميع المستخدمين البيانات نفسها.",
     by: "المُسجِّل", todayAt: "اليوم", yesterday: "أمس", never: "لا يوجد تسجيل",
     loading: "جارٍ فتح بيانات المزرعة…", saveFail: "لم يتم الحفظ. تحقق من الاتصال.",
@@ -1804,6 +1881,9 @@ const T = {
     openAccount: "Open account", closeTab: "Close", noOpenAccounts: "No open accounts",
     popOutWindow: "Open in window", dockWindow: "Dock to tab", minimizeWindow: "Minimize",
     restoreWindow: "Restore", windowDock: "Minimized windows", closeWindow: "Close window",
+    maximizeWindow: "Maximize", restoreSize: "Restore size",
+    splitLeft: "Snap left", splitRight: "Snap right", splitClear: "Clear split",
+    tileWindows: "Tile side by side", windowAccent: "Window color",
     winTabsHint: "Drag a window edge to resize · click to focus",
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
@@ -1945,6 +2025,52 @@ const T = {
     workspace: "Workspace", emptyWorkspace: "Modules are open in windows",
     emptyWorkspaceSub: "Dock a module from the window bar, or open one from the sidebar.",
     popOutModule: "Open module in window",
+    valNotNumber: "That is not a valid number",
+    valWhyNotNumber: "Enter digits only (a comma or dot is fine for decimals).",
+    valEmpty: "This field is empty",
+    valBelowMin: "Value is below the allowed minimum",
+    valWhyBelowMin: "Values below {min} are not allowed.",
+    valAboveMax: "Value is above the usual maximum",
+    valWhyAboveMax: "The expected upper limit is {max}.",
+    valNeedPositive: "Enter an amount greater than zero",
+    valWhyNeedPositive: "Zero or negative amounts are not posted as money movements.",
+    valNeedQty: "Enter a quantity greater than zero",
+    valWhyNeedQty: "Without a quantity the line cannot be calculated.",
+    valNeedPrice: "Enter a price greater than zero",
+    valWhyNeedPrice: "A price is required to compute the total.",
+    valNeedAmount: "Enter an amount greater than zero",
+    valWhyNeedAmount: "A zero amount cannot be posted.",
+    valLineMismatch: "Line total does not match qty × price",
+    valWhyLineMismatch: "Expected {expected} but entered {amount} (off by {delta}). Check qty, price, or total.",
+    valStockShort: "Quantity is more than stock on hand",
+    valWhyStockShort: "You asked for {qty} but only {available} is available. You can continue; on-hand will show negative.",
+    valDiscountOver: "Discount is larger than the invoice total",
+    valWhyDiscountOver: "Discount {discount} exceeds total {amount}.",
+    valDiscountPctRange: "Discount percent is out of range",
+    valWhyDiscountPct: "Percent must be between 0 and 100 (now {pct}).",
+    valNeedSettlement: "Nothing to record",
+    valWhyNeedSettlement: "Enter cash received, an expense offset, or both.",
+    valDeductOverDue: "Expense offset is larger than the amount due",
+    valWhyDeductOverDue: "Offset {deduct} exceeds due {due} — this creates customer credit.",
+    valOverpay: "Payment exceeds the amount due",
+    valWhyOverpay: "Applied {applied} against due {due} → credit {credit}.",
+    valPartialPay: "Partial payment",
+    valWhyPartialPay: "{remaining} will stay outstanding after this payment.",
+    valExpenseMath: "Expense amount does not match qty × unit cost",
+    valWhyExpenseMath: "Expected {expected} but entered {amount}.",
+    valTenderShort: "Tendered cash is less than the amount due",
+    valWhyTenderShort: "Due {due}, tendered {tender} (short {short}).",
+    valTenderPartial: "Tender is less than the total",
+    valWhyTenderPartial: "{remaining} will remain on the account.",
+    valChangeDue: "Change due to customer",
+    valWhyChangeDue: "Give back {change}.",
+    valCashNegMove: "Cash row has a negative movement",
+    valWhyCashNegMove: "Row {row} has a negative debit/credit — check the source entry.",
+    valCashBothSides: "Cash row has both debit and credit",
+    valWhyCashBothSides: "Row {row} moves in and out together — usually one direction per row.",
+    valCashBalanceDrift: "Cash balance does not match the running total",
+    valWhyCashBalanceDrift: "Row {row}: expected {expected} but ledger shows {reported}.",
+    valFixHint: "Fix the highlighted field, then try again.",
     sharedNote: "Everyone sees the same data.",
     by: "Logged by", todayAt: "Today", yesterday: "Yesterday", never: "No entry yet",
     loading: "Opening the farm…", saveFail: "Not saved. Check your connection.",
@@ -4534,6 +4660,26 @@ function MoneyToggle({ value, onChange, rate, lang, t, previewUsd = 100, size })
     </div>}
   </div>;
 }
+
+/** Non-blocking validation banner — explains the issue and why, without freezing the form. */
+function InlineAlert({ issues, t, fmtMoney, lang }) {
+  const list = formatIssues(issues || [], t, fmtMoney);
+  if (!list.length) return null;
+  const sev = worstSeverity(issues);
+  const tone = sev === "error" ? "err" : sev === "warn" ? "warn" : "info";
+  return (
+    <div className={`inline-alert ${tone}`} role="status" aria-live="polite">
+      {list.map((it, i) => (
+        <div key={`${it.title}-${i}`} className="inline-alert-row">
+          <b>{it.title}</b>
+          {it.why ? <span>{it.why}</span> : null}
+        </div>
+      ))}
+      {sev === "error" ? <div className="inline-alert-hint">{t("valFixHint")}</div> : null}
+    </div>
+  );
+}
+
 function isEditableCtxTarget(el) {
   if (!el || el.nodeType !== 1) return false;
   if (el.isContentEditable) return true;
@@ -6400,8 +6546,11 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
   const locked = busy || saving;
   const invalid = !(amount > 0) || !cat || (qtyMeta && !(qty > 0))
     || (priceMode === "unit" && !(unitPrice > 0));
+  const billIssues = checkExpenseAmounts({
+    amount, qty: qtyMeta ? qty : undefined, unitCost: priceMode === "unit" ? unitPrice : undefined,
+  });
   const save = () => {
-    if (locked || invalid) return;
+    if (locked || invalid || hasBlockingIssues(billIssues)) return;
     setSaving(true);
     onSave({
       id: initial?.id, category: cat, amount: pay.bill, note: note.trim(),
@@ -6419,6 +6568,7 @@ function SupplierBillSheet({ supplier, lang, t, S, custom, initial, onSave, onDe
   return <Sheet title={initial ? `✏️ ${t("logSupplierBill")}` : `🧾 ${t("supplierBuy")}`}
     sub={supplier.name} onClose={onClose}>
     <div className="sale-sheet">
+    <InlineAlert issues={billIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} />
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 6, padding: "10px 12px",
       fontSize: 13, fontWeight: 600, color: C.inkSoft, lineHeight: 1.45 }}>
       💡 {t("supplierBuySub")}
@@ -7056,7 +7206,17 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     setPriceMode(next);
   };
   const block = saleSaveReason(t, { cid, qty, price: unitPrice, amount, priceMode, allowNoCustomer: oneTime, discountOver });
-  const goTill = () => { if (block) return setErr(block); setErr(""); setTill(true); };
+  const saleIssues = [
+    ...checkLineMath({ qty, price: unitPrice, amount, priceMode }),
+    ...checkStockCover({ qty, available: milkAvail, product }),
+    ...checkDiscount({ amount, discount, discountPct, mode: discMode }),
+  ];
+  const goTill = () => {
+    if (block) return setErr(block);
+    if (hasBlockingIssues(saleIssues)) return setErr(formatIssues(saleIssues, t, (v) => fmtC(v, S.rate, lang))[0]?.title || t("needAmount"));
+    setErr("");
+    setTill(true);
+  };
   const resetQuick = () => {
     setTill(false);
     setChangeGive(null);
@@ -7075,8 +7235,14 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
   };
   const saveQuick = async (pay) => {
     if (block) return setErr(block);
+    if (hasBlockingIssues(saleIssues)) return setErr(t("needAmount"));
     const payNow = typeof pay === "object" ? +(pay.paid || 0) : +(pay || 0);
     const tender = typeof pay === "object" && pay.tender != null ? +(pay.tender) : payNow;
+    const tenderIssues = checkTender({ due: netAmount, tender, requireFull: oneTime });
+    if (hasBlockingIssues(tenderIssues)) {
+      const msg = formatIssues(tenderIssues, t, (v) => fmtC(v, S.rate, lang))[0];
+      return setErr(msg ? `${msg.title} — ${msg.why}` : t("needAmount"));
+    }
     const ch = posChangeCents({ dueC: toCents(netAmount), tenderC: toCents(tender) });
     try {
       const ok = await onSave({
@@ -7104,6 +7270,7 @@ function QuickSaleSheet({ lang, t, S, customers, preId, preProduct, onSave, onCl
     : till
     ? <PosTillPrompt t={t} lang={lang} S={S} amount={netAmount} err={err} onConfirm={saveQuick} busy={busy} walkIn={oneTime} />
     : <div className="sale-sheet">
+    <InlineAlert issues={saleIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} />
     <div className="sale-box">
       <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
         <input type="checkbox" checked={onAccount}
@@ -7213,8 +7380,13 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   };
   const overpay = creditC > 0;
   const canSave = !locked && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
+  const payIssues = checkPaymentSplit({
+    due: fromCents(dueC), cash: fromCents(payC), deduct: fromCents(reimbC),
+  });
+  const fmtIssueMoney = (v) => fmtC(v, S.rate, lang);
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div className="sale-sheet">
+    <InlineAlert issues={payIssues} t={t} fmtMoney={fmtIssueMoney} lang={lang} />
     <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: 13,
       display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700 }}>
       <span style={{ color: isOwing(b.due) ? C.rose : C.slate }}>{t("due")}</span>
@@ -9580,6 +9752,9 @@ function FarmApp() {
   const [custQ, setCustQ] = useState("");
   const [openAcc, setOpenAcc] = useState([]);          // customers kept open as tabs
   const [deskWins, setDeskWins] = useState([]);         // floating subwindows
+  const [deskLayout, setDeskLayout] = useState(() => sanitizeDeskLayoutPrefs(null));
+  const deskLayoutRef = useRef(deskLayout);
+  deskLayoutRef.current = deskLayout;
   const [viewport, setViewport] = useState(() => (
     typeof window !== "undefined"
       ? { width: window.innerWidth, height: window.innerHeight }
@@ -9630,6 +9805,15 @@ function FarmApp() {
     if (viewport.width >= 900) return;
     setDeskWins((wins) => (wins.length ? [] : wins));
   }, [viewport.width]);
+  useEffect(() => {
+    if (viewport.width < 900) return;
+    setDeskWins((wins) => reflowSnapped(wins, viewport, { dockH: 56 }));
+  }, [viewport.width, viewport.height]);
+  useEffect(() => {
+    const next = sanitizeDeskLayoutPrefs(deskLayoutFromWindows(deskWins));
+    deskLayoutRef.current = next;
+    setDeskLayout(next);
+  }, [deskWins]);
 
   const t = (k) => T[lang][k] ?? k;
   const dir = T[lang].dir;
@@ -9697,6 +9881,7 @@ function FarmApp() {
           if (p.hideDeviceBanner) setHideDeviceBanner(true);
           if (Array.isArray(p.favKeys) && p.favKeys.length) setFavKeys(p.favKeys.slice(0, 8));
           setCashTable(sanitizeCashTablePrefs(p.cashTable));
+          if (p.deskLayout) setDeskLayout(sanitizeDeskLayoutPrefs(p.deskLayout));
           setSeenVersion(typeof p.seenVersion === "string" ? p.seenVersion : "");
         } else setSeenVersion("");
       } catch (e) { setSeenVersion(""); /* no profile on this device */ }
@@ -9816,6 +10001,18 @@ function FarmApp() {
   const moveDeskWin = useCallback((id, patch) => {
     setDeskWins((wins) => moveWindow(wins, id, patch, viewport));
   }, [viewport]);
+  const maximizeDeskWin = useCallback((id) => {
+    setDeskWins((wins) => toggleMaximize(wins, id, viewport, { dockH: 56 }));
+  }, [viewport]);
+  const snapDeskWin = useCallback((id, zone) => {
+    setDeskWins((wins) => snapWindow(wins, id, zone, viewport, { dockH: 56 }));
+  }, [viewport]);
+  const accentDeskWin = useCallback((id, accent) => {
+    setDeskWins((wins) => setWindowAccent(wins, id, accent));
+  }, []);
+  const tileDeskWins = useCallback(() => {
+    setDeskWins((wins) => tileSideBySide(wins, viewport, { dockH: 56 }));
+  }, [viewport]);
 
   const resolveSupplierPatch = (payload) => {
     let list = suppliers;
@@ -9878,10 +10075,15 @@ function FarmApp() {
   const saveDevicePrefs = async (patch = {}) => {
     const body = {
       id: me ? me.id : null, lang, money: moneyView, theme, sideHidden, hideDeviceBanner,
-      favKeys, seenVersion, cashTable: cashTableRef.current, ...patch,
+      favKeys, seenVersion, cashTable: cashTableRef.current,
+      deskLayout: deskLayoutRef.current, ...patch,
     };
     try { await store.set(DEVICE_KEY, JSON.stringify(body), false); } catch (e) { /* device only */ }
   };
+  useEffect(() => {
+    if (!prefsReady) return;
+    saveDevicePrefs({ deskLayout: deskLayoutRef.current });
+  }, [deskLayout, prefsReady]);
   const applyCashTable = (value) => {
     const next = sanitizeCashTablePrefs(typeof value === "function" ? value(cashTableRef.current) : value);
     cashTableRef.current = next;
@@ -10097,7 +10299,7 @@ function FarmApp() {
     const c = customers.find((x) => x.id === id);
     if (!c) return;
     const winId = `cust:${id}`;
-    setDeskWins((wins) => upsertWindow(wins, {
+    setDeskWins((wins) => upsertWindow(wins, applySavedLayout({
       id: winId, kind: "customer", title: customerLabel(c, t),
       payload: { customerId: id },
       geom: {
@@ -10106,7 +10308,7 @@ function FarmApp() {
         width: Math.min(560, Math.max(360, viewport.width * 0.4)),
         height: Math.min(640, Math.max(420, viewport.height * 0.7)),
       },
-    }, viewport));
+    }, deskLayoutRef.current, viewport), viewport));
     setSelCust(null);
     setOpenAcc((list) => wmOpenTab(list, id));
   }, [customers, t, viewport]);
@@ -10114,7 +10316,7 @@ function FarmApp() {
     const s = suppliers.find((x) => x.id === id);
     if (!s) return;
     const winId = `supp:${id}`;
-    setDeskWins((wins) => upsertWindow(wins, {
+    setDeskWins((wins) => upsertWindow(wins, applySavedLayout({
       id: winId, kind: "supplier", title: s.name,
       payload: { supplierId: id },
       geom: {
@@ -10123,7 +10325,7 @@ function FarmApp() {
         width: Math.min(560, Math.max(360, viewport.width * 0.4)),
         height: Math.min(640, Math.max(420, viewport.height * 0.7)),
       },
-    }, viewport));
+    }, deskLayoutRef.current, viewport), viewport));
     setSelSupp(null);
     setOpenSupp((list) => wmOpenTab(list, id));
   }, [suppliers, viewport]);
@@ -10134,7 +10336,7 @@ function FarmApp() {
       ["suppliers", "🤝", t("suppliers")], ["sales", "🧾", t("sales")],
       ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]].find((n) => n[0] === mod);
     const title = row ? `${row[1]} ${row[2]}` : mod;
-    setDeskWins((wins) => upsertWindow(wins, {
+    setDeskWins((wins) => upsertWindow(wins, applySavedLayout({
       id: moduleWinId(mod), kind: "module", title,
       payload: { route: mod },
       geom: {
@@ -10143,7 +10345,7 @@ function FarmApp() {
         width: Math.min(760, Math.max(420, viewport.width * 0.52)),
         height: Math.min(720, Math.max(480, viewport.height * 0.78)),
       },
-    }, viewport));
+    }, deskLayoutRef.current, viewport), viewport));
     setOpenMods((mods) => {
       const next = wmOpenModule(mods, mod);
       if (route !== mod) return next;
@@ -10347,6 +10549,10 @@ function FarmApp() {
     const totalOut = +rows.filter((r) => !r.nonCash).reduce((a, r) => a + r.credit, 0).toFixed(2);
     return { rows, totalIn, totalOut, filtered: cashDir !== "all" || !!q };
   }, [cashBox, cashDir, cashQ]);
+  const cashTrailIssues = useMemo(
+    () => checkCashTrail(cashView.rows || cashBox.rows || []),
+    [cashView.rows, cashBox.rows],
+  );
   const cashFlow = useMemo(() => {
     const groups = {};
     cashBox.rows.forEach((r) => {
@@ -11806,6 +12012,7 @@ function FarmApp() {
         )}
       </DeskCard>
 
+      {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
         right={null}>
         {cashView.filtered && <div className="cash-filter-note">
@@ -13835,7 +14042,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMove={moveDeskWin} onResize={moveDeskWin}>
+              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
                 <button type="button" className="dk-pill" onClick={() => setSheet({ k: "newSale", cid: cust.id })}>🧾 {t("newSale")}</button>
@@ -13863,7 +14071,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMove={moveDeskWin} onResize={moveDeskWin}>
+              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
                 <button type="button" className="dk-pill" onClick={() => setSheet({ k: "supplierBill", sid: sup.id })}>＋ {t("logSupplierBill")}</button>
@@ -13900,7 +14109,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMove={moveDeskWin} onResize={moveDeskWin}>
+              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
               </div>
@@ -13910,7 +14120,7 @@ function FarmApp() {
         }
         return null;
       })}
-      <WindowDock windows={deskWins} t={t} onRestore={minimizeDeskWin} onClose={closeDeskWin} onFocus={focusDeskWin} />
+      <WindowDock windows={deskWins} t={t} onRestore={minimizeDeskWin} onClose={closeDeskWin} onFocus={focusDeskWin} onTile={tileDeskWins} />
       {sheets}
       <CtxMenu menu={ctx} onClose={() => setCtx(null)} />
       {toast && <div className="toast">✓ {toast}</div>}
@@ -14258,6 +14468,25 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .ctx-sep{height:1px;background:${C.line};margin:4px 6px}
 .ctx-more-tog.open{background:${C.paper}}
 .ctx-more-list{padding:2px 0 2px 8px;border-inline-start:2px solid ${C.line};margin:2px 4px 4px 10px}
+.inline-alert{border-radius:10px;padding:10px 12px;margin:0 0 12px;display:grid;gap:6px;
+  border:1px solid ${C.line};background:${C.paper};font-size:13px;line-height:1.35}
+.inline-alert.err{background:#FDF2F3;border-color:#F1C0C6;color:#7A1A2E}
+.inline-alert.warn{background:#FFF8EB;border-color:#F0D29A;color:#7A5312}
+.inline-alert.info{background:#F0F7F5;border-color:#B7D4CC;color:#0F5C4D}
+.inline-alert-row{display:grid;gap:2px}
+.inline-alert-row b{font-weight:700}
+.inline-alert-row span{font-weight:500;opacity:.92}
+.inline-alert-hint{font-size:12px;font-weight:600;margin-top:2px;opacity:.85}
+.subwin{transition:left .18s var(--ease),top .18s var(--ease),width .18s var(--ease),height .18s var(--ease),opacity .14s ease,box-shadow .14s ease}
+.subwin.is-min{opacity:0;visibility:hidden;pointer-events:none;transform:scale(.98)}
+.subwin.is-max{border-radius:10px}
+.subwin-accent{width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px ${C.card}}
+.subwin-accent-pop{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;
+  background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:8px;box-shadow:0 10px 24px rgba(12,58,49,.18);width:148px}
+.subwin-accent-swatch{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+.subwin-accent-swatch.on{box-shadow:0 0 0 2px ${C.ink}}
+.subwin-split-btn.on{background:${C.field};color:#fff;border-color:${C.field}}
+
 .mod-pane{min-width:0}
 .mod-pane[hidden]{display:none!important}
 .mod-pane-float{min-height:0}
@@ -14830,13 +15059,14 @@ function WinTabStrip({ label, tabs, selected, onSelect, onClose, onPopOut, t }) 
   );
 }
 
-/* Floating, focusable, resizable subwindow. Sheets stay above (z ≥ 100). */
-function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMove, onResize, children }) {
+/* Floating, focusable, resizable subwindow. Sheets stay above (z ≥ 100).
+   Minimized windows stay mounted (hidden) so forms/scroll survive in the tray. */
+function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
   const dragRef = useRef(null);
+  const [accentOpen, setAccentOpen] = useState(false);
   const geom = win.geom || normalizeGeom({});
+  const acc = accentOf(win.accent);
   useEffect(() => {
-    const drag = dragRef.current;
-    if (!drag) return undefined;
     const onUp = () => { dragRef.current = null; };
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -14846,6 +15076,7 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMove, onRes
     };
   }, []);
   const startDrag = (e) => {
+    if (win.maximized) return;
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
     onFocus(win.id);
@@ -14868,6 +15099,7 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMove, onRes
     window.addEventListener("pointerup", up);
   };
   const startResize = (e, edge) => {
+    if (win.maximized) return;
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -14897,53 +15129,100 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMove, onRes
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  if (win.minimized) return null;
   return createPortal(
-    <div className={`subwin${active ? " on" : ""}`}
+    <div className={`subwin${active ? " on" : ""}${win.minimized ? " is-min" : ""}${win.maximized ? " is-max" : ""}${win.split ? ` split-${win.split}` : ""}`}
       style={{
         left: geom.x, top: geom.y, width: geom.width, height: geom.height,
-        zIndex: win.z || WM_Z_BASE,
+        zIndex: win.minimized ? 1 : (win.z || WM_Z_BASE),
+        borderColor: acc.color,
+        boxShadow: active
+          ? `0 22px 56px rgba(12,58,49,.36), 0 0 0 2px ${acc.color}88`
+          : `0 10px 28px rgba(12,58,49,.18), inset 4px 0 0 ${acc.color}`,
+        ["--win-accent"]: acc.color,
+        ["--win-accent-soft"]: acc.soft,
       }}
-      onPointerDown={() => onFocus(win.id)}
-      role="dialog" aria-label={win.title}>
-      <header className="subwin-head" onPointerDown={startDrag}>
+      onPointerDown={() => !win.minimized && onFocus(win.id)}
+      role="dialog" aria-label={win.title} aria-hidden={!!win.minimized}>
+      <header className="subwin-head" onPointerDown={startDrag}
+        style={{ background: `linear-gradient(180deg, ${acc.soft}, transparent), linear-gradient(180deg, var(--card, #fff) 0%, var(--paper, #f7f5f0) 100%)` }}>
+        <span className="subwin-accent" style={{ background: acc.color }} title={t("windowAccent")} aria-hidden="true" />
         <span className="subwin-title">{win.title}</span>
         <span className="subwin-actions" onPointerDown={(e) => e.stopPropagation()}>
+          {onSnap && (
+            <>
+              <button type="button" className={`subwin-btn subwin-split-btn${win.split === "left" ? " on" : ""}`}
+                title={t("splitLeft")} aria-label={t("splitLeft")}
+                onClick={() => onSnap(win.id, win.split === "left" ? null : "left")}>◧</button>
+              <button type="button" className={`subwin-btn subwin-split-btn${win.split === "right" ? " on" : ""}`}
+                title={t("splitRight")} aria-label={t("splitRight")}
+                onClick={() => onSnap(win.id, win.split === "right" ? null : "right")}>◨</button>
+            </>
+          )}
+          <span style={{ position: "relative" }}>
+            <button type="button" className="subwin-btn" title={t("windowAccent")} aria-label={t("windowAccent")}
+              onClick={() => setAccentOpen((v) => !v)}>●</button>
+            {accentOpen && onAccent && (
+              <div className="subwin-accent-pop" role="listbox" aria-label={t("windowAccent")}>
+                {WIN_ACCENT_KEYS.map((k) => (
+                  <button key={k} type="button" className={`subwin-accent-swatch${win.accent === k ? " on" : ""}`}
+                    style={{ background: accentOf(k).color }}
+                    title={k} aria-label={k}
+                    onClick={() => { onAccent(win.id, k); setAccentOpen(false); }} />
+                ))}
+              </div>
+            )}
+          </span>
           <button type="button" className="subwin-btn" title={t("minimizeWindow")}
             aria-label={t("minimizeWindow")} onClick={() => onMinimize(win.id)}>─</button>
+          <button type="button" className="subwin-btn" title={win.maximized ? t("restoreSize") : t("maximizeWindow")}
+            aria-label={win.maximized ? t("restoreSize") : t("maximizeWindow")}
+            onClick={() => onMaximize && onMaximize(win.id)}>{win.maximized ? "❐" : "□"}</button>
           <button type="button" className="subwin-btn danger" title={t("closeWindow")}
             aria-label={t("closeWindow")} onClick={() => onClose(win.id)}>✕</button>
         </span>
       </header>
       <div className="subwin-body">{children}</div>
-      <i className="subwin-edge n" onPointerDown={(e) => startResize(e, "n")} />
-      <i className="subwin-edge s" onPointerDown={(e) => startResize(e, "s")} />
-      <i className="subwin-edge e" onPointerDown={(e) => startResize(e, "e")} />
-      <i className="subwin-edge w" onPointerDown={(e) => startResize(e, "w")} />
-      <i className="subwin-edge se" onPointerDown={(e) => startResize(e, "se")} />
-      <i className="subwin-edge ne" onPointerDown={(e) => startResize(e, "ne")} />
-      <i className="subwin-edge sw" onPointerDown={(e) => startResize(e, "sw")} />
-      <i className="subwin-edge nw" onPointerDown={(e) => startResize(e, "nw")} />
+      {!win.maximized && !win.minimized && <>
+        <i className="subwin-edge n" onPointerDown={(e) => startResize(e, "n")} />
+        <i className="subwin-edge s" onPointerDown={(e) => startResize(e, "s")} />
+        <i className="subwin-edge e" onPointerDown={(e) => startResize(e, "e")} />
+        <i className="subwin-edge w" onPointerDown={(e) => startResize(e, "w")} />
+        <i className="subwin-edge se" onPointerDown={(e) => startResize(e, "se")} />
+        <i className="subwin-edge ne" onPointerDown={(e) => startResize(e, "ne")} />
+        <i className="subwin-edge sw" onPointerDown={(e) => startResize(e, "sw")} />
+        <i className="subwin-edge nw" onPointerDown={(e) => startResize(e, "nw")} />
+      </>}
     </div>,
     document.body,
   );
 }
 
-function WindowDock({ windows, t, onRestore, onClose, onFocus }) {
+function WindowDock({ windows, t, onRestore, onClose, onFocus, onTile }) {
   const mins = (windows || []).filter((w) => w.minimized);
-  if (!mins.length) return null;
+  const visible = (windows || []).filter((w) => !w.minimized);
+  if (!mins.length && visible.length < 2) return null;
   return (
     <div className="win-dock" role="toolbar" aria-label={t("windowDock")}>
       <span className="win-dock-label">{t("windowDock")}</span>
-      {mins.map((w) => (
-        <button type="button" key={w.id} className="win-dock-chip"
-          onClick={() => { onRestore(w.id); onFocus(w.id); }}
-          title={t("restoreWindow")}>
-          {w.title}
-          <span className="win-dock-x" onClick={(e) => { e.stopPropagation(); onClose(w.id); }}
-            aria-label={t("closeWindow")}>✕</span>
+      {visible.length >= 2 && onTile && (
+        <button type="button" className="win-dock-chip" onClick={onTile} title={t("tileWindows")}>
+          ⧉ {t("tileWindows")}
         </button>
-      ))}
+      )}
+      {mins.map((w) => {
+        const acc = accentOf(w.accent);
+        return (
+          <button type="button" key={w.id} className="win-dock-chip"
+            onClick={() => { onRestore(w.id); onFocus(w.id); }}
+            title={t("restoreWindow")}
+            style={{ borderColor: acc.color, boxShadow: `inset 3px 0 0 ${acc.color}` }}>
+            <span className="subwin-accent" style={{ background: acc.color }} aria-hidden="true" />
+            {w.title}
+            <span className="win-dock-x" onClick={(e) => { e.stopPropagation(); onClose(w.id); }}
+              aria-label={t("closeWindow")}>✕</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

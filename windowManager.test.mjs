@@ -4,7 +4,9 @@ import {
   normalizeGeom, nextZ, focusWindow, upsertWindow, closeWindow, moveWindow,
   toggleMinimize, activeWindowId, openTab, closeTab, selectTab, WM_MIN_W, WM_Z_BASE,
   MODULE_ROUTES, isModuleRoute, moduleWinId, routeOfModuleWin, openModule, closeModule,
-  floatingModuleRoutes,
+  floatingModuleRoutes, snapWindow, tileSideBySide, splitGeom, maximizeGeom,
+  toggleMaximize, setWindowAccent, accentOf, nextAccentKey, WIN_ACCENT_KEYS,
+  sanitizeDeskLayoutPrefs, deskLayoutFromWindows, applySavedLayout, reflowSnapped,
 } from "./windowManager.mjs";
 
 const vp = { width: 1400, height: 900 };
@@ -16,6 +18,20 @@ describe("window geometry", () => {
     assert.equal(g.height >= 240, true);
     assert.equal(g.x >= 0, true);
     assert.equal(g.y <= vp.height - 48, true);
+  });
+
+  it("builds left/right split halves side by side", () => {
+    const L = splitGeom("left", vp);
+    const R = splitGeom("right", vp);
+    assert.ok(L.width >= WM_MIN_W);
+    assert.ok(R.x >= L.x + L.width);
+    assert.equal(L.y, R.y);
+  });
+
+  it("maximize fills the workspace leaving tray room", () => {
+    const g = maximizeGeom(vp, { dockH: 56, pad: 12 });
+    assert.ok(g.width > vp.width * 0.8);
+    assert.ok(g.height > vp.height * 0.7);
   });
 });
 
@@ -40,13 +56,14 @@ describe("z-order focus", () => {
     assert.equal(activeWindowId(wins), "c1");
   });
 
-  it("move updates geometry and minimize toggles", () => {
+  it("move updates geometry and minimize toggles without dropping the window", () => {
     let wins = upsertWindow([], { id: "x", title: "X" }, vp);
     wins = moveWindow(wins, "x", { x: 100, y: 80, width: 400, height: 300 }, vp);
     assert.equal(wins[0].geom.x, 100);
     assert.equal(wins[0].geom.width, 400);
     wins = toggleMinimize(wins, "x");
     assert.equal(wins[0].minimized, true);
+    assert.equal(wins.length, 1);
     wins = focusWindow(wins, "x");
     assert.equal(wins[0].minimized, false);
   });
@@ -104,5 +121,67 @@ describe("module workspace", () => {
     assert.equal(floating.has("sales"), true);
     assert.equal(floating.has("dashboard"), false);
     assert.equal(floating.has("suppliers"), false);
+  });
+});
+
+describe("split, maximize, accents", () => {
+  it("snaps two windows side by side and auto-pairs", () => {
+    let wins = upsertWindow([], { id: "a", title: "A" }, vp);
+    wins = upsertWindow(wins, { id: "b", title: "B" }, vp);
+    wins = snapWindow(wins, "a", "left", vp);
+    const a = wins.find((w) => w.id === "a");
+    const b = wins.find((w) => w.id === "b");
+    assert.equal(a.split, "left");
+    assert.equal(b.split, "right");
+    assert.ok(b.geom.x > a.geom.x);
+  });
+
+  it("tileSideBySide docks the top two windows", () => {
+    let wins = upsertWindow([], { id: "a", title: "A" }, vp);
+    wins = upsertWindow(wins, { id: "b", title: "B" }, vp);
+    wins = upsertWindow(wins, { id: "c", title: "C" }, vp);
+    wins = tileSideBySide(wins, vp);
+    assert.equal(wins.find((w) => w.id === "c").split, "left");
+    assert.equal(wins.find((w) => w.id === "b").split, "right");
+  });
+
+  it("maximize remembers restoreGeom and toggles back", () => {
+    let wins = upsertWindow([], { id: "a", title: "A", geom: { x: 80, y: 60, width: 400, height: 300 } }, vp);
+    const before = { ...wins[0].geom };
+    wins = toggleMaximize(wins, "a", vp);
+    assert.equal(wins[0].maximized, true);
+    assert.deepEqual(wins[0].restoreGeom, before);
+    assert.ok(wins[0].geom.width > before.width);
+    wins = toggleMaximize(wins, "a", vp);
+    assert.equal(wins[0].maximized, false);
+    assert.equal(wins[0].geom.x, before.x);
+    assert.equal(wins[0].geom.width, before.width);
+  });
+
+  it("assigns distinct accents and persists layout prefs", () => {
+    assert.equal(accentOf("amber").key, "amber");
+    assert.equal(nextAccentKey(["teal", "amber"]), "rose");
+    assert.ok(WIN_ACCENT_KEYS.length >= 6);
+    let wins = upsertWindow([], { id: "a", title: "A" }, vp);
+    wins = setWindowAccent(wins, "a", "coral");
+    assert.equal(wins[0].accent, "coral");
+    wins = snapWindow(wins, "a", "left", vp, { autoPair: false });
+    const layout = deskLayoutFromWindows(wins);
+    assert.equal(layout.accents.a, "coral");
+    assert.equal(layout.snaps.a, "left");
+    const clean = sanitizeDeskLayoutPrefs({ accents: { a: "nope", b: "sky" }, snaps: { a: "left" } });
+    assert.equal(clean.accents.a, undefined);
+    assert.equal(clean.accents.b, "sky");
+    const applied = applySavedLayout({ id: "b", title: "B" }, clean, vp);
+    assert.equal(applied.accent, "sky");
+    assert.equal(applied.split, null);
+  });
+
+  it("reflow keeps maximized and snapped windows fitted", () => {
+    let wins = upsertWindow([], { id: "a", title: "A" }, vp);
+    wins = toggleMaximize(wins, "a", vp);
+    const big = { width: 1800, height: 1000 };
+    wins = reflowSnapped(wins, big);
+    assert.ok(wins[0].geom.width > 1000);
   });
 });
