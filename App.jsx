@@ -41,8 +41,9 @@ import {
   MODULE_ROUTES, isModuleRoute, moduleWinId, openModule as wmOpenModule,
   closeModule as wmCloseModule, floatingModuleRoutes,
   WIN_ACCENTS, WIN_ACCENT_KEYS, accentOf, snapWindow, tileSideBySide,
-  toggleMaximize, setWindowAccent, reflowSnapped, applySavedLayout,
+  toggleMaximize, maximizeWindow, setWindowAccent, reflowSnapped, applySavedLayout,
   sanitizeDeskLayoutPrefs, deskLayoutFromWindows,
+  detectSnapZone, snapPreviewGeom, dragFloatGeom,
 } from "./windowManager.mjs";
 
 /* =====================================================================
@@ -52,9 +53,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.30", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.31", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.31": {
+    ar: [
+      "اسحب النافذة إلى حافة الشاشة للتقسيم يسار/يمين أو للأعلى للتكبير — مثل ويندوز ١١ مع معاينة قبل الإفلات",
+    ],
+    en: [
+      "Drag a window to the screen edge to snap left/right, or to the top to maximize — Windows 11-style with a live preview",
+    ],
+  },
   "2.9.30": {
     ar: [
       "تحقق ذكي من الأرقام والحسابات مع تنبيه واضح غير حاجب — يوضح الخطأ والسبب وكيف تصلحه",
@@ -10004,6 +10013,9 @@ function FarmApp() {
   const maximizeDeskWin = useCallback((id) => {
     setDeskWins((wins) => toggleMaximize(wins, id, viewport, { dockH: 56 }));
   }, [viewport]);
+  const forceMaximizeDeskWin = useCallback((id) => {
+    setDeskWins((wins) => maximizeWindow(wins, id, viewport, { dockH: 56 }));
+  }, [viewport]);
   const snapDeskWin = useCallback((id, zone) => {
     setDeskWins((wins) => snapWindow(wins, id, zone, viewport, { dockH: 56 }));
   }, [viewport]);
@@ -14042,7 +14054,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
+              onSnap={snapDeskWin} onAccent={accentDeskWin}
               onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
@@ -14071,7 +14084,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
+              onSnap={snapDeskWin} onAccent={accentDeskWin}
               onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
@@ -14109,7 +14123,8 @@ function FarmApp() {
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
-              onMaximize={maximizeDeskWin} onSnap={snapDeskWin} onAccent={accentDeskWin}
+              onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
+              onSnap={snapDeskWin} onAccent={accentDeskWin}
               onMove={moveDeskWin} onResize={moveDeskWin} onTile={tileDeskWins}>
               <div className="subwin-toolbar">
                 <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
@@ -14478,8 +14493,13 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .inline-alert-row span{font-weight:500;opacity:.92}
 .inline-alert-hint{font-size:12px;font-weight:600;margin-top:2px;opacity:.85}
 .subwin{transition:left .18s var(--ease),top .18s var(--ease),width .18s var(--ease),height .18s var(--ease),opacity .14s ease,box-shadow .14s ease}
+.subwin.is-dragging{transition:none!important}
 .subwin.is-min{opacity:0;visibility:hidden;pointer-events:none;transform:scale(.98)}
 .subwin.is-max{border-radius:10px}
+.snap-preview{position:fixed;pointer-events:none;z-index:9998;border-radius:14px;
+  background:color-mix(in srgb, ${C.field} 22%, transparent);border:2px solid color-mix(in srgb, ${C.field} 70%, #fff);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.35),0 12px 40px rgba(12,58,49,.18);
+  transition:left .1s ease,top .1s ease,width .1s ease,height .1s ease}
 .subwin-accent{width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px ${C.card}}
 .subwin-accent-pop{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;
   background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:8px;box-shadow:0 10px 24px rgba(12,58,49,.18);width:148px}
@@ -15061,13 +15081,15 @@ function WinTabStrip({ label, tabs, selected, onSelect, onClose, onPopOut, t }) 
 
 /* Floating, focusable, resizable subwindow. Sheets stay above (z ≥ 100).
    Minimized windows stay mounted (hidden) so forms/scroll survive in the tray. */
-function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
+function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, onForceMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
   const dragRef = useRef(null);
   const [accentOpen, setAccentOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [snapZone, setSnapZone] = useState(null);
   const geom = win.geom || normalizeGeom({});
   const acc = accentOf(win.accent);
   useEffect(() => {
-    const onUp = () => { dragRef.current = null; };
+    const onUp = () => { dragRef.current = null; setDragging(false); setSnapZone(null); };
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
     return () => {
@@ -15076,12 +15098,27 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
     };
   }, []);
   const startDrag = (e) => {
-    if (win.maximized) return;
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
     onFocus(win.id);
-    const start = { x: e.clientX, y: e.clientY, gx: geom.x, gy: geom.y };
-    dragRef.current = { mode: "move", start };
+    const vp = { width: window.innerWidth, height: window.innerHeight };
+    let gx = geom.x;
+    let gy = geom.y;
+    if (win.maximized || win.split) {
+      const floated = dragFloatGeom(win, {
+        x: e.clientX,
+        y: e.clientY,
+        offsetX: e.clientX - geom.x,
+        offsetY: e.clientY - geom.y,
+      }, vp);
+      gx = floated.x;
+      gy = floated.y;
+      onMove(win.id, floated);
+    }
+    const start = { x: e.clientX, y: e.clientY, gx, gy };
+    dragRef.current = { mode: "move", start, zone: null };
+    setDragging(true);
+    setSnapZone(null);
     const move = (ev) => {
       if (!dragRef.current || dragRef.current.mode !== "move") return;
       const d = dragRef.current.start;
@@ -15089,11 +15126,23 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
         x: d.gx + (ev.clientX - d.x),
         y: d.gy + (ev.clientY - d.y),
       });
+      const zone = detectSnapZone(ev.clientX, ev.clientY, vp);
+      dragRef.current.zone = zone;
+      setSnapZone(zone);
     };
     const up = () => {
+      const zone = dragRef.current?.zone || null;
       dragRef.current = null;
+      setDragging(false);
+      setSnapZone(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      if (zone === "maximize") {
+        if (onForceMaximize) onForceMaximize(win.id);
+        else if (onMaximize) onMaximize(win.id);
+      } else if ((zone === "left" || zone === "right") && onSnap) {
+        onSnap(win.id, zone);
+      }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -15129,8 +15178,13 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
+  const preview = snapZone ? snapPreviewGeom(snapZone, {
+    width: typeof window !== "undefined" ? window.innerWidth : 1280,
+    height: typeof window !== "undefined" ? window.innerHeight : 800,
+  }, { dockH: 56 }) : null;
   return createPortal(
-    <div className={`subwin${active ? " on" : ""}${win.minimized ? " is-min" : ""}${win.maximized ? " is-max" : ""}${win.split ? ` split-${win.split}` : ""}`}
+    <>
+    <div className={`subwin${active ? " on" : ""}${win.minimized ? " is-min" : ""}${win.maximized ? " is-max" : ""}${dragging ? " is-dragging" : ""}${win.split ? ` split-${win.split}` : ""}`}
       style={{
         left: geom.x, top: geom.y, width: geom.width, height: geom.height,
         zIndex: win.minimized ? 1 : (win.z || WM_Z_BASE),
@@ -15192,7 +15246,12 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
         <i className="subwin-edge sw" onPointerDown={(e) => startResize(e, "sw")} />
         <i className="subwin-edge nw" onPointerDown={(e) => startResize(e, "nw")} />
       </>}
-    </div>,
+    </div>
+    {preview && (
+      <div className="snap-preview" aria-hidden="true"
+        style={{ left: preview.x, top: preview.y, width: preview.width, height: preview.height }} />
+    )}
+    </>,
     document.body,
   );
 }

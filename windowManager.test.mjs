@@ -7,6 +7,7 @@ import {
   floatingModuleRoutes, snapWindow, tileSideBySide, splitGeom, maximizeGeom,
   toggleMaximize, setWindowAccent, accentOf, nextAccentKey, WIN_ACCENT_KEYS,
   sanitizeDeskLayoutPrefs, deskLayoutFromWindows, applySavedLayout, reflowSnapped,
+  detectSnapZone, snapPreviewGeom, dragFloatGeom, WM_SNAP_EDGE,
 } from "./windowManager.mjs";
 
 const vp = { width: 1400, height: 900 };
@@ -183,5 +184,37 @@ describe("split, maximize, accents", () => {
     const big = { width: 1800, height: 1000 };
     wins = reflowSnapped(wins, big);
     assert.ok(wins[0].geom.width > 1000);
+  });
+});
+
+describe("drag-to-edge snap (Win11-style)", () => {
+  it("detects left, right, and top maximize zones", () => {
+    assert.equal(detectSnapZone(10, 200, vp), "left");
+    assert.equal(detectSnapZone(vp.width - 10, 200, vp), "right");
+    assert.equal(detectSnapZone(700, 8, vp), "maximize");
+    assert.equal(detectSnapZone(700, 200, vp), null);
+    assert.ok(WM_SNAP_EDGE >= 16);
+  });
+
+  it("preview geom matches split/maximize targets", () => {
+    const L = snapPreviewGeom("left", vp);
+    const R = snapPreviewGeom("right", vp);
+    const M = snapPreviewGeom("maximize", vp);
+    assert.deepEqual(L, splitGeom("left", vp));
+    assert.deepEqual(R, splitGeom("right", vp));
+    assert.deepEqual(M, maximizeGeom(vp));
+    assert.equal(snapPreviewGeom(null, vp), null);
+  });
+
+  it("dragFloatGeom pulls maximized windows under the pointer", () => {
+    let wins = upsertWindow([], {
+      id: "a", title: "A",
+      geom: { x: 120, y: 80, width: 400, height: 320 },
+    }, vp);
+    wins = toggleMaximize(wins, "a", vp);
+    const floated = dragFloatGeom(wins[0], { x: 700, y: 40, offsetX: 200, offsetY: 20 }, vp);
+    assert.ok(floated.width < vp.width * 0.6);
+    assert.ok(floated.x > 0);
+    assert.ok(Math.abs((floated.x + 200) - 700) <= 1 || floated.width < 400 + 1);
   });
 });

@@ -6,6 +6,9 @@ export const WM_MIN_H = 240;
 export const WM_Z_BASE = 40;
 export const WM_SPLIT_GAP = 10;
 export const WM_SPLIT_PAD = 12;
+/** How close the pointer must be to a screen edge to preview/commit a Win11-style snap. */
+export const WM_SNAP_EDGE = 28;
+export const WM_SNAP_TOP = 18;
 
 /** Core desk modules that can stay open as workspace tabs / floating windows. */
 export const MODULE_ROUTES = Object.freeze([
@@ -77,6 +80,69 @@ export function maximizeGeom(viewport = {}, opts = {}) {
     y: pad,
     width: vw - pad * 2,
     height: Math.max(WM_MIN_H, vh - pad * 2 - dockH),
+  }, viewport);
+}
+
+/**
+ * Win11-style edge hit-test while dragging a window.
+ * Top → maximize; left/right → half snap. Returns null when away from edges.
+ */
+export function detectSnapZone(x, y, viewport = {}, opts = {}) {
+  const vw = Math.max(WM_MIN_W, +(viewport.width || 1280));
+  const edge = opts.edge != null ? +opts.edge : WM_SNAP_EDGE;
+  const topEdge = opts.top != null ? +opts.top : WM_SNAP_TOP;
+  const cx = +x;
+  const cy = +y;
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+  if (cy <= topEdge) return "maximize";
+  if (cx <= edge) return "left";
+  if (cx >= vw - edge) return "right";
+  return null;
+}
+
+/** Geometry used for the live snap preview overlay (and commit targets). */
+export function snapPreviewGeom(zone, viewport = {}, opts = {}) {
+  if (zone === "maximize") return maximizeGeom(viewport, opts);
+  if (SPLIT_ZONES.includes(zone)) return splitGeom(zone, viewport, opts);
+  return null;
+}
+
+/**
+ * Floating size/position when the user starts dragging a maximized or snapped
+ * window — title bar stays under the pointer (Win11 “pull off” behavior).
+ */
+export function dragFloatGeom(win = {}, pointer = {}, viewport = {}) {
+  const vw = Math.max(WM_MIN_W, +(viewport.width || 1280));
+  const vh = Math.max(WM_MIN_H, +(viewport.height || 800));
+  const base = normalizeGeom(
+    (win.maximized && win.restoreGeom) ? win.restoreGeom : (win.geom || {}),
+    viewport,
+  );
+  let width = base.width;
+  let height = base.height;
+  if (win.maximized || win.split) {
+    if (width > vw * 0.7) width = Math.min(520, Math.round(vw * 0.42));
+    if (height > vh * 0.85) height = Math.min(560, Math.round(vh * 0.72));
+  }
+  width = clamp(Math.round(width), WM_MIN_W, vw);
+  height = clamp(Math.round(height), WM_MIN_H, vh);
+  const px = Number.isFinite(+pointer.x) ? +pointer.x : base.x + width / 2;
+  const py = Number.isFinite(+pointer.y) ? +pointer.y : base.y + 16;
+  const grabX = clamp(
+    Number.isFinite(+pointer.offsetX) ? +pointer.offsetX : width / 2,
+    24,
+    Math.max(24, width - 24),
+  );
+  const grabY = clamp(
+    Number.isFinite(+pointer.offsetY) ? +pointer.offsetY : 18,
+    8,
+    40,
+  );
+  return normalizeGeom({
+    x: px - grabX,
+    y: py - grabY,
+    width,
+    height,
   }, viewport);
 }
 
