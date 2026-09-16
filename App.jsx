@@ -33,6 +33,8 @@ import {
   WM_Z_BASE, normalizeGeom, focusWindow, upsertWindow, closeWindow as wmClose,
   moveWindow, toggleMinimize, sortByZ, activeWindowId,
   openTab as wmOpenTab, closeTab as wmCloseTab,
+  MODULE_ROUTES, isModuleRoute, moduleWinId, openModule as wmOpenModule,
+  closeModule as wmCloseModule, floatingModuleRoutes,
 } from "./windowManager.mjs";
 
 /* =====================================================================
@@ -42,9 +44,27 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.26", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.28", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.28": {
+    ar: [
+      "كل قسم (صندوق النقد، المبيعات، الموردون…) يبقى تبويبًا أو نافذة مستقلة — افتح عدة أقسام معًا دون فقدان الحالة",
+      "قائمة زر الفأرة الأيمن: قص/نسخ/لصق مع أوامر المزرعة، والأقل شيوعًا تحت «المزيد»",
+    ],
+    en: [
+      "Each module (Cash Box, Sales, Suppliers…) stays as its own tab or window — run several at once without losing state",
+      "Right-click menus: cut/copy/paste plus farm actions, with rarer commands under More Options",
+    ],
+  },
+  "2.9.27": {
+    ar: [
+      "زر الفأرة الأيمن يعمل على البطاقات والجداول — فتح، تعديل، دفع، طباعة، حذف حسب السياق",
+    ],
+    en: [
+      "Right-click works on cards and table rows — open, edit, pay, print, or delete by context",
+    ],
+  },
   "2.9.26": {
     ar: [
       "إصلاح عطل الإقلاع «حدث خطأ» بعد نوافذ الحسابات — التطبيق يفتح من جديد بشكل طبيعي",
@@ -1404,6 +1424,10 @@ const T = {
     ctxSale: "بيع جديد", ctxPay: "تسجيل دفعة", ctxMed: "دواء", ctxRepro: "التكاثر",
     ctxMilk: "تسجيل إنتاج", ctxManage: "إدارة الحساب", ctxArchive: "أرشفة",
     ctxReceipt: "عرض المرفق", ctxDelete: "حذف",
+    ctxCut: "قص", ctxCopy: "نسخ", ctxPaste: "لصق", ctxMore: "المزيد من الخيارات",
+    workspace: "مساحة العمل", emptyWorkspace: "الأقسام مفتوحة في نوافذ",
+    emptyWorkspaceSub: "أرجع قسمًا من شريط النوافذ أو افتح قسمًا من القائمة الجانبية.",
+    popOutModule: "فتح القسم في نافذة",
     sharedNote: "يرى جميع المستخدمين البيانات نفسها.",
     by: "المُسجِّل", todayAt: "اليوم", yesterday: "أمس", never: "لا يوجد تسجيل",
     loading: "جارٍ فتح بيانات المزرعة…", saveFail: "لم يتم الحفظ. تحقق من الاتصال.",
@@ -1917,6 +1941,10 @@ const T = {
     ctxSale: "New sale", ctxPay: "Record payment", ctxMed: "Medicine", ctxRepro: "Reproduction",
     ctxMilk: "Log production", ctxManage: "Manage account", ctxArchive: "Archive",
     ctxReceipt: "View attachment", ctxDelete: "Delete",
+    ctxCut: "Cut", ctxCopy: "Copy", ctxPaste: "Paste", ctxMore: "More options",
+    workspace: "Workspace", emptyWorkspace: "Modules are open in windows",
+    emptyWorkspaceSub: "Dock a module from the window bar, or open one from the sidebar.",
+    popOutModule: "Open module in window",
     sharedNote: "Everyone sees the same data.",
     by: "Logged by", todayAt: "Today", yesterday: "Yesterday", never: "No entry yet",
     loading: "Opening the farm…", saveFail: "Not saved. Check your connection.",
@@ -4506,40 +4534,197 @@ function MoneyToggle({ value, onChange, rate, lang, t, previewUsd = 100, size })
     </div>}
   </div>;
 }
+function isEditableCtxTarget(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (el.isContentEditable) return true;
+  const tag = (el.tagName || "").toUpperCase();
+  if (tag === "TEXTAREA") return !el.disabled && !el.readOnly;
+  if (tag === "INPUT") {
+    const type = (el.type || "text").toLowerCase();
+    if (["button", "submit", "reset", "checkbox", "radio", "file", "range", "color", "hidden"].includes(type)) return false;
+    return !el.disabled && !el.readOnly;
+  }
+  return !!(el.closest && el.closest("textarea, input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]), [contenteditable='true']"));
+}
+
+function ctxSelectionText() {
+  try {
+    const s = typeof window !== "undefined" && window.getSelection ? window.getSelection() : null;
+    return (s && s.toString()) || "";
+  } catch (e) { return ""; }
+}
+
+async function ctxWriteClipboard(text) {
+  const v = text == null ? "" : String(text);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(v);
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = v;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e2) { return false; }
+}
+
+async function ctxReadClipboard() {
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) return await navigator.clipboard.readText();
+  } catch (e) { /* denied */ }
+  return "";
+}
+
+function buildClipboardCtxItems(t, targetEl) {
+  const editable = isEditableCtxTarget(targetEl);
+  const selected = ctxSelectionText();
+  const inputEl = editable
+    ? (targetEl.matches?.("input,textarea,[contenteditable]") ? targetEl
+      : targetEl.closest?.("input,textarea,[contenteditable='true']"))
+    : null;
+  const hasSelInInput = !!(inputEl && typeof inputEl.selectionStart === "number"
+    && inputEl.selectionEnd > inputEl.selectionStart);
+  const canCopy = !!(selected || hasSelInInput || (inputEl && (inputEl.value || inputEl.textContent)));
+  return [
+    {
+      key: "cut", icon: "✂", label: t("ctxCut"),
+      disabled: !editable || !(selected || hasSelInInput),
+      run: () => {
+        try { document.execCommand("cut"); } catch (e) { /* */ }
+      },
+    },
+    {
+      key: "copy", icon: "📋", label: t("ctxCopy"),
+      disabled: !canCopy,
+      run: async () => {
+        if (editable) {
+          try { if (document.execCommand("copy")) return; } catch (e) { /* */ }
+        }
+        const text = selected
+          || (inputEl && typeof inputEl.value === "string"
+            ? inputEl.value.slice(inputEl.selectionStart || 0, inputEl.selectionEnd || inputEl.value.length)
+            : "")
+          || (inputEl && (inputEl.value || inputEl.textContent))
+          || "";
+        await ctxWriteClipboard(text);
+      },
+    },
+    {
+      key: "paste", icon: "📌", label: t("ctxPaste"),
+      disabled: !editable,
+      run: async () => {
+        try {
+          if (document.execCommand("paste")) return;
+        } catch (e) { /* */ }
+        const text = await ctxReadClipboard();
+        if (!text || !inputEl) return;
+        if (typeof inputEl.setRangeText === "function") {
+          inputEl.setRangeText(text, inputEl.selectionStart || 0, inputEl.selectionEnd || 0, "end");
+          inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+        if (inputEl.isContentEditable) {
+          try { document.execCommand("insertText", false, text); } catch (e2) { /* */ }
+        }
+      },
+    },
+  ];
+}
+
+function normalizeCtxItems(items) {
+  const primary = [];
+  const more = [];
+  (items || []).forEach((it) => {
+    if (!it) return;
+    if (it === "—") {
+      if (primary.length && primary[primary.length - 1] !== "—") primary.push(it);
+      return;
+    }
+    if (!(it.label && (typeof it.run === "function" || (it.submenu && it.submenu.length)))) return;
+    if (it.more || it.tier === "more") {
+      more.push({ ...it, more: undefined, tier: undefined });
+      return;
+    }
+    primary.push(it);
+  });
+  while (primary.length && primary[primary.length - 1] === "—") primary.pop();
+  return { primary, more };
+}
+
 function CtxMenu({ menu, onClose }) {
   const ref = useRef(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => { setMoreOpen(false); }, [menu]);
   useEffect(() => {
-    if (!menu) return;
-    const close = () => onClose();
-    const onKey = (e) => { if (e.key === "Escape") close(); };
+    if (!menu) return undefined;
+    const close = (ev) => {
+      if (ev && ref.current && ref.current.contains(ev.target)) return;
+      onClose();
+    };
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
     const t = setTimeout(() => {
-      window.addEventListener("click", close);
-      window.addEventListener("contextmenu", close);
+      window.addEventListener("pointerdown", close, true);
       window.addEventListener("keydown", onKey);
-      window.addEventListener("scroll", close, true);
+      window.addEventListener("scroll", onClose, true);
+      window.addEventListener("resize", onClose);
     }, 0);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("click", close);
-      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("pointerdown", close, true);
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
     };
   }, [menu, onClose]);
-  if (!menu) return null;
-  const { x, y, items } = menu;
-  const maxW = 220, estH = items.length * 36 + 8;
-  const left = Math.min(x, (typeof window !== "undefined" ? window.innerWidth : x) - maxW - 8);
-  const top = Math.min(y, (typeof window !== "undefined" ? window.innerHeight : y) - estH - 8);
-  return <div ref={ref} className="ctx-menu" style={{ left: Math.max(8, left), top: Math.max(8, top) }}
-    onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
-    {items.map((it, i) => it === "—"
-      ? <div key={`s${i}`} className="ctx-sep" />
-      : <button key={it.key || i} type="button" className={it.danger ? "ctx-item danger" : "ctx-item"}
-          disabled={it.disabled} onClick={() => { onClose(); it.run && it.run(); }}>
-          <span className="ctx-ic">{it.icon || ""}</span>{it.label}
-        </button>)}
-  </div>;
+  if (!menu || typeof document === "undefined") return null;
+  const { x, y, items = [], clipboard = [], more = [] } = menu;
+  const rowCount = items.length + clipboard.length + (more.length ? 1 : 0)
+    + (moreOpen ? more.length : 0) + (items.length && clipboard.length ? 1 : 0)
+    + ((items.length || clipboard.length) && more.length ? 1 : 0);
+  const maxW = 260, estH = Math.min(rowCount * 36 + 16, Math.max(280, window.innerHeight - 24));
+  const left = Math.min(x, window.innerWidth - maxW - 8);
+  const top = Math.min(y, window.innerHeight - Math.min(estH, window.innerHeight - 16) - 8);
+  const renderItem = (it, i, prefix) => (it === "—"
+    ? <div key={`${prefix}s${i}`} className="ctx-sep" role="separator" />
+    : <button key={it.key || `${prefix}${i}`} type="button" role="menuitem"
+        className={it.danger ? "ctx-item danger" : "ctx-item"}
+        disabled={it.disabled}
+        onClick={() => { onClose(); it.run && it.run(); }}>
+        <span className="ctx-ic" aria-hidden="true">{it.icon || ""}</span>
+        <span className="ctx-lb">{it.label}</span>
+        {it.hint ? <span className="ctx-hint">{it.hint}</span> : null}
+      </button>);
+  return createPortal(
+    <div ref={ref} className="ctx-menu" role="menu" style={{ left: Math.max(8, left), top: Math.max(8, top) }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+      {items.map((it, i) => renderItem(it, i, "p"))}
+      {items.length > 0 && clipboard.length > 0 ? <div className="ctx-sep" role="separator" /> : null}
+      {clipboard.map((it, i) => renderItem(it, i, "c"))}
+      {more.length > 0 && (items.length > 0 || clipboard.length > 0)
+        ? <div className="ctx-sep" role="separator" /> : null}
+      {more.length > 0 && (
+        <>
+          <button type="button" role="menuitem" className={`ctx-item ctx-more-tog${moreOpen ? " open" : ""}`}
+            aria-expanded={moreOpen}
+            onClick={(e) => { e.stopPropagation(); setMoreOpen((v) => !v); }}>
+            <span className="ctx-ic" aria-hidden="true">⋯</span>
+            <span className="ctx-lb">{menu.moreLabel || "More options"}</span>
+            <span className="ctx-hint">{moreOpen ? "▴" : "▾"}</span>
+          </button>
+          {moreOpen ? <div className="ctx-more-list" role="group">{more.map((it, i) => renderItem(it, i, "m"))}</div> : null}
+        </>
+      )}
+    </div>,
+    document.body,
+  );
 }
 function docTplOf(S) {
   return { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow",
@@ -4711,11 +4896,11 @@ function StatusChoice({ value, options, onChange, lang }) {
   );
 }
 
-function AnimalCard({ a, lang, t, today, last, onClick }) {
+function AnimalCard({ a, lang, t, today, last, onClick, onContextMenu }) {
   const sp = spOf(a), flock = isFlock(a);
   const unit = producesEggs(a) ? t("eggsUnit") : t("L");
   return (
-    <div role="button" tabIndex={0} onClick={onClick}
+    <div role="button" tabIndex={0} onClick={onClick} onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(e); } }}
       className={`data-card data-card--${statusToneOf(a.status)}`} style={{ width: "100%", textAlign: "start", cursor: "pointer",
       background: C.card, border: `1px solid ${C.line}`,
@@ -6459,7 +6644,7 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
 }
 
 function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay,
-  onDoc, onManage, onEditBill, onEditPay, no }) {
+  onDoc, onManage, onEditBill, onEditPay, no, onCtx }) {
   const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0, openCount: 0, overdueDue: 0 };
   const [sort, setSort] = useState("newest");
   const newest = sort !== "oldest";
@@ -6472,6 +6657,11 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
   const activeTab = ["open", "payments", "all"].includes(tab) ? tab : (tab === "activity" ? "all" : "open");
   const billKind = (bill) => payStatusKind(bill);
+  const billCtx = (bill, { showPay } = {}) => [
+    onEditBill && { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEditBill(bill.id) },
+    showPay && bill.due > 0.009 && { key: "pay", icon: "💵", label: t("supplierPayThis"), run: () => onPay(bill.id) },
+    onDoc && !bill.opening && { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(bill) },
+  ];
   const billTable = (rows, emptyMsg, { showPay } = {}) => (
     <DataList
       empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
@@ -6486,6 +6676,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
             who={bill.opening ? null : <WhoHint e={bill} lang={lang} />}
             meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
             onClick={onEditBill ? () => onEditBill(bill.id) : undefined}
+            onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}
             actions={(showPay && bill.due > 0.009) || (onDoc && !bill.opening) ? (
               <>
                 {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
@@ -6513,7 +6704,8 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
                 const kind = billKind(bill);
                 return (
                   <tr key={bill.id} className={statusRowClass(kind)} style={{ cursor: onEditBill ? "pointer" : "default" }}
-                    onClick={() => onEditBill && onEditBill(bill.id)}>
+                    onClick={() => onEditBill && onEditBill(bill.id)}
+                    onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}>
                     <Td mono>{dmy(bill.at)}</Td>
                     <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
                     <Td>{bill.opening ? t("supplierOpening")
@@ -7541,6 +7733,11 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                 title={`${iv.no} · ${fmtC(iv.grossAmount, S.rate, lang)}`}
                 subtitle={`${dmy(iv.at)} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]} · ${n1(iv.qty)} ${saleQtyUnit(iv, lang, t)}`}
                 meta={isOwing(iv.due) ? `${t("colDue")} ${fmtDue(iv.due, S.rate, lang)}` : undefined}
+                onContextMenu={(e) => onCtx && onCtx(e, [
+                  { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+                  { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(iv) },
+                  onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => onDeleteTx(iv) },
+                ])}
                 actions={<MoreMenu t={t} items={[
                   { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                   { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
@@ -7574,8 +7771,8 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
                 return <tr key={iv.id} className={flag ? statusRowClass(kind) : undefined}
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
-                    { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                    onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv) },
+                    { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(iv) },
+                    onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
                   <Td align="center">
                     <CheckCell checked={picked.has(iv.id)} title={iv.no || t("selectAll")}
@@ -7662,7 +7859,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
   </div>;
 }
 
-function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, onDeleteTx }) {
+function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, onDeleteTx, onCtx }) {
   const [picked, setPicked] = useState(() => new Set());
   const rowIds = posSales.map((x) => x.id);
   const rowIdKey = rowIds.join("|");
@@ -7705,6 +7902,9 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
             status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
             title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
             subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)} · ${customerNameById(customers, e.customerId, t)}`}
+            onContextMenu={onCtx && onDeleteTx ? (ev) => onCtx(ev, [
+              { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+            ]) : undefined}
             actions={onDeleteTx ? <MoreMenu t={t} items={[
               { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
             ]} /> : null}
@@ -7728,7 +7928,10 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
                 const iv = (ledger.list || []).find((x) => x.id === e.id);
                 const due = iv ? iv.due : 0;
                 const owing = due > 0.009;
-                return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}>
+                return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}
+                  onContextMenu={onCtx && onDeleteTx ? (ev) => onCtx(ev, [
+                    { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+                  ]) : undefined}>
                   <Td align="center">
                     <CheckCell checked={picked.has(e.id)} title={t("selectAll")} onChange={(on) => togglePick(e.id, on)} />
                   </Td>
@@ -9316,12 +9519,24 @@ function FarmApp() {
   const [seenVersion, setSeenVersion] = useState(null);
   const [prefsReady, setPrefsReady] = useState(false);
   const [ctx, setCtx] = useState(null);
-  const openCtx = useCallback((e, items) => {
+  const openCtx = useCallback((e, items, opts = {}) => {
+    if (!e) return;
     e.preventDefault();
     e.stopPropagation();
-    if (!items || !items.length) return;
-    setCtx({ x: e.clientX, y: e.clientY, items });
-  }, []);
+    const tr = (k) => (T[lang] && T[lang][k]) || k;
+    const { primary, more } = normalizeCtxItems(items);
+    const clipboard = opts.clipboard === false ? [] : buildClipboardCtxItems(tr, e.target);
+    const extraMore = Array.isArray(opts.more) ? opts.more.filter((it) => it && it.label && typeof it.run === "function") : [];
+    const moreItems = [...more, ...extraMore];
+    if (!primary.length && !clipboard.length && !moreItems.length) return;
+    setCtx({
+      x: e.clientX, y: e.clientY,
+      items: primary,
+      clipboard,
+      more: moreItems,
+      moreLabel: tr("ctxMore"),
+    });
+  }, [lang]);
   const [updateReady, setUpdateReady] = useState(false);
   const [updateMsg, setUpdateMsg] = useState("");
   const [weather, setWeather] = useState(null);
@@ -9329,10 +9544,13 @@ function FarmApp() {
   const [locBusy, setLocBusy] = useState(false);
   const [cityQ, setCityQ] = useState("");
   const [route, setRoute] = useState("dashboard");
+  const [openMods, setOpenMods] = useState(["dashboard"]);
   const [routeHist, setRouteHist] = useState([]);
   const navigate = useCallback((r, { clearSheet = true } = {}) => {
     const target = r === "obligations" ? "expenses" : r;
-    if (!target || target === route) { if (clearSheet) setSheet(null); return; }
+    if (!target) return;
+    if (isModuleRoute(target)) setOpenMods((m) => wmOpenModule(m, target));
+    if (target === route) { if (clearSheet) setSheet(null); return; }
     setRouteHist((h) => [...h.slice(-14), route]);
     setRoute(target);
     if (clearSheet) setSheet(null);
@@ -9341,6 +9559,7 @@ function FarmApp() {
     setRouteHist((h) => {
       if (!h.length) return h;
       const prev = h[h.length - 1];
+      if (isModuleRoute(prev)) setOpenMods((m) => wmOpenModule(m, prev));
       setRoute(prev);
       setSheet(null);
       return h.slice(0, -1);
@@ -9393,6 +9612,19 @@ function FarmApp() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  /* App-wide right-click on fields / empty desk: clipboard utilities. Domain menus call openCtx themselves. */
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onDocCtx = (e) => {
+      if (e.defaultPrevented) return;
+      if (e.target && e.target.closest && e.target.closest(".ctx-menu, .subwin-edge, .pal-back, .sheet-back")) return;
+      const editable = isEditableCtxTarget(e.target);
+      if (!editable && !(ctxSelectionText())) return;
+      openCtx(e, []);
+    };
+    document.addEventListener("contextmenu", onDocCtx);
+    return () => document.removeEventListener("contextmenu", onDocCtx);
+  }, [openCtx]);
   /* Phone / narrow tablet: floating windows hide in CSS — clear them so tabs stay the single source of truth. */
   useEffect(() => {
     if (viewport.width >= 900) return;
@@ -9895,6 +10127,59 @@ function FarmApp() {
     setSelSupp(null);
     setOpenSupp((list) => wmOpenTab(list, id));
   }, [suppliers, viewport]);
+  const popOutModule = useCallback((mod) => {
+    if (!isModuleRoute(mod) || viewport.width < 900) return;
+    const row = [["dashboard", "💵", t("cashBox")],
+      ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")],
+      ["suppliers", "🤝", t("suppliers")], ["sales", "🧾", t("sales")],
+      ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]].find((n) => n[0] === mod);
+    const title = row ? `${row[1]} ${row[2]}` : mod;
+    setDeskWins((wins) => upsertWindow(wins, {
+      id: moduleWinId(mod), kind: "module", title,
+      payload: { route: mod },
+      geom: {
+        x: 36 + (wins.length % 5) * 26,
+        y: 64 + (wins.length % 5) * 26,
+        width: Math.min(760, Math.max(420, viewport.width * 0.52)),
+        height: Math.min(720, Math.max(480, viewport.height * 0.78)),
+      },
+    }, viewport));
+    setOpenMods((mods) => {
+      const next = wmOpenModule(mods, mod);
+      if (route !== mod) return next;
+      const alt = next.filter((m) => m !== mod).slice(-1)[0] || "dashboard";
+      if (alt === route) return next;
+      setRouteHist((h) => [...h.slice(-14), route]);
+      setRoute(alt);
+      return wmOpenModule(next, alt);
+    });
+  }, [t, viewport, route]);
+  const closeModuleTab = useCallback((mod) => {
+    if (!isModuleRoute(mod)) return;
+    setDeskWins((wins) => wmClose(wins, moduleWinId(mod)));
+    setOpenMods((list) => {
+      const { ids, selected } = wmCloseModule(list, mod, route);
+      if (selected && selected !== route) {
+        setRouteHist((h) => [...h.slice(-14), route]);
+        setRoute(selected);
+      }
+      return ids;
+    });
+  }, [route]);
+  const selectModuleTab = useCallback((mod) => {
+    if (!isModuleRoute(mod)) return;
+    const floating = floatingModuleRoutes(deskWins);
+    if (floating.has(mod)) {
+      setDeskWins((wins) => focusWindow(wins, moduleWinId(mod)));
+      setOpenMods((m) => wmOpenModule(m, mod));
+      if (mod !== route) {
+        setRouteHist((h) => [...h.slice(-14), route]);
+        setRoute(mod);
+      }
+      return;
+    }
+    navigate(mod, { clearSheet: false });
+  }, [deskWins, navigate, route]);
   const dockDeskWin = (id) => {
     const w = deskWins.find((x) => x.id === id);
     if (!w) return;
@@ -9904,6 +10189,9 @@ function FarmApp() {
     } else if (w.kind === "supplier" && w.payload?.supplierId) {
       openSupplier(w.payload.supplierId);
       navigate("suppliers", { clearSheet: false });
+    } else if (w.kind === "module") {
+      const mod = w.payload?.route || (id.startsWith("mod:") ? id.slice(4) : null);
+      if (isModuleRoute(mod)) navigate(mod, { clearSheet: false });
     }
     setDeskWins((wins) => wmClose(wins, id));
   };
@@ -9916,6 +10204,7 @@ function FarmApp() {
     () => new Set(deskWins.filter((w) => w.kind === "supplier" && !w.minimized).map((w) => w.payload?.supplierId).filter(Boolean)),
     [deskWins],
   );
+  const floatingModIds = useMemo(() => floatingModuleRoutes(deskWins), [deskWins]);
   const D = draftS || S;
   const dirty = JSON.stringify(D) !== JSON.stringify(S);
   const speciesPresent = SP_KEYS.filter((k) => animals.some((a) => a.species === k));
@@ -10713,6 +11002,12 @@ function FarmApp() {
                   who={<WhoHint e={e} lang={lang} />}
                   meta={fmtC(amt, S.rate, lang)}
                   onClick={openSource || undefined}
+                  onContextMenu={(ev) => openCtx(ev, [
+                    openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
+                    e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), more: true, run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
+                    { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => setSheet({ k: "confirmDeleteEntry",
+                      id: isMed ? e.id : (e.sourceExpenseId || e.id) }) },
+                  ])}
                   actions={
                     <>
                       {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
@@ -10749,8 +11044,8 @@ function FarmApp() {
                     onClick={() => openSource && openSource()}
                     onContextMenu={(ev) => openCtx(ev, [
                       openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
-                      e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
-                      { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => setSheet({ k: "confirmDeleteEntry",
+                      e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), more: true, run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
+                      { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => setSheet({ k: "confirmDeleteEntry",
                         id: isMed ? e.id : (e.sourceExpenseId || e.id) }) },
                     ].filter(Boolean))}>
                     <Td mono>{dmy(e.at)}</Td>
@@ -11362,7 +11657,12 @@ function FarmApp() {
   const allNav = [["dashboard", "💵", t("cashBox")], ...farmNav, ...officeNav];
   const navLabel = (k) => (allNav.find((n) => n[0] === k) || ["", "", k])[2];
   const navBtn = (k, ic, lb, active, onClick) => (
-    <button key={k} type="button" onClick={onClick} className={active ? "dk-nav on" : "dk-nav"}>
+    <button key={k} type="button" className={active ? "dk-nav on" : "dk-nav"}
+      onClick={onClick}
+      onContextMenu={(e) => openCtx(e, [
+        { key: "open", icon: ic, label: lb, run: () => navigate(k, { clearSheet: false }) },
+        viewport.width >= 900 && { key: "pop", icon: "⧉", label: t("popOutModule"), run: () => popOutModule(k) },
+      ])}>
       <span style={{ width: 20, textAlign: "center", fontSize: 15 }}>{ic}</span>{lb}</button>
   );
   const go = (r) => () => navigate(r);
@@ -11580,6 +11880,11 @@ function FarmApp() {
               who={r.source ? <WhoHint e={r.source} lang={lang} /> : null}
               meta={`${r.debit ? `+${fmtC(r.debit, S.rate, lang)}` : ""}${r.credit ? `${r.debit ? " · " : ""}−${fmtC(r.credit, S.rate, lang)}` : ""}`}
               onClick={() => openCashSource(r)}
+              onContextMenu={(ev) => openCtx(ev, [
+                { key: "open", icon: "✏️", label: t("ctxEdit"), run: () => openCashSource(r) },
+                { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true,
+                  run: () => setSheet({ k: "confirmDeleteEntry", id: r.source?.id || r.id }) },
+              ])}
             />
           ))}
           table={
@@ -11640,7 +11945,7 @@ function FarmApp() {
                   className={statusRowClass(r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in")}
                   onContextMenu={(ev) => openCtx(ev, [
                     { key: "open", icon: "✏️", label: t("ctxEdit"), run: () => openCashSource(r) },
-                    { key: "del", icon: "🗑️", label: t("ctxDelete"),
+                    { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true,
                       run: () => setSheet({ k: "confirmDeleteEntry", id: r.source?.id || r.id }) },
                   ])}
                   style={{ cursor: "pointer" }}>
@@ -11776,7 +12081,14 @@ function FarmApp() {
                   cards={herdRows.map((a) => (
                     <AnimalCard key={a.id} a={a} lang={lang} t={t} today={todayProd(a)}
                       last={entries.find((e) => e.animalId === a.id)}
-                      onClick={() => setSel(a.id)} />
+                      onClick={() => setSel(a.id)}
+                      onContextMenu={(e) => openCtx(e, [
+                        { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
+                        { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editAnimal", id: a.id, back: null }) },
+                        { key: "med", icon: "💊", label: t("ctxMed"), more: true, run: () => setSheet({ k: "med", pre: a.id }) },
+                        (producesMilk(a) || producesEggs(a)) && { key: "milk", icon: "🥛", label: t("ctxMilk"), more: true,
+                          run: () => setSheet({ k: "prod", id: a.id }) },
+                      ])} />
                   ))}
                   table={
                 <div className="overflow-x-auto">
@@ -11791,6 +12103,9 @@ function FarmApp() {
                       onContextMenu={(e) => openCtx(e, [
                         { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
                         { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => setSheet({ k: "editAnimal", id: a.id, back: null }) },
+                        { key: "med", icon: "💊", label: t("ctxMed"), more: true, run: () => setSheet({ k: "med", pre: a.id }) },
+                        (producesMilk(a) || producesEggs(a)) && { key: "milk", icon: "🥛", label: t("ctxMilk"), more: true,
+                          run: () => setSheet({ k: "prod", id: a.id }) },
                       ])}
                       style={{ cursor: "pointer", background: sel === a.id ? C.paper : "transparent" }}>
                       <Td strong><span style={{ color: spOf(a).color }}>{spOf(a).icon}</span> {animalLabel(a)}</Td>
@@ -12205,6 +12520,7 @@ function FarmApp() {
               posSales={entries.filter((e) => e.type === "sale" && (e.channel === "pos" || e.customerId === WALKIN_ID || isOneTimeSale(e)))
                 .slice().sort((a, b) => cmpTx(a, b, "newest")).slice(0, 12)}
               ledger={ledger} customers={customers} lang={lang} t={t} S={S}
+              onCtx={openCtx}
               onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
               onDeleteTx={(e) => setSheet({ k: "voidSales", ids: [e.id] })} />
           </DeskCard>
@@ -12239,6 +12555,13 @@ function FarmApp() {
                       { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
                       { key: "manage", icon: "⚙️", label: t("manageAccount"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
                     ]} />;
+                    const custCtx = (e) => openCtx(e, [
+                      { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
+                      { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
+                      { key: "pay", icon: "💵", label: t("ctxPay"), run: () => { openAccount(c.id); setSheet({ k: "payment", cid: c.id }); } },
+                      { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                      { key: "manage", icon: "⚙️", label: t("ctxManage"), more: true, run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                    ]);
                     return (
                       <DataCard key={c.id} kind={owing ? "owing" : "neutral"}
                         status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
@@ -12246,6 +12569,7 @@ function FarmApp() {
                         subtitle={`${accNo(customers, c.id)}${c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
                         meta={owing ? `${t("due")} ${fmtC(due, S.rate, lang)}` : (c.defaultQty ? `${t("dailyQty")} ${nf(c.defaultQty)}` : undefined)}
                         onClick={() => openAccount(c.id)}
+                        onContextMenu={custCtx}
                         actions={<>
                           {owing && <button type="button" className="dk-pill" onClick={(ev) => {
                             ev.stopPropagation(); openAccount(c.id); setSheet({ k: "payment", cid: c.id });
@@ -12274,9 +12598,8 @@ function FarmApp() {
                             { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
                             { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
                             { key: "pay", icon: "💵", label: t("ctxPay"), run: () => { openAccount(c.id); setSheet({ k: "payment", cid: c.id }); } },
-                            { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
-                            "—",
-                            { key: "manage", icon: "⚙️", label: t("ctxManage"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                            { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                            { key: "manage", icon: "⚙️", label: t("ctxManage"), more: true, run: () => setSheet({ k: "customerManage", cid: c.id }) },
                           ])}
                           style={{ cursor: "pointer" }}>
                           <Td>
@@ -12374,7 +12697,7 @@ function FarmApp() {
               <button type="button" className="dk-pill" onClick={() => setSelSupp(null)}>‹ {t("backToSuppliers")}</button>
             </div>}>
             <SupplierAccount supplier={selSupplier} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
-              no={supplierNo(suppliers, selSupplier.id)}
+              no={supplierNo(suppliers, selSupplier.id)} onCtx={openCtx}
               tab={["open", "payments", "all", "activity"].includes(suppTab) ? suppTab : "open"} setTab={setSuppTab}
               onBill={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}
               onPay={(billId) => setSheet({ k: "paySupplier", sid: selSupplier.id, billId: billId || null })}
@@ -12432,6 +12755,12 @@ function FarmApp() {
                         subtitle={`${supplierNo(suppliers, s.id)}${s.phone ? ` · ${s.phone}` : ""}`}
                         meta={`${t("weOwe")} ${fmtC(bal.due, S.rate, lang)} · ${t("lastActivity")} ${bal.lastAt ? dmy(bal.lastAt) : "—"}`}
                         onClick={() => openSupplier(s.id)}
+                        onContextMenu={(e) => openCtx(e, [
+                          { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openSupplier(s.id) },
+                          { key: "bill", icon: "🧾", label: t("logSupplierBill"), run: () => { openSupplier(s.id); setSheet({ k: "supplierBill", sid: s.id }); } },
+                          bal.due > 0.009 && { key: "pay", icon: "💵", label: t("paySupplier"), run: () => { openSupplier(s.id); setSheet({ k: "paySupplier", sid: s.id }); } },
+                          { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", scope: "supplier", sid: s.id, id: s.id, kinds: ["statement"] }) },
+                        ])}
                         actions={<button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}>
                           {t("openSupplier")} ›</button>}
                       />
@@ -12454,7 +12783,13 @@ function FarmApp() {
                         const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
                         const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
                         const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
-                        return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}>
+                        return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}
+                          onContextMenu={(e) => openCtx(e, [
+                            { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openSupplier(s.id) },
+                            { key: "bill", icon: "🧾", label: t("logSupplierBill"), run: () => { openSupplier(s.id); setSheet({ k: "supplierBill", sid: s.id }); } },
+                            bal.due > 0.009 && { key: "pay", icon: "💵", label: t("paySupplier"), run: () => { openSupplier(s.id); setSheet({ k: "paySupplier", sid: s.id }); } },
+                            { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", scope: "supplier", sid: s.id, id: s.id, kinds: ["statement"] }) },
+                          ])}>
                           <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
                           <Td strong>{s.name}
                             {s.phone ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft, fontWeight: 500 }}>{s.phone}</span> : null}
@@ -13382,6 +13717,10 @@ function FarmApp() {
                 title={t("backBtn")} style={{ fontSize: 16, padding: "7px 11px" }}>‹</button>)}
             <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19, marginInlineEnd: 4 }}>
               {navLabel(route)}</div>
+            {viewport.width >= 900 && isModuleRoute(route) && !floatingModIds.has(route) && (
+              <button type="button" className="dk-pill" title={t("popOutModule")}
+                onClick={() => popOutModule(route)}>⧉</button>
+            )}
             <button type="button" onClick={() => setPalette(true)} className="dk-search" style={{ flex: 1, maxWidth: 420 }}>
               <span>⌘</span><span style={{ flex: 1, textAlign: "start" }}>{t("palHint")}</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: C.inkSoft }}>Ctrl K</span></button>
@@ -13438,14 +13777,51 @@ function FarmApp() {
             </div>)}
 
           <div className="dk-body">
-            {route === "dashboard" && DeskDashboard}
-            {route === "animals" && DeskAnimals}
-            {route === "entry" && DeskEntry}
-            {route === "sales" && DeskSales}
-            {route === "suppliers" && DeskSuppliers}
-            {route === "expenses" && DeskExpenses}
-            {route === "reports" && DeskReports}
-            {route === "settings" && <div className="dk-settings">{Settings}</div>}
+            <WinTabStrip t={t} label={t("workspace")}
+              selected={route}
+              tabs={openMods.map((id) => {
+                const row = allNav.find((n) => n[0] === id);
+                if (!row) return null;
+                return {
+                  id,
+                  title: `${row[1]} ${row[2]}`,
+                  meta: floatingModIds.has(id) ? "⧉" : "",
+                };
+              }).filter(Boolean)}
+              onSelect={selectModuleTab}
+              onClose={closeModuleTab}
+              onPopOut={viewport.width >= 900 ? popOutModule : undefined}
+            />
+            {(() => {
+              const docked = openMods.filter((m) => !floatingModIds.has(m));
+              if (!docked.length) {
+                return (
+                  <div style={{ padding: 28 }}>
+                    <Empty icon="⧉" title={t("emptyWorkspace")} sub={t("emptyWorkspaceSub")} />
+                  </div>
+                );
+              }
+              const mainRoute = floatingModIds.has(route)
+                ? (docked.includes(route) ? route : docked[docked.length - 1])
+                : route;
+              const bodyOf = (mod) => {
+                if (mod === "dashboard") return DeskDashboard;
+                if (mod === "animals") return DeskAnimals;
+                if (mod === "entry") return DeskEntry;
+                if (mod === "sales") return DeskSales;
+                if (mod === "suppliers") return DeskSuppliers;
+                if (mod === "expenses") return DeskExpenses;
+                if (mod === "reports") return DeskReports;
+                if (mod === "settings") return <div className="dk-settings">{Settings}</div>;
+                return null;
+              };
+              return docked.map((mod) => (
+                <div key={mod} className={`mod-pane${mod === mainRoute ? " on" : ""}`}
+                  hidden={mod !== mainRoute} aria-hidden={mod !== mainRoute}>
+                  {bodyOf(mod)}
+                </div>
+              ));
+            })()}
           </div>
         </main>
       </div>
@@ -13494,7 +13870,7 @@ function FarmApp() {
                 <button type="button" className="dk-pill" onClick={() => setSheet({ k: "paySupplier", sid: sup.id })}>💵 {t("paySupplier")}</button>
               </div>
               <SupplierAccount supplier={sup} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
-                no={supplierNo(suppliers, sup.id)}
+                no={supplierNo(suppliers, sup.id)} onCtx={openCtx}
                 tab={["open", "payments", "all", "activity"].includes(suppTab) ? suppTab : "open"} setTab={setSuppTab}
                 onBill={() => setSheet({ k: "supplierBill", sid: sup.id })}
                 onPay={(billId) => setSheet({ k: "paySupplier", sid: sup.id, billId: billId || null })}
@@ -13506,6 +13882,29 @@ function FarmApp() {
                 }}
                 onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
                 onManage={() => setSheet({ k: "editSupplier", sid: sup.id })} />
+            </SubWindow>
+          );
+        }
+        if (w.kind === "module") {
+          const mod = w.payload?.route || (w.id.startsWith("mod:") ? w.id.slice(4) : null);
+          if (!isModuleRoute(mod)) return null;
+          const body = mod === "dashboard" ? DeskDashboard
+            : mod === "animals" ? DeskAnimals
+            : mod === "entry" ? DeskEntry
+            : mod === "sales" ? DeskSales
+            : mod === "suppliers" ? DeskSuppliers
+            : mod === "expenses" ? DeskExpenses
+            : mod === "reports" ? DeskReports
+            : mod === "settings" ? <div className="dk-settings">{Settings}</div>
+            : null;
+          return (
+            <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin}>
+              <div className="subwin-toolbar">
+                <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
+              </div>
+              <div className="mod-pane on mod-pane-float">{body}</div>
             </SubWindow>
           );
         }
@@ -13846,15 +14245,22 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .money-tog-prev{display:flex;align-items:center;gap:10px;background:${C.paper};border:1px solid ${C.line};
   border-radius:4px;padding:8px 12px}
 .money-tog-prev-lb{font-size:11.5px;font-weight:700;color:${C.inkSoft}}
-.ctx-menu{position:fixed;z-index:120;min-width:190px;max-width:240px;background:${C.card};border:1px solid ${C.line};
-  border-radius:5px;box-shadow:0 10px 28px rgba(27,32,51,.18);padding:4px;font-family:var(--body)}
+.ctx-menu{position:fixed;z-index:140;min-width:190px;max-width:280px;background:${C.card};border:1px solid ${C.line};
+  border-radius:5px;box-shadow:0 10px 28px rgba(27,32,51,.18);padding:4px;font-family:var(--body);max-height:min(70vh,420px);overflow-y:auto}
 .ctx-item{display:flex;align-items:center;gap:8px;width:100%;background:transparent;border:none;border-radius:3px;
   padding:8px 10px;cursor:pointer;text-align:start;font-family:var(--body);font-size:13.5px;font-weight:600;color:${C.ink}}
 .ctx-item:hover{background:${C.paper}}
 .ctx-item.danger{color:${C.red}}
 .ctx-item:disabled{opacity:.4;cursor:default}
 .ctx-ic{width:18px;text-align:center;flex-shrink:0}
+.ctx-lb{flex:1;min-width:0}
+.ctx-hint{font-size:11px;color:${C.inkSoft};font-weight:600;margin-inline-start:8px}
 .ctx-sep{height:1px;background:${C.line};margin:4px 6px}
+.ctx-more-tog.open{background:${C.paper}}
+.ctx-more-list{padding:2px 0 2px 8px;border-inline-start:2px solid ${C.line};margin:2px 4px 4px 10px}
+.mod-pane{min-width:0}
+.mod-pane[hidden]{display:none!important}
+.mod-pane-float{min-height:0}
 .pal-group{padding:8px 4px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${C.inkSoft}}
 .dk-top .dk-search{min-width:200px}
 .pal-hub{width:min(640px,94vw)!important;padding:0!important;overflow:hidden}

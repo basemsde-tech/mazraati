@@ -5,6 +5,25 @@ export const WM_MIN_W = 320;
 export const WM_MIN_H = 240;
 export const WM_Z_BASE = 40;
 
+/** Core desk modules that can stay open as workspace tabs / floating windows. */
+export const MODULE_ROUTES = Object.freeze([
+  "dashboard", "animals", "entry", "sales", "suppliers", "expenses", "reports", "settings",
+]);
+
+export function isModuleRoute(route) {
+  return MODULE_ROUTES.includes(route);
+}
+
+export function moduleWinId(route) {
+  return `mod:${route}`;
+}
+
+export function routeOfModuleWin(id) {
+  if (typeof id !== "string" || !id.startsWith("mod:")) return null;
+  const route = id.slice(4);
+  return isModuleRoute(route) ? route : null;
+}
+
 export function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -101,4 +120,32 @@ export function closeTab(ids, id, selected) {
 export function selectTab(ids, id) {
   if (!(ids || []).includes(id)) return { ids: openTab(ids, id), selected: id };
   return { ids, selected: id };
+}
+
+/** Open a module in the workspace tab list (idempotent). */
+export function openModule(ids, route) {
+  if (!isModuleRoute(route)) return ids || [];
+  return openTab(ids, route);
+}
+
+/**
+ * Close a module tab. Never leaves the workspace empty — falls back to `fallback`
+ * (default dashboard) when the last tab would disappear.
+ */
+export function closeModule(ids, route, selected, fallback = "dashboard") {
+  if (!isModuleRoute(route)) return { ids: ids || [], selected };
+  const closed = closeTab(ids, route, selected);
+  if (closed.ids.length) return closed;
+  const keep = isModuleRoute(fallback) ? fallback : "dashboard";
+  return { ids: [keep], selected: keep };
+}
+
+/** Modules currently shown as floating subwindows (not docked in the main pane). */
+export function floatingModuleRoutes(windows) {
+  return new Set(
+    (windows || [])
+      .filter((w) => w.kind === "module" && !w.minimized)
+      .map((w) => w.payload?.route || routeOfModuleWin(w.id))
+      .filter(isModuleRoute),
+  );
 }

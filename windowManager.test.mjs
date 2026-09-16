@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   normalizeGeom, nextZ, focusWindow, upsertWindow, closeWindow, moveWindow,
   toggleMinimize, activeWindowId, openTab, closeTab, selectTab, WM_MIN_W, WM_Z_BASE,
+  MODULE_ROUTES, isModuleRoute, moduleWinId, routeOfModuleWin, openModule, closeModule,
+  floatingModuleRoutes,
 } from "./windowManager.mjs";
 
 const vp = { width: 1400, height: 900 };
@@ -66,5 +68,41 @@ describe("tabs", () => {
 
   it("nextZ advances from the highest existing layer", () => {
     assert.equal(nextZ([{ z: 41 }, { z: 45 }]), 46);
+  });
+});
+
+describe("module workspace", () => {
+  it("maps module win ids and validates routes", () => {
+    assert.ok(MODULE_ROUTES.includes("sales"));
+    assert.equal(isModuleRoute("sales"), true);
+    assert.equal(isModuleRoute("nope"), false);
+    assert.equal(moduleWinId("sales"), "mod:sales");
+    assert.equal(routeOfModuleWin("mod:sales"), "sales");
+    assert.equal(routeOfModuleWin("cust:1"), null);
+  });
+
+  it("opens modules and never closes the last workspace tab", () => {
+    let mods = openModule([], "dashboard");
+    mods = openModule(mods, "sales");
+    mods = openModule(mods, "sales");
+    assert.deepEqual(mods, ["dashboard", "sales"]);
+    let closed = closeModule(mods, "dashboard", "dashboard");
+    assert.deepEqual(closed.ids, ["sales"]);
+    assert.equal(closed.selected, "sales");
+    closed = closeModule(["sales"], "sales", "sales");
+    assert.deepEqual(closed.ids, ["dashboard"]);
+    assert.equal(closed.selected, "dashboard");
+  });
+
+  it("tracks floating module routes for concurrent panes", () => {
+    const wins = [
+      { id: moduleWinId("sales"), kind: "module", payload: { route: "sales" }, minimized: false },
+      { id: moduleWinId("dashboard"), kind: "module", payload: { route: "dashboard" }, minimized: true },
+      { id: "cust:1", kind: "customer", payload: { customerId: "1" }, minimized: false },
+    ];
+    const floating = floatingModuleRoutes(wins);
+    assert.equal(floating.has("sales"), true);
+    assert.equal(floating.has("dashboard"), false);
+    assert.equal(floating.has("suppliers"), false);
   });
 });

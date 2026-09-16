@@ -31,7 +31,7 @@ export function DataList({ cards, table, empty }) {
 }
 
 export function DataCard({
-  status, kind, tone, title, subtitle, meta, actions, children, onClick, className = "", who,
+  status, kind, tone, title, subtitle, meta, actions, children, onClick, onContextMenu, className = "", who,
 }) {
   const resolved = tone || statusToneOf(kind || (typeof status === "string" ? status : undefined));
   const statusNode = status == null ? null
@@ -40,8 +40,9 @@ export function DataCard({
     <div
       className={`data-card data-card--${resolved || "neutral"} ${className}`.trim()}
       onClick={onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      onContextMenu={onContextMenu}
+      role={onClick || onContextMenu ? "button" : undefined}
+      tabIndex={onClick || onContextMenu ? 0 : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } } : undefined}
     >
       <div className="data-card-head">
@@ -53,7 +54,7 @@ export function DataCard({
       </div>
       {meta != null && <div className="data-card-meta">{meta}</div>}
       {children}
-      {actions != null && <div className="data-card-actions">{actions}</div>}
+      {actions != null && <div className="data-card-actions" onContextMenu={(e) => e.stopPropagation()}>{actions}</div>}
     </div>
   );
 }
