@@ -42,9 +42,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.25", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.26", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.26": {
+    ar: [
+      "إصلاح عطل الإقلاع «حدث خطأ» بعد نوافذ الحسابات — التطبيق يفتح من جديد بشكل طبيعي",
+    ],
+    en: [
+      "Fix the “Something went wrong” startup crash after account windows — the app opens normally again",
+    ],
+  },
   "2.9.25": {
     ar: [
       "نوافذ قابلة للتحريك والحجم مع تبويبات أوضح — افتح حسابًا جنب الصندوق دون فقدان السياق",
@@ -9576,61 +9584,6 @@ function FarmApp() {
   const moveDeskWin = useCallback((id, patch) => {
     setDeskWins((wins) => moveWindow(wins, id, patch, viewport));
   }, [viewport]);
-  const popOutCustomer = useCallback((id) => {
-    const c = customers.find((x) => x.id === id);
-    if (!c) return;
-    const winId = `cust:${id}`;
-    setDeskWins((wins) => upsertWindow(wins, {
-      id: winId, kind: "customer", title: customerLabel(c, t),
-      payload: { customerId: id },
-      geom: {
-        x: 48 + (wins.length % 4) * 28,
-        y: 72 + (wins.length % 4) * 28,
-        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
-        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
-      },
-    }, viewport));
-    setSelCust(null);
-    setOpenAcc((list) => wmOpenTab(list, id));
-  }, [customers, t, viewport]);
-  const popOutSupplier = useCallback((id) => {
-    const s = suppliers.find((x) => x.id === id);
-    if (!s) return;
-    const winId = `supp:${id}`;
-    setDeskWins((wins) => upsertWindow(wins, {
-      id: winId, kind: "supplier", title: s.name,
-      payload: { supplierId: id },
-      geom: {
-        x: 72 + (wins.length % 4) * 28,
-        y: 96 + (wins.length % 4) * 28,
-        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
-        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
-      },
-    }, viewport));
-    setSelSupp(null);
-    setOpenSupp((list) => wmOpenTab(list, id));
-  }, [suppliers, viewport]);
-  const dockDeskWin = (id) => {
-    const w = deskWins.find((x) => x.id === id);
-    if (!w) return;
-    if (w.kind === "customer" && w.payload?.customerId) {
-      openAccount(w.payload.customerId);
-      navigate("sales", { clearSheet: false });
-    } else if (w.kind === "supplier" && w.payload?.supplierId) {
-      openSupplier(w.payload.supplierId);
-      navigate("suppliers", { clearSheet: false });
-    }
-    setDeskWins((wins) => wmClose(wins, id));
-  };
-  const activeDeskWinId = useMemo(() => activeWindowId(deskWins), [deskWins]);
-  const floatingCustIds = useMemo(
-    () => new Set(deskWins.filter((w) => w.kind === "customer" && !w.minimized).map((w) => w.payload?.customerId).filter(Boolean)),
-    [deskWins],
-  );
-  const floatingSuppIds = useMemo(
-    () => new Set(deskWins.filter((w) => w.kind === "supplier" && !w.minimized).map((w) => w.payload?.supplierId).filter(Boolean)),
-    [deskWins],
-  );
 
   const resolveSupplierPatch = (payload) => {
     let list = suppliers;
@@ -9907,6 +9860,62 @@ function FarmApp() {
   const activeCustomers = useMemo(() => customers.filter((c) => !c.archived), [customers]);
   const archivedCustomers = useMemo(() => customers.filter((c) => c.archived), [customers]);
   const activeSuppliers = useMemo(() => suppliers.filter((s) => !s.archived), [suppliers]);
+  /* Window helpers must sit after customers/suppliers — earlier access hits the TDZ and crashes FarmApp. */
+  const popOutCustomer = useCallback((id) => {
+    const c = customers.find((x) => x.id === id);
+    if (!c) return;
+    const winId = `cust:${id}`;
+    setDeskWins((wins) => upsertWindow(wins, {
+      id: winId, kind: "customer", title: customerLabel(c, t),
+      payload: { customerId: id },
+      geom: {
+        x: 48 + (wins.length % 4) * 28,
+        y: 72 + (wins.length % 4) * 28,
+        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
+        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
+      },
+    }, viewport));
+    setSelCust(null);
+    setOpenAcc((list) => wmOpenTab(list, id));
+  }, [customers, t, viewport]);
+  const popOutSupplier = useCallback((id) => {
+    const s = suppliers.find((x) => x.id === id);
+    if (!s) return;
+    const winId = `supp:${id}`;
+    setDeskWins((wins) => upsertWindow(wins, {
+      id: winId, kind: "supplier", title: s.name,
+      payload: { supplierId: id },
+      geom: {
+        x: 72 + (wins.length % 4) * 28,
+        y: 96 + (wins.length % 4) * 28,
+        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
+        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
+      },
+    }, viewport));
+    setSelSupp(null);
+    setOpenSupp((list) => wmOpenTab(list, id));
+  }, [suppliers, viewport]);
+  const dockDeskWin = (id) => {
+    const w = deskWins.find((x) => x.id === id);
+    if (!w) return;
+    if (w.kind === "customer" && w.payload?.customerId) {
+      openAccount(w.payload.customerId);
+      navigate("sales", { clearSheet: false });
+    } else if (w.kind === "supplier" && w.payload?.supplierId) {
+      openSupplier(w.payload.supplierId);
+      navigate("suppliers", { clearSheet: false });
+    }
+    setDeskWins((wins) => wmClose(wins, id));
+  };
+  const activeDeskWinId = useMemo(() => activeWindowId(deskWins), [deskWins]);
+  const floatingCustIds = useMemo(
+    () => new Set(deskWins.filter((w) => w.kind === "customer" && !w.minimized).map((w) => w.payload?.customerId).filter(Boolean)),
+    [deskWins],
+  );
+  const floatingSuppIds = useMemo(
+    () => new Set(deskWins.filter((w) => w.kind === "supplier" && !w.minimized).map((w) => w.payload?.supplierId).filter(Boolean)),
+    [deskWins],
+  );
   const D = draftS || S;
   const dirty = JSON.stringify(D) !== JSON.stringify(S);
   const speciesPresent = SP_KEYS.filter((k) => animals.some((a) => a.species === k));
