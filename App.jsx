@@ -53,9 +53,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.31", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.32", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.32": {
+    ar: [
+      "إصلاح سحب النوافذ للحافة: الإفلات على اليسار/اليمين/الأعلى يثبت التقسيم أو التكبير كما يجب",
+    ],
+    en: [
+      "Fix drag-to-edge snap: releasing on the left/right/top edge now docks or maximizes reliably",
+    ],
+  },
   "2.9.31": {
     ar: [
       "اسحب النافذة إلى حافة الشاشة للتقسيم يسار/يمين أو للأعلى للتكبير — مثل ويندوز ١١ مع معاينة قبل الإفلات",
@@ -15083,20 +15091,17 @@ function WinTabStrip({ label, tabs, selected, onSelect, onClose, onPopOut, t }) 
    Minimized windows stay mounted (hidden) so forms/scroll survive in the tray. */
 function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, onForceMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
   const dragRef = useRef(null);
+  const snapZoneRef = useRef(null);
   const [accentOpen, setAccentOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [snapZone, setSnapZone] = useState(null);
   const geom = win.geom || normalizeGeom({});
   const acc = accentOf(win.accent);
-  useEffect(() => {
-    const onUp = () => { dragRef.current = null; setDragging(false); setSnapZone(null); };
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-  }, []);
+  const endDragUi = () => {
+    setDragging(false);
+    setSnapZone(null);
+    snapZoneRef.current = null;
+  };
   const startDrag = (e) => {
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
@@ -15116,7 +15121,8 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
       onMove(win.id, floated);
     }
     const start = { x: e.clientX, y: e.clientY, gx, gy };
-    dragRef.current = { mode: "move", start, zone: null };
+    dragRef.current = { mode: "move", start };
+    snapZoneRef.current = null;
     setDragging(true);
     setSnapZone(null);
     const move = (ev) => {
@@ -15127,16 +15133,17 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
         y: d.gy + (ev.clientY - d.y),
       });
       const zone = detectSnapZone(ev.clientX, ev.clientY, vp);
-      dragRef.current.zone = zone;
+      snapZoneRef.current = zone;
       setSnapZone(zone);
     };
-    const up = () => {
-      const zone = dragRef.current?.zone || null;
+    const up = (ev) => {
+      const zone = snapZoneRef.current
+        || (ev && Number.isFinite(ev.clientX) ? detectSnapZone(ev.clientX, ev.clientY, vp) : null);
       dragRef.current = null;
-      setDragging(false);
-      setSnapZone(null);
+      endDragUi();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       if (zone === "maximize") {
         if (onForceMaximize) onForceMaximize(win.id);
         else if (onMaximize) onMaximize(win.id);
@@ -15146,6 +15153,7 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
   const startResize = (e, edge) => {
     if (win.maximized) return;
@@ -15174,9 +15182,11 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
       dragRef.current = null;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
   const preview = snapZone ? snapPreviewGeom(snapZone, {
     width: typeof window !== "undefined" ? window.innerWidth : 1280,
