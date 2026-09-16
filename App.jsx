@@ -29,6 +29,11 @@ import {
   buildOwnerFund,
 } from "./ownerFunds.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
+import {
+  WM_Z_BASE, normalizeGeom, focusWindow, upsertWindow, closeWindow as wmClose,
+  moveWindow, toggleMinimize, sortByZ, activeWindowId,
+  openTab as wmOpenTab, closeTab as wmCloseTab,
+} from "./windowManager.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -37,9 +42,19 @@ import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.24", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.25", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.25": {
+    ar: [
+      "نوافذ قابلة للتحريك والحجم مع تبويبات أوضح — افتح حسابًا جنب الصندوق دون فقدان السياق",
+      "التركيز يتبع النافذة النشطة (طبقات z)، والنوافذ المصغّرة تبقى في شريط سريع",
+    ],
+    en: [
+      "Draggable, resizable subwindows with clearer tabs — keep an account open beside Cash Box",
+      "Focus follows the active window (z-order), and minimized windows stay on a quick dock",
+    ],
+  },
   "2.9.24": {
     ar: [
       "صندوق النقد: أودع رأس مال المالك برصيد جارٍ مستقل، وصرفه يظهر كمصروف مزرعة وفي الصندوق",
@@ -1242,6 +1257,9 @@ const T = {
     exportAccount: "تصدير الحساب", accountOf: "حساب", perUnit: "سعر الوحدة",
     account: "الحساب", accounts: "الحسابات المفتوحة", transactions: "الحركات",
     openAccount: "فتح الحساب", closeTab: "إغلاق", noOpenAccounts: "لا حسابات مفتوحة",
+    popOutWindow: "فتح في نافذة", dockWindow: "إرجاع للتبويب", minimizeWindow: "تصغير",
+    restoreWindow: "استعادة", windowDock: "النوافذ المصغّرة", closeWindow: "إغلاق النافذة",
+    winTabsHint: "اسحب حافة النافذة لتغيير الحجم · انقر للتركيز",
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", searchCustomers: "ابحث عن زبون…", searchParty: "ابحث بالاسم أو الهاتف…",
@@ -1752,6 +1770,9 @@ const T = {
     exportAccount: "Export account", accountOf: "Account", perUnit: "Unit price",
     account: "Account", accounts: "Open accounts", transactions: "Transactions",
     openAccount: "Open account", closeTab: "Close", noOpenAccounts: "No open accounts",
+    popOutWindow: "Open in window", dockWindow: "Dock to tab", minimizeWindow: "Minimize",
+    restoreWindow: "Restore", windowDock: "Minimized windows", closeWindow: "Close window",
+    winTabsHint: "Drag a window edge to resize · click to focus",
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", searchCustomers: "Search customers…", searchParty: "Search name or phone…",
@@ -9331,6 +9352,12 @@ function FarmApp() {
   const [custSort, setCustSort] = useState("nameAsc");
   const [custQ, setCustQ] = useState("");
   const [openAcc, setOpenAcc] = useState([]);          // customers kept open as tabs
+  const [deskWins, setDeskWins] = useState([]);         // floating subwindows
+  const [viewport, setViewport] = useState(() => (
+    typeof window !== "undefined"
+      ? { width: window.innerWidth, height: window.innerHeight }
+      : { width: 1280, height: 800 }
+  ));
   const [accTab, setAccTab] = useState("overview");
   const [txFilters, setTxFilters] = useState({ q: "", status: "all", from: "", to: "", sort: "newest" });
   const [selSupp, setSelSupp] = useState(null);
@@ -9352,6 +9379,17 @@ function FarmApp() {
   MONEY.view = moneyView;
   DATE_LANG.lang = lang === "ar" ? "ar" : "en";
   useEffect(() => { applyThemeColors(theme); }, [theme]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  /* Phone / narrow tablet: floating windows hide in CSS — clear them so tabs stay the single source of truth. */
+  useEffect(() => {
+    if (viewport.width >= 900) return;
+    setDeskWins((wins) => (wins.length ? [] : wins));
+  }, [viewport.width]);
 
   const t = (k) => T[lang][k] ?? k;
   const dir = T[lang].dir;
@@ -9485,13 +9523,13 @@ function FarmApp() {
     toastTimer.current = setTimeout(() => setToast(""), 1700);
   };
   const openAccount = (id, tab) => {
-    setOpenAcc((list) => (list.includes(id) ? list : [...list, id]));
+    setOpenAcc((list) => wmOpenTab(list, id));
     setSelCust(id);
     if (tab) setAccTab(tab);
     else setAccTab("overview");
   };
   const openSupplier = (id, tab) => {
-    setOpenSupp((list) => (list.includes(id) ? list : [...list, id]));
+    setOpenSupp((list) => wmOpenTab(list, id));
     setSelSupp(id);
     if (tab) setSuppTab(tab);
     else setSuppTab("open");
@@ -9511,15 +9549,88 @@ function FarmApp() {
     setSheet(null);
   };
   const closeAccount = (id) => {
-    setOpenAcc((list) => { const next = list.filter((x) => x !== id);
-      if (selCust === id) setSelCust(next.length ? next[next.length - 1] : null);
-      return next; });
+    setOpenAcc((list) => {
+      const { ids, selected } = wmCloseTab(list, id, selCust);
+      setSelCust(selected);
+      return ids;
+    });
+    setDeskWins((wins) => wmClose(wins, `cust:${id}`));
   };
   const closeSupplier = (id) => {
-    setOpenSupp((list) => { const next = list.filter((x) => x !== id);
-      if (selSupp === id) setSelSupp(next.length ? next[next.length - 1] : null);
-      return next; });
+    setOpenSupp((list) => {
+      const { ids, selected } = wmCloseTab(list, id, selSupp);
+      setSelSupp(selected);
+      return ids;
+    });
+    setDeskWins((wins) => wmClose(wins, `supp:${id}`));
   };
+  const focusDeskWin = useCallback((id) => {
+    setDeskWins((wins) => focusWindow(wins, id));
+  }, []);
+  const closeDeskWin = useCallback((id) => {
+    setDeskWins((wins) => wmClose(wins, id));
+  }, []);
+  const minimizeDeskWin = useCallback((id) => {
+    setDeskWins((wins) => toggleMinimize(wins, id));
+  }, []);
+  const moveDeskWin = useCallback((id, patch) => {
+    setDeskWins((wins) => moveWindow(wins, id, patch, viewport));
+  }, [viewport]);
+  const popOutCustomer = useCallback((id) => {
+    const c = customers.find((x) => x.id === id);
+    if (!c) return;
+    const winId = `cust:${id}`;
+    setDeskWins((wins) => upsertWindow(wins, {
+      id: winId, kind: "customer", title: customerLabel(c, t),
+      payload: { customerId: id },
+      geom: {
+        x: 48 + (wins.length % 4) * 28,
+        y: 72 + (wins.length % 4) * 28,
+        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
+        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
+      },
+    }, viewport));
+    setSelCust(null);
+    setOpenAcc((list) => wmOpenTab(list, id));
+  }, [customers, t, viewport]);
+  const popOutSupplier = useCallback((id) => {
+    const s = suppliers.find((x) => x.id === id);
+    if (!s) return;
+    const winId = `supp:${id}`;
+    setDeskWins((wins) => upsertWindow(wins, {
+      id: winId, kind: "supplier", title: s.name,
+      payload: { supplierId: id },
+      geom: {
+        x: 72 + (wins.length % 4) * 28,
+        y: 96 + (wins.length % 4) * 28,
+        width: Math.min(560, Math.max(360, viewport.width * 0.4)),
+        height: Math.min(640, Math.max(420, viewport.height * 0.7)),
+      },
+    }, viewport));
+    setSelSupp(null);
+    setOpenSupp((list) => wmOpenTab(list, id));
+  }, [suppliers, viewport]);
+  const dockDeskWin = (id) => {
+    const w = deskWins.find((x) => x.id === id);
+    if (!w) return;
+    if (w.kind === "customer" && w.payload?.customerId) {
+      openAccount(w.payload.customerId);
+      navigate("sales", { clearSheet: false });
+    } else if (w.kind === "supplier" && w.payload?.supplierId) {
+      openSupplier(w.payload.supplierId);
+      navigate("suppliers", { clearSheet: false });
+    }
+    setDeskWins((wins) => wmClose(wins, id));
+  };
+  const activeDeskWinId = useMemo(() => activeWindowId(deskWins), [deskWins]);
+  const floatingCustIds = useMemo(
+    () => new Set(deskWins.filter((w) => w.kind === "customer" && !w.minimized).map((w) => w.payload?.customerId).filter(Boolean)),
+    [deskWins],
+  );
+  const floatingSuppIds = useMemo(
+    () => new Set(deskWins.filter((w) => w.kind === "supplier" && !w.minimized).map((w) => w.payload?.supplierId).filter(Boolean)),
+    [deskWins],
+  );
 
   const resolveSupplierPatch = (payload) => {
     let list = suppliers;
@@ -12016,29 +12127,36 @@ function FarmApp() {
         })}
       </div>
       {/* open accounts, minimised into named tabs */}
-      {openAcc.length > 0 && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
-          borderBottom: `1px solid ${C.line}`, paddingBottom: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, marginInlineEnd: 4 }}>{t("accounts")}</span>
-          {openAcc.map((id) => { const c = customers.find((x) => x.id === id); if (!c) return null;
-            const due = (ledger.byCustomer[id] || {}).due || 0;
-            const on = selCust === id;
-            return <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6,
-              background: on ? C.field : C.paper, color: on ? "#fff" : C.ink,
-              border: `1px solid ${on ? C.field : C.line}`, borderBottom: `3px solid ${on ? C.field : C.line}`,
-              borderRadius: "4px 4px 0 0", padding: "7px 10px", fontSize: 13.5, fontWeight: 600 }}>
-              <button onClick={() => { setSelCust(id); }}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
-                  fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
-                {customerLabel(c, t)}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
-              <button onClick={() => closeAccount(id)} title={t("closeTab")}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
-            </span>; })}
-        </div>)}
+      <WinTabStrip t={t} label={t("accounts")}
+        selected={selCust}
+        tabs={openAcc.map((id) => {
+          const c = customers.find((x) => x.id === id); if (!c) return null;
+          const due = (ledger.byCustomer[id] || {}).due || 0;
+          return {
+            id, title: customerLabel(c, t),
+            meta: due > 0.009 ? fmtC(due, S.rate, lang) : "",
+            urgent: due > 0.009,
+          };
+        }).filter(Boolean)}
+        onSelect={(id) => {
+          if (floatingCustIds.has(id)) {
+            focusDeskWin(`cust:${id}`);
+            setSelCust(null);
+            return;
+          }
+          setSelCust(id);
+        }}
+        onClose={closeAccount}
+        onPopOut={viewport.width >= 900 ? popOutCustomer : undefined}
+      />
 
-      {selCustomer
+      {selCustomer && !floatingCustIds.has(selCustomer.id)
         ? <DeskCard title={`🧾 ${customerLabel(selCustomer, t)}`}
-            right={<button className="dk-pill" onClick={() => setSelCust(null)}>‹ {t("backToCustomers")}</button>}>
+            right={<div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {viewport.width >= 900 && <button type="button" className="dk-pill" title={t("popOutWindow")}
+                onClick={() => popOutCustomer(selCustomer.id)}>⧉ {t("popOutWindow")}</button>}
+              <button type="button" className="dk-pill" onClick={() => setSelCust(null)}>‹ {t("backToCustomers")}</button>
+            </div>}>
             <CustomerAccount customer={selCustomer} ledger={ledger} entries={entries} lang={lang} t={t} S={S} wide onCtx={openCtx}
               no={accNo(customers, selCustomer.id)} onExport={() => doAccountExcel(selCustomer)}
               tab={accTab} setTab={setAccTab} filters={txFilters} setFilters={setTxFilters}
@@ -12208,29 +12326,35 @@ function FarmApp() {
 
   const DeskSuppliers = (
     <div style={{ display: "grid", gap: 14 }}>
-      {openSupp.length > 0 && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
-          borderBottom: `1px solid ${C.line}`, paddingBottom: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: C.inkSoft, marginInlineEnd: 4 }}>{t("supplierAccounts")}</span>
-          {openSupp.map((id) => { const s = suppliers.find((x) => x.id === id); if (!s) return null;
-            const due = (supplierLedger.bySupplier[id] || {}).due || 0;
-            const on = selSupp === id;
-            return <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 6,
-              background: on ? C.field : C.paper, color: on ? "#fff" : C.ink,
-              border: `1px solid ${on ? C.field : C.line}`, borderBottom: `3px solid ${on ? C.field : C.line}`,
-              borderRadius: "4px 4px 0 0", padding: "7px 10px", fontSize: 13.5, fontWeight: 600 }}>
-              <button type="button" onClick={() => { setSelSupp(id); setSuppTab("open"); }}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer",
-                  fontFamily: "var(--body)", fontWeight: 600, fontSize: 13.5, padding: 0 }}>
-                {s.name}{due > 0 ? <span style={{ fontFamily: "var(--mono)", opacity: .8 }}> · {fmtC(due, S.rate, lang)}</span> : ""}</button>
-              <button type="button" onClick={() => closeSupplier(id)} title={t("closeTab")}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", opacity: .7, padding: 0, fontSize: 13 }}>✕</button>
-            </span>; })}
-        </div>)}
+      <WinTabStrip t={t} label={t("supplierAccounts")}
+        selected={selSupp}
+        tabs={openSupp.map((id) => {
+          const s = suppliers.find((x) => x.id === id); if (!s) return null;
+          const due = (supplierLedger.bySupplier[id] || {}).due || 0;
+          return {
+            id, title: s.name,
+            meta: due > 0.009 ? fmtC(due, S.rate, lang) : "",
+            urgent: due > 0.009,
+          };
+        }).filter(Boolean)}
+        onSelect={(id) => {
+          if (floatingSuppIds.has(id)) {
+            focusDeskWin(`supp:${id}`);
+            setSelSupp(null);
+            return;
+          }
+          setSelSupp(id);
+          setSuppTab("open");
+        }}
+        onClose={closeSupplier}
+        onPopOut={viewport.width >= 900 ? popOutSupplier : undefined}
+      />
 
-      {selSupplier
+      {selSupplier && !floatingSuppIds.has(selSupplier.id)
         ? <DeskCard title={`🤝 ${selSupplier.name}`}
-            right={<div style={{ display: "flex", gap: 7 }}>
+            right={<div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {viewport.width >= 900 && <button type="button" className="dk-pill" title={t("popOutWindow")}
+                onClick={() => popOutSupplier(selSupplier.id)}>⧉ {t("popOutWindow")}</button>}
               <button type="button" className="dk-pill"
                 onClick={() => setSheet({ k: "supplierBill", sid: selSupplier.id })}>＋ {t("logSupplierBill")}</button>
               <button type="button" className="dk-pill"
@@ -13319,6 +13443,66 @@ function FarmApp() {
 
       {palette && <Palette items={paletteItems} onClose={() => setPalette(false)} lang={lang} t={t}
         favorites={favKeys} onToggleFav={toggleFav} />}
+      {sortByZ(deskWins).map((w) => {
+        if (w.kind === "customer") {
+          const cust = customers.find((c) => c.id === w.payload?.customerId);
+          if (!cust) return null;
+          return (
+            <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin}>
+              <div className="subwin-toolbar">
+                <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
+                <button type="button" className="dk-pill" onClick={() => setSheet({ k: "newSale", cid: cust.id })}>🧾 {t("newSale")}</button>
+                <button type="button" className="dk-pill" onClick={() => setSheet({ k: "payment", cid: cust.id })}>💵 {t("recordPayment")}</button>
+              </div>
+              <CustomerAccount customer={cust} ledger={ledger} entries={entries} lang={lang} t={t} S={S} wide onCtx={openCtx}
+                no={accNo(customers, cust.id)} onExport={() => doAccountExcel(cust)}
+                tab={accTab} setTab={setAccTab} filters={txFilters} setFilters={setTxFilters}
+                onNewSale={() => setSheet({ k: "newSale", cid: cust.id })}
+                onPayment={() => setSheet({ k: "payment", cid: cust.id })}
+                onStatement={() => setSheet({ k: "docgen", id: cust.id, cid: cust.id, kinds: ["statement"] })}
+                onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: cust.id })}
+                onDeleteTx={(iv) => setSheet({ k: "voidSales", ids: [iv.id] })}
+                onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
+                onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
+                onDoc={(iv) => setSheet({ k: "docgen", id: iv.id, cid: cust.id,
+                  kinds: isOwing(iv.due) || !isOwing(iv.paidAmount) ? ["invoice", "statement"] : ["invoice", "receipt", "statement"] })}
+                onManage={() => setSheet({ k: "customerManage", cid: cust.id })} />
+            </SubWindow>
+          );
+        }
+        if (w.kind === "supplier") {
+          const sup = suppliers.find((s) => s.id === w.payload?.supplierId);
+          if (!sup) return null;
+          return (
+            <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
+              onMove={moveDeskWin} onResize={moveDeskWin}>
+              <div className="subwin-toolbar">
+                <button type="button" className="dk-pill" onClick={() => dockDeskWin(w.id)}>{t("dockWindow")}</button>
+                <button type="button" className="dk-pill" onClick={() => setSheet({ k: "supplierBill", sid: sup.id })}>＋ {t("logSupplierBill")}</button>
+                <button type="button" className="dk-pill" onClick={() => setSheet({ k: "paySupplier", sid: sup.id })}>💵 {t("paySupplier")}</button>
+              </div>
+              <SupplierAccount supplier={sup} ledger={supplierLedger} entries={entries} lang={lang} t={t} S={S}
+                no={supplierNo(suppliers, sup.id)}
+                tab={["open", "payments", "all", "activity"].includes(suppTab) ? suppTab : "open"} setTab={setSuppTab}
+                onBill={() => setSheet({ k: "supplierBill", sid: sup.id })}
+                onPay={(billId) => setSheet({ k: "paySupplier", sid: sup.id, billId: billId || null })}
+                onDoc={(bill) => setSheet({ k: "docgen", scope: "supplier", sid: sup.id,
+                  id: bill.id, kinds: ["purchase", "statement"] })}
+                onEditBill={(id) => {
+                  if (isOpeningBillId(id)) setSheet({ k: "editSupplier", sid: sup.id });
+                  else setSheet({ k: "supplierBill", sid: sup.id, id });
+                }}
+                onEditPay={(p) => setSheet({ k: "editMoney", id: p.id })}
+                onManage={() => setSheet({ k: "editSupplier", sid: sup.id })} />
+            </SubWindow>
+          );
+        }
+        return null;
+      })}
+      <WindowDock windows={deskWins} t={t} onRestore={minimizeDeskWin} onClose={closeDeskWin} onFocus={focusDeskWin} />
       {sheets}
       <CtxMenu menu={ctx} onClose={() => setCtx(null)} />
       {toast && <div className="toast">✓ {toast}</div>}
@@ -13500,7 +13684,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .banner.green{background:#E6F6F0;color:#0F5C4D;border-radius:12px;margin:8px 12px 0;border:1px solid ${C.green}44}
 .banner.red{background:#F8E9EC;color:#7A1A2E;border-radius:12px;margin:8px 12px 0;border:1px solid ${C.red}44}
 .sheet-wrap{position:fixed;inset:0;background:${C.overlay};display:flex;align-items:center;
-  justify-content:center;z-index:20;animation:fade .14s ease;padding:16px;
+  justify-content:center;z-index:100;animation:fade .14s ease;padding:16px;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .sheet{background:${C.paper};color:${C.ink};width:100%;max-width:560px;max-height:86vh;max-height:86dvh;
   display:flex;flex-direction:column;overflow:hidden;
@@ -13540,7 +13724,7 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   color:${C.ink};min-height:44px;cursor:pointer;user-select:none}
 .sale-pick-card{display:flex;gap:8px;align-items:flex-start}
 .sale-pick-card .data-card{flex:1;min-width:0}
-.sel-bar{position:fixed;inset-inline:0;bottom:0;z-index:70;display:flex;align-items:center;gap:10px;
+.sel-bar{position:fixed;inset-inline:0;bottom:0;z-index:115;display:flex;align-items:center;gap:10px;
   flex-wrap:wrap;background:${C.fieldDeep};color:#fff;box-shadow:0 -8px 24px rgba(0,0,0,.2);
   padding:10px 16px calc(10px + env(safe-area-inset-bottom));font-family:var(--body)}
 .sel-bar > span{font-weight:800;flex:1;min-width:8em}
@@ -13555,8 +13739,70 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .sheet-icon-btn:hover{border-color:${C.field};background:${C.card}}
 .grabber{display:none}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:${C.fieldDeep};color:#fff;
-  border-radius:999px;padding:12px 22px;font-weight:600;z-index:30;animation:rise .18s var(--ease);
+  border-radius:999px;padding:12px 22px;font-weight:600;z-index:110;animation:rise .18s var(--ease);
   box-shadow:0 10px 30px rgba(12,58,49,.35)}
+
+/* ---- window manager: tabs + floating subwindows ---- */
+.win-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  border-bottom:1px solid ${C.line};padding-bottom:8px;margin-bottom:2px}
+.win-tabs-label{font-size:12px;font-weight:700;color:${C.inkSoft};flex-shrink:0}
+.win-tabs-scroll{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap;min-width:0;flex:1}
+.win-tab{display:inline-flex;align-items:center;gap:2px;background:${C.paper};color:${C.ink};
+  border:1px solid ${C.line};border-bottom:3px solid ${C.line};border-radius:8px 8px 0 0;
+  padding:2px 4px 2px 8px;font-size:13.5px;font-weight:600;max-width:min(280px,70vw);
+  transition:background .14s ease,border-color .14s ease,box-shadow .14s ease}
+.win-tab.on{background:${C.field};color:#fff;border-color:${C.field};box-shadow:0 6px 16px rgba(12,58,49,.18)}
+.win-tab.urgent:not(.on){border-bottom-color:${C.rose}}
+.win-tab-main{background:none;border:none;color:inherit;cursor:pointer;font:inherit;padding:6px 4px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;text-align:start}
+.win-tab-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.win-tab-meta{font-family:var(--mono);font-size:11.5px;opacity:.85}
+.win-tab-x{background:none;border:none;color:inherit;cursor:pointer;opacity:.7;padding:4px 6px;
+  border-radius:6px;font-size:13px;line-height:1;min-width:28px;min-height:28px}
+.win-tab-x:hover{opacity:1;background:rgba(0,0,0,.08)}
+.win-tab.on .win-tab-x:hover{background:rgba(255,255,255,.18)}
+.subwin{position:fixed;display:flex;flex-direction:column;background:${C.paper};color:${C.ink};
+  border:1px solid ${C.line};border-radius:14px;box-shadow:0 18px 48px rgba(12,58,49,.28);
+  overflow:hidden;min-width:320px;min-height:240px;animation:rise .18s var(--ease);
+  touch-action:none}
+.subwin.on{box-shadow:0 22px 56px rgba(12,58,49,.36),0 0 0 2px ${C.field}55}
+.subwin-head{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:grab;
+  background:linear-gradient(180deg,${C.card} 0%,${C.paper} 100%);border-bottom:1px solid ${C.line};
+  user-select:none;flex-shrink:0}
+.subwin-head:active{cursor:grabbing}
+.subwin-title{flex:1;min-width:0;font-family:var(--display);font-weight:700;font-size:15px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.subwin-actions{display:inline-flex;gap:4px;flex-shrink:0}
+.subwin-btn{width:32px;height:32px;border-radius:8px;border:1px solid ${C.line};background:${C.card};
+  color:${C.ink};cursor:pointer;font-size:14px;line-height:1;display:inline-grid;place-items:center;padding:0}
+.subwin-btn:hover{border-color:${C.field};background:${C.paper}}
+.subwin-btn.danger:hover{border-color:${C.red};color:${C.red}}
+.subwin-body{flex:1;min-height:0;overflow:auto;padding:12px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.subwin-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.subwin-edge{position:absolute;z-index:2}
+.subwin-edge.n,.subwin-edge.s{left:8px;right:8px;height:6px;cursor:ns-resize}
+.subwin-edge.e,.subwin-edge.w{top:8px;bottom:8px;width:6px;cursor:ew-resize}
+.subwin-edge.n{top:0}.subwin-edge.s{bottom:0}.subwin-edge.e{right:0}.subwin-edge.w{left:0}
+.subwin-edge.se,.subwin-edge.sw,.subwin-edge.ne,.subwin-edge.nw{width:14px;height:14px}
+.subwin-edge.se{right:0;bottom:0;cursor:nwse-resize}
+.subwin-edge.sw{left:0;bottom:0;cursor:nesw-resize}
+.subwin-edge.ne{right:0;top:0;cursor:nesw-resize}
+.subwin-edge.nw{left:0;top:0;cursor:nwse-resize}
+.win-dock{position:fixed;inset-inline:12px;bottom:12px;z-index:55;display:flex;align-items:center;gap:8px;
+  flex-wrap:wrap;padding:8px 10px;background:${C.card};border:1px solid ${C.line};border-radius:12px;
+  box-shadow:0 10px 28px rgba(12,58,49,.18);max-width:calc(100vw - 24px)}
+.win-dock-label{font-size:11.5px;font-weight:700;color:${C.inkSoft};margin-inline-end:4px}
+.win-dock-chip{display:inline-flex;align-items:center;gap:6px;background:${C.paper};border:1px solid ${C.line};
+  border-radius:999px;padding:6px 10px;font-size:12.5px;font-weight:700;cursor:pointer;color:${C.ink};
+  font-family:var(--body);max-width:220px}
+.win-dock-chip:hover{border-color:${C.field}}
+.win-dock-x{opacity:.65;padding:0 2px}
+@media (max-width:899px){
+  .subwin,.win-dock{display:none!important}
+}
+@media print{
+  .subwin,.win-dock,.win-tabs{display:none!important}
+}
 .hscroll::-webkit-scrollbar{display:none}
 .hscroll{scrollbar-width:none;border-bottom:1px solid ${C.line}}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:${C.line};border-radius:0}
@@ -13591,7 +13837,7 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .money-tog-prev{display:flex;align-items:center;gap:10px;background:${C.paper};border:1px solid ${C.line};
   border-radius:4px;padding:8px 12px}
 .money-tog-prev-lb{font-size:11.5px;font-weight:700;color:${C.inkSoft}}
-.ctx-menu{position:fixed;z-index:80;min-width:190px;max-width:240px;background:${C.card};border:1px solid ${C.line};
+.ctx-menu{position:fixed;z-index:120;min-width:190px;max-width:240px;background:${C.card};border:1px solid ${C.line};
   border-radius:5px;box-shadow:0 10px 28px rgba(27,32,51,.18);padding:4px;font-family:var(--body)}
 .ctx-item{display:flex;align-items:center;gap:8px;width:100%;background:transparent;border:none;border-radius:3px;
   padding:8px 10px;cursor:pointer;text-align:start;font-family:var(--body);font-size:13.5px;font-weight:600;color:${C.ink}}
@@ -13977,7 +14223,7 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .dk thead th{position:sticky;top:0;background:${C.paper};z-index:1}
 .dk tfoot td{position:sticky;bottom:0;background:${C.paper}}
 .dk table{font-variant-numeric:tabular-nums}
-.pal-back{position:fixed;inset:0;background:${C.overlay};z-index:40;display:flex;
+.pal-back{position:fixed;inset:0;background:${C.overlay};z-index:105;display:flex;
   align-items:flex-start;justify-content:center;padding-top:12vh;animation:fade .12s ease}
 .pal{width:min(620px,92vw);background:${C.card};border:1px solid ${C.line};border-top:3px solid ${C.tag};
   border-radius:5px;box-shadow:0 20px 50px rgba(27,32,51,.28);overflow:hidden;animation:drop .14s ease}
@@ -14135,6 +14381,158 @@ body.sale-picking .dk-body{padding-bottom:76px}
    ===================================================================== */
 
 const dsh = sh1;
+
+/* Shared account / supplier tab strip — keyboard friendly, scrollable. */
+function WinTabStrip({ label, tabs, selected, onSelect, onClose, onPopOut, t }) {
+  if (!tabs || !tabs.length) return null;
+  return (
+    <div className="win-tabs" role="tablist" aria-label={label || t("accounts")}>
+      {label ? <span className="win-tabs-label">{label}</span> : null}
+      <div className="win-tabs-scroll">
+        {tabs.map((tab) => {
+          const on = selected === tab.id;
+          return (
+            <div key={tab.id} role="tab" aria-selected={on}
+              className={`win-tab${on ? " on" : ""}${tab.urgent ? " urgent" : ""}`}>
+              <button type="button" className="win-tab-main" onClick={() => onSelect(tab.id)}
+                title={tab.title}>
+                <span className="win-tab-title">{tab.title}</span>
+                {tab.meta ? <span className="win-tab-meta">{tab.meta}</span> : null}
+              </button>
+              {onPopOut && (
+                <button type="button" className="win-tab-x" title={t("popOutWindow")}
+                  aria-label={t("popOutWindow")}
+                  onClick={(e) => { e.stopPropagation(); onPopOut(tab.id); }}>⧉</button>
+              )}
+              <button type="button" className="win-tab-x" title={t("closeTab")}
+                aria-label={t("closeTab")}
+                onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}>✕</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* Floating, focusable, resizable subwindow. Sheets stay above (z ≥ 100). */
+function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMove, onResize, children }) {
+  const dragRef = useRef(null);
+  const geom = win.geom || normalizeGeom({});
+  useEffect(() => {
+    const drag = dragRef.current;
+    if (!drag) return undefined;
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+  const startDrag = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    onFocus(win.id);
+    const start = { x: e.clientX, y: e.clientY, gx: geom.x, gy: geom.y };
+    dragRef.current = { mode: "move", start };
+    const move = (ev) => {
+      if (!dragRef.current || dragRef.current.mode !== "move") return;
+      const d = dragRef.current.start;
+      onMove(win.id, {
+        x: d.gx + (ev.clientX - d.x),
+        y: d.gy + (ev.clientY - d.y),
+      });
+    };
+    const up = () => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const startResize = (e, edge) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onFocus(win.id);
+    const start = {
+      x: e.clientX, y: e.clientY,
+      gx: geom.x, gy: geom.y, gw: geom.width, gh: geom.height, edge,
+    };
+    dragRef.current = { mode: "resize", start };
+    const move = (ev) => {
+      if (!dragRef.current || dragRef.current.mode !== "resize") return;
+      const d = dragRef.current.start;
+      const dx = ev.clientX - d.x;
+      const dy = ev.clientY - d.y;
+      let next = { x: d.gx, y: d.gy, width: d.gw, height: d.gh };
+      if (d.edge.includes("e")) next.width = d.gw + dx;
+      if (d.edge.includes("s")) next.height = d.gh + dy;
+      if (d.edge.includes("w")) { next.width = d.gw - dx; next.x = d.gx + dx; }
+      if (d.edge.includes("n")) { next.height = d.gh - dy; next.y = d.gy + dy; }
+      onResize(win.id, next);
+    };
+    const up = () => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  if (win.minimized) return null;
+  return createPortal(
+    <div className={`subwin${active ? " on" : ""}`}
+      style={{
+        left: geom.x, top: geom.y, width: geom.width, height: geom.height,
+        zIndex: win.z || WM_Z_BASE,
+      }}
+      onPointerDown={() => onFocus(win.id)}
+      role="dialog" aria-label={win.title}>
+      <header className="subwin-head" onPointerDown={startDrag}>
+        <span className="subwin-title">{win.title}</span>
+        <span className="subwin-actions" onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className="subwin-btn" title={t("minimizeWindow")}
+            aria-label={t("minimizeWindow")} onClick={() => onMinimize(win.id)}>─</button>
+          <button type="button" className="subwin-btn danger" title={t("closeWindow")}
+            aria-label={t("closeWindow")} onClick={() => onClose(win.id)}>✕</button>
+        </span>
+      </header>
+      <div className="subwin-body">{children}</div>
+      <i className="subwin-edge n" onPointerDown={(e) => startResize(e, "n")} />
+      <i className="subwin-edge s" onPointerDown={(e) => startResize(e, "s")} />
+      <i className="subwin-edge e" onPointerDown={(e) => startResize(e, "e")} />
+      <i className="subwin-edge w" onPointerDown={(e) => startResize(e, "w")} />
+      <i className="subwin-edge se" onPointerDown={(e) => startResize(e, "se")} />
+      <i className="subwin-edge ne" onPointerDown={(e) => startResize(e, "ne")} />
+      <i className="subwin-edge sw" onPointerDown={(e) => startResize(e, "sw")} />
+      <i className="subwin-edge nw" onPointerDown={(e) => startResize(e, "nw")} />
+    </div>,
+    document.body,
+  );
+}
+
+function WindowDock({ windows, t, onRestore, onClose, onFocus }) {
+  const mins = (windows || []).filter((w) => w.minimized);
+  if (!mins.length) return null;
+  return (
+    <div className="win-dock" role="toolbar" aria-label={t("windowDock")}>
+      <span className="win-dock-label">{t("windowDock")}</span>
+      {mins.map((w) => (
+        <button type="button" key={w.id} className="win-dock-chip"
+          onClick={() => { onRestore(w.id); onFocus(w.id); }}
+          title={t("restoreWindow")}>
+          {w.title}
+          <span className="win-dock-x" onClick={(e) => { e.stopPropagation(); onClose(w.id); }}
+            aria-label={t("closeWindow")}>✕</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DeskCard({ children, style, title, right, pad = 16 }) {
   return <section className="desk-card" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 16,
     boxShadow: "0 1px 2px rgba(21,42,36,.04)", ...style }}>
