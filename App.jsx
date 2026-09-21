@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.41", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.42", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.42": {
+    ar: [
+      "تسجيل حركة المدير: إيداع أو سحب فقط",
+    ],
+    en: [
+      "Manager Tracker record sheet: inject or withdraw only",
+    ],
+  },
   "2.9.41": {
     ar: [
       "صناديق الملخص في الصندوق ومتتبع المديرين: ألوان أوضح حسب الإشارة وتخطيط أنظف",
@@ -7106,8 +7114,8 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
   </Sheet>;
 }
 
-/** Single record sheet — person tracker posts into cashbox / expenses / suppliers / sales. */
-function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers = [], preManagerId, onSave, onClose }) {
+/** Record sheet — cash inject or withdraw against a person’s tracker. */
+function ManagerMoveSheet({ lang, t, S, managers = [], preManagerId, onSave, onClose }) {
   const pre = (managers || []).find((f) => f.id === preManagerId);
   const [kind, setKind] = useState("inject");
   const [amount, setAmount] = useState(0);
@@ -7117,25 +7125,13 @@ function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers
   const [managerId, setManagerId] = useState(pre?.id || "");
   const [who, setWho] = useState(pre?.name || "");
   const [purpose, setPurpose] = useState("");
-  const [cat, setCat] = useState("fuel");
-  const [supplierId, setSupplierId] = useState("");
-  const [customerId, setCustomerId] = useState("");
   const active = (managers || []).filter((f) => !f.archived);
-  const activeS = (suppliers || []).filter((s) => !s.archived);
-  const activeC = (customers || []).filter((c) => !c.archived && !isWalkInCustomer(c));
   const kinds = [
     ["inject", t("mgrInject"), t("mgrViaCash")],
     ["withdraw", t("mgrWithdraw"), t("mgrViaCash")],
-    ["oop", t("mgrOop"), t("mgrViaExp")],
-    ["supplier", t("mgrSupplierPay"), t("mgrViaSupp")],
-    ["retained", t("mgrRetainSale"), t("mgrViaSales")],
   ];
-  const hint = ({
-    inject: t("mgrInjectHint"), withdraw: t("mgrWithdrawHint"), oop: t("mgrOopHint"),
-    supplier: t("mgrSupplierHint"), retained: t("mgrRetainHint"),
-  })[kind];
-  const needParty = kind === "supplier" ? !!supplierId : kind === "retained" ? !!customerId : true;
-  const canSave = amount > 0 && who.trim() && needParty;
+  const hint = kind === "withdraw" ? t("mgrWithdrawHint") : t("mgrInjectHint");
+  const canSave = amount > 0 && who.trim();
   const build = () => {
     const mid = managerId || null;
     const label = who.trim();
@@ -7144,34 +7140,19 @@ function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers
       at: dayStamp(date), currency: cur, rateUsed: S.rate,
       amount: fromCents(toCents(amount)), purpose: purpose.trim(), note: note.trim(),
     };
-    if (kind === "inject") return { ...base, type: OWNER_FUND_TYPE, allocations: [] };
-    if (kind === "withdraw") return { ...base, type: OWNER_FUND_WITHDRAW_TYPE, recipientLabel: label };
-    if (kind === "oop") {
-      return {
-        ...base, type: "expense", category: cat || "other",
-        paidAmount: base.amount, payStatus: "paid", vendor: "", supplierId: null,
-        recipientLabel: label, spendPurpose: purpose.trim(),
-        group: expGroupOf(cat || "other") || "otherGrp",
-        fundedBy: MGR_FUNDED, origin: MGR_OOP_ORIGIN,
-      };
+    if (kind === "withdraw") {
+      return { ...base, type: OWNER_FUND_WITHDRAW_TYPE, recipientLabel: label };
     }
-    if (kind === "supplier") {
-      return { ...base, type: "supplierPay", supplierId, paidBy: MGR_FUNDED, method: "manager" };
-    }
-    return {
-      ...base, type: "payment", customerId,
-      amount_cash: base.amount, amount_expense_offset: 0, total_credited: base.amount,
-      retainedBy: MGR_RETAINED, method: "manager_retain",
-    };
+    return { ...base, type: OWNER_FUND_TYPE, allocations: [] };
   };
   return <Sheet title={`📒 ${t("mgrRecord")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.45 }}>{hint}</div>
     <Step n="1" label={t("mgrRecordHint")} />
-    <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
       {kinds.map(([k, lb, via]) => (
         <button key={k} type="button" onClick={() => setKind(k)}
           style={{
-            textAlign: "start", padding: "10px 12px", borderRadius: 4, cursor: "pointer", font: "inherit",
+            textAlign: "start", padding: "12px 14px", borderRadius: 4, cursor: "pointer", font: "inherit",
             border: `1.5px solid ${kind === k ? C.field : C.line}`,
             background: kind === k ? `${C.field}14` : C.card, color: C.ink,
           }}>
@@ -7195,29 +7176,6 @@ function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
         step={5} currency={cur} setCurrency={setCur} />
     </div>
-    {kind === "supplier" && <>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("suppliers")}</div>
-      <SearchPick t={t} value={supplierId || ""} onChange={(id) => setSupplierId(id || "")}
-        extras={[{ id: "", label: "—" }]}
-        items={activeS.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
-      <div style={{ height: 8 }} />
-    </>}
-    {kind === "retained" && <>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("customers")}</div>
-      <SearchPick t={t} value={customerId || ""} onChange={(id) => setCustomerId(id || "")}
-        extras={[{ id: "", label: "—" }]}
-        items={activeC.map((c) => ({ id: c.id, label: customerLabel(c, t), hint: c.phone || "", search: `${customerLabel(c, t)} ${c.phone || ""}` }))} />
-      <div style={{ height: 8 }} />
-    </>}
-    {kind === "oop" && <>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("category")}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-        {[["fuel", lang === "ar" ? "وقود" : "Fuel"], ["feed", lang === "ar" ? "علف" : "Feed"],
-          ["labour", lang === "ar" ? "أجور" : "Labour"], ["other", lang === "ar" ? "أخرى" : "Other"]].map(([k, lb]) => (
-          <Chip key={k} active={cat === k} onClick={() => setCat(k)}>{lb}</Chip>
-        ))}
-      </div>
-    </>}
     <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
       style={{ ...inp, marginBottom: 10 }} />
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
@@ -14488,7 +14446,7 @@ function FarmApp() {
           }} />}
 
         {sheet?.k === "mgrMove" && <ManagerMoveSheet lang={lang} t={t} S={S}
-          managers={activeManagers} suppliers={activeSuppliers} customers={activeCustomers}
+          managers={activeManagers}
           preManagerId={sheet.funderId || sheet.managerId || mgrSel}
           onClose={() => setSheet(null)}
           onSave={(v) => {
