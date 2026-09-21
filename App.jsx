@@ -54,9 +54,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.34", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.35", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.35": {
+    ar: [
+      "صندوق النقد يركز على السجل والرصيد — كشف رأس المال يُستخرج كمستند PDF للطباعة",
+    ],
+    en: [
+      "Cash box stays focused on the register — owner fund statement exports as a printable PDF document",
+    ],
+  },
   "2.9.34": {
     ar: [
       "لوحة رمز الدخول تبقى دائماً إنجليزية (أرقام لاتينية) وفي وسط الشاشة",
@@ -9396,7 +9404,69 @@ function DocFoot({ thanks, footer, note, signLeft, signRight, showSigns = true }
   </>;
 }
 
+function PrintOwnerFund({ lang, t, S, me, fund }) {
+  const money = (v) => fmt(v, S.rate, lang);
+  const rows = fund?.rows || [];
+  const td = { padding: "7px 8px", borderBottom: `1px solid ${C.line}`, fontSize: 11.5 };
+  return <div dir={T[lang].dir} style={{ fontFamily: "var(--body)", color: "#000", padding: "9mm" }}>
+    <DocHead lang={lang} logo={S.logo} farmName={S.farmName} farmPhone={S.farmPhone} farmAddress={S.farmAddress}
+      title={t("cashOwnerLedger")}
+      meta={[
+        [t("generated"), `${dmy(Date.now(), lang)} ${hhmm(Date.now())}`],
+        [t("preparedBy"), me?.name || "—"],
+        [t("ownerFundBal"), money(fund?.balance || 0)],
+        [t("rate"), S.rate > 0 ? `1 USD = ${nf(S.rate)} LBP` : "—"],
+      ]} />
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, margin: "14px 0 16px" }}>
+      {[[t("ownerFundInjected"), fund?.injected || 0, C.green],
+        [t("ownerFundSpent"), fund?.spent || 0, C.red],
+        [t("ownerFundBal"), fund?.balance || 0, C.field]].map(([lb, v, tone]) => (
+        <div key={lb} style={{ border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: "#666" }}>{lb}</div>
+          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 16, color: tone, marginTop: 4 }}>{money(v)}</div>
+        </div>
+      ))}
+    </div>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ background: "#F4F2EC" }}>
+          {[t("cashEntryDate"), t("cashContributor"), t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")].map((h, i) => (
+            <th key={h} style={{ ...td, textAlign: i >= 3 ? "end" : "start", fontWeight: 700, fontSize: 10.5 }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "#666" }}>{t("ownerFundEmpty")}</td></tr>
+        ) : rows.map((r) => {
+          const purpose = r.purpose
+            || (r.allocations?.length ? formatAllocations(r.allocations, money) : "")
+            || r.note || "—";
+          return (
+            <tr key={r.id}>
+              <td style={{ ...td, fontFamily: "var(--mono)" }}>{dayKey(r.at)}</td>
+              <td style={td}>{r.contributor || "—"}</td>
+              <td style={{ ...td, color: "#555" }}>{purpose}</td>
+              <td style={{ ...td, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700, color: C.green }}>
+                {r.dir === "in" ? money(r.amount) : "—"}</td>
+              <td style={{ ...td, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>
+                {r.dir === "out" ? money(r.amount) : "—"}</td>
+              <td style={{ ...td, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{money(r.balance)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    <div style={{ marginTop: 18, fontSize: 10.5, color: "#666" }}>
+      {(S.farmName || "").trim() ? `${S.farmName.trim()} · ` : ""}{t("poweredBy")} · v{VERSION.code}
+    </div>
+  </div>;
+}
+
 function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = [], supplierLedger }) {
+  if (doc.kind === "ownerFund") {
+    return <PrintOwnerFund lang={lang} t={tApp} S={S} me={me} fund={doc.fund || {}} />;
+  }
   if (doc.kind === "receiptImg") {
     const dlang = doc.docLang || lang;
     return <div dir={T[dlang].dir} style={{ ...docWrap, padding: 16 }}>
@@ -12268,7 +12338,6 @@ function FarmApp() {
             [t("cashIn"), cashBox.totalIn, C.green],
             [t("cashOut"), cashBox.totalOut, C.red],
             [t("cashNet"), cashNet, cashNet >= 0 ? C.green : C.red],
-            [t("ownerFundBal"), ownerFund.balance, C.fieldDeep || C.field],
           ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
             <span>{label}</span>
             <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
@@ -12282,82 +12351,12 @@ function FarmApp() {
             💸 {t("cashOwnerSpend")}</button>
           <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw" })}>
             ↩ {t("cashOwnerWithdraw")}</button>
-        </div>
-        {(ownerFund.injected > 0 || ownerFund.spent > 0) && (
-          <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>
-            {t("ownerFundInjected")} {fmtC(ownerFund.injected, S.rate, lang)}
-            {" · "}{t("ownerFundSpent")} {fmtC(ownerFund.spent, S.rate, lang)}
-          </div>
-        )}
-      </DeskCard>
-
-      <DeskCard title={`📈 ${t("cashInsights")} · ${cashPeriodLabel}`}>
-        <div className="cash-insights">
-          <div className="cash-insight-stat">
-            <span>{t("cashReserve")}</span>
-            <b style={{ color: cashInsights.reserve >= 0 ? C.green : C.red }}>{fmtC(cashInsights.reserve, S.rate, lang)}</b>
-            <small>{t("ownerFundBal")}: {fmtC(cashInsights.ownerReserve, S.rate, lang)}</small>
-          </div>
-          <div className="cash-insight-col">
-            <b>{t("cashByCategory")}</b>
-            {(cashInsights.cats.length ? cashInsights.cats : [{ label: "—", amount: 0 }]).map((g) => {
-              const max = cashInsights.cats[0]?.amount || 1;
-              const pct = Math.round((g.amount / max) * 100);
-              return <div className="cash-flow-row" key={g.label}>
-                <div><b>{g.label}</b></div>
-                <strong style={{ color: C.red }}>{fmtC(g.amount, S.rate, lang)}</strong>
-                <i><span style={{ width: `${pct}%`, background: C.red }} /></i>
-              </div>;
-            })}
-          </div>
-          <div className="cash-insight-col">
-            <b>{t("cashTopContributors")}</b>
-            {(cashInsights.people.length ? cashInsights.people : [{ label: "—", amount: 0 }]).map((g) => {
-              const max = cashInsights.people[0]?.amount || 1;
-              const pct = Math.round((g.amount / max) * 100);
-              return <div className="cash-flow-row" key={g.label}>
-                <div><b>{g.label}</b></div>
-                <strong style={{ color: C.green }}>{fmtC(g.amount, S.rate, lang)}</strong>
-                <i><span style={{ width: `${pct}%`, background: C.green }} /></i>
-              </div>;
-            })}
-          </div>
+          <button type="button" className="dk-pill"
+            onClick={() => setSheet({ k: "ownerFundDoc" })}
+            title={t("cashOwnerLedger")}>
+            📄 {t("cashOwnerLedger")}</button>
         </div>
       </DeskCard>
-
-      {ownerFund.rows.length > 0 && <DeskCard pad={0} title={`🏦 ${t("cashOwnerLedger")}`}>
-        <div className="overflow-x-auto">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              <Th>{t("cashEntryDate")}</Th>
-              <Th>{t("cashContributor")}</Th>
-              <Th>{t("cashPurpose")}</Th>
-              <Th align="end">{t("cashIn")}</Th>
-              <Th align="end">{t("cashOut")}</Th>
-              <Th align="end">{t("cashBalance")}</Th>
-            </tr></thead>
-            <tbody>
-              {ownerFund.rows.map((r) => (
-                <tr key={r.id} style={{ cursor: "pointer" }}
-                  onClick={() => {
-                    const e = r.source;
-                    if (!e) return;
-                    if (e.type === OWNER_FUND_TYPE) setSheet({ k: "ownerFund", id: e.id });
-                    else if (e.type === OWNER_FUND_WITHDRAW_TYPE) setSheet({ k: "ownerFundWithdraw", id: e.id });
-                    else if (e.type === "expense") setSheet({ k: "editExpense", id: e.id });
-                  }}>
-                  <Td mono>{dayKey(r.at)}</Td>
-                  <Td>{r.contributor || "—"}</Td>
-                  <Td tone={C.inkSoft}>{r.purpose || (r.allocations?.length ? formatAllocations(r.allocations, (n) => fmtC(n, S.rate, lang)) : r.note) || "—"}</Td>
-                  <Td align="end" mono strong tone={C.green}>{r.dir === "in" ? fmtC(r.amount, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong tone={C.red}>{r.dir === "out" ? fmtC(r.amount, S.rate, lang) : "—"}</Td>
-                  <Td align="end" mono strong>{fmtC(r.balance, S.rate, lang)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </DeskCard>}
 
       {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
@@ -12530,6 +12529,37 @@ function FarmApp() {
 
       {cashFlowOpen && <DeskCard title={`📊 ${t("cashFlowBreakdown")} · ${cashPeriodLabel}`}
         right={<button type="button" className="dk-pill" onClick={() => setCashFlowOpen(false)}>− {t("cashHideFlow")}</button>}>
+        <div className="cash-insights" style={{ marginBottom: 14 }}>
+          <div className="cash-insight-stat">
+            <span>{t("cashReserve")}</span>
+            <b style={{ color: cashInsights.reserve >= 0 ? C.green : C.red }}>{fmtC(cashInsights.reserve, S.rate, lang)}</b>
+            <small>{t("ownerFundBal")}: {fmtC(cashInsights.ownerReserve, S.rate, lang)}</small>
+          </div>
+          <div className="cash-insight-col">
+            <b>{t("cashByCategory")}</b>
+            {(cashInsights.cats.length ? cashInsights.cats : [{ label: "—", amount: 0 }]).slice(0, 5).map((g) => {
+              const max = cashInsights.cats[0]?.amount || 1;
+              const pct = Math.round((g.amount / max) * 100);
+              return <div className="cash-flow-row" key={g.label}>
+                <div><b>{g.label}</b></div>
+                <strong style={{ color: C.red }}>{fmtC(g.amount, S.rate, lang)}</strong>
+                <i><span style={{ width: `${pct}%`, background: C.red }} /></i>
+              </div>;
+            })}
+          </div>
+          <div className="cash-insight-col">
+            <b>{t("cashTopContributors")}</b>
+            {(cashInsights.people.length ? cashInsights.people : [{ label: "—", amount: 0 }]).slice(0, 5).map((g) => {
+              const max = cashInsights.people[0]?.amount || 1;
+              const pct = Math.round((g.amount / max) * 100);
+              return <div className="cash-flow-row" key={g.label}>
+                <div><b>{g.label}</b></div>
+                <strong style={{ color: C.green }}>{fmtC(g.amount, S.rate, lang)}</strong>
+                <i><span style={{ width: `${pct}%`, background: C.green }} /></i>
+              </div>;
+            })}
+          </div>
+        </div>
         {cashFlow.length === 0 ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</div>
           : <div className="cash-flow-list">
             {cashFlow.map((g) => {
@@ -14145,6 +14175,12 @@ function FarmApp() {
           onPrint={() => { setSheet(null); doPrint(null); }}>
           <PrintReport {...{ lang, t, sums, prevSums, S, days, me, animals, workers, customers, scoped: financialScoped,
             scopedSales, summaryLines, series, periodLabel, outstanding }} />
+        </DocPreviewSheet>}
+
+        {sheet?.k === "ownerFundDoc" && <DocPreviewSheet lang={lang} t={t} title={`🏦 ${t("cashOwnerLedger")}`}
+          onClose={() => setSheet(null)}
+          onPrint={() => { setSheet(null); doPrint({ kind: "ownerFund", fund: ownerFund, docLang: lang }); }}>
+          <PrintOwnerFund lang={lang} t={t} S={S} me={me} fund={ownerFund} />
         </DocPreviewSheet>}
 
         {sheet?.k === "receiptPreview" && sheet.src && <DocPreviewSheet lang={lang} t={t}
