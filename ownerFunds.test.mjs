@@ -39,12 +39,20 @@ describe("owner fund tracking", () => {
       funderId: "f1", contributorLabel: "Manager", purpose: "diesel",
     }), 3000);
     assert.equal(cashTakeCents({
+      type: "expense", amount: 30, payStatus: "paid", origin: "cash_take",
+      contributorLabel: "Manager",
+    }), 3000);
+    assert.equal(cashTakeCents({
       type: "expense", fundedBy: "owner", amount: 30, payStatus: "paid",
       recipientLabel: "Market",
     }), 0);
     assert.equal(cashTakeCents({
+      type: "expense", amount: 30, payStatus: "paid",
+      recipientLabel: "Someone",
+    }), 0);
+    assert.equal(cashTakeCents({
       type: "expense", amount: 30, payStatus: "paid", supplierId: "s1",
-      contributorLabel: "Manager",
+      funderId: "f1",
     }), 0);
   });
 
@@ -59,7 +67,7 @@ describe("owner fund tracking", () => {
         at: "2026-01-03T10:00:00.000Z", contributorLabel: "Khaled", purpose: "return" },
     ]);
     assert.equal(fund.injected, 200);
-    assert.equal(fund.spent, 100);
+    assert.equal(fund.spent, 75);
     assert.equal(fund.withdrawn, 25);
     assert.equal(fund.balance, 100);
     assert.equal(fund.rows.length, 3);

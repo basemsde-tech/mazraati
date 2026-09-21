@@ -39,10 +39,11 @@ export function ownerWithdrawCents(e) {
   return Math.max(0, toCents(e.amount));
 }
 
-/** Paid cash taken from the drawer by a named person (e.g. manager → diesel). */
+/** Paid cash taken from the drawer by a named person (e.g. manager → diesel).
+ *  Requires an explicit take tag — bare recipientLabel must not count (owner spend / misc). */
 export function cashTakeCents(e) {
   if (!e || e.type !== "expense") return 0;
-  if (!(e.funderId || e.takenBy || e.contributorLabel || e.recipientLabel)) return 0;
+  if (!(e.funderId || e.takenBy || e.origin === "cash_take")) return 0;
   /* Owner-funded spends are already counted via ownerSpendCents — avoid double count. */
   if (isOwnerFundedExpense(e)) return 0;
   if (e.supplierId) return 0;
@@ -220,10 +221,8 @@ export function buildOwnerFund(entries, funders = []) {
     const row = mapFundRow(e, balC, funders);
     balC += row._deltaC;
     if (row.dir === "in") injectedC += toCents(row.amount);
-    else {
-      spentC += toCents(row.amount);
-      if (row.kind === "withdraw") withdrawnC += toCents(row.amount);
-    }
+    else if (row.kind === "withdraw") withdrawnC += toCents(row.amount);
+    else spentC += toCents(row.amount);
     const { _deltaC, ...clean } = row;
     return { ...clean, balance: fromCents(balC) };
   });
@@ -287,11 +286,10 @@ export function buildFunderAccounts(entries = [], funders = []) {
     const row = mapFundRow(e, balC, funders);
     balC += row._deltaC;
     if (row.dir === "in") acc.injected = fromCents(toCents(acc.injected) + toCents(row.amount));
-    else {
+    else if (row.kind === "withdraw" || row.kind === "take") {
+      acc.withdrawn = fromCents(toCents(acc.withdrawn || 0) + toCents(row.amount));
+    } else {
       acc.spent = fromCents(toCents(acc.spent) + toCents(row.amount));
-      if (row.kind === "withdraw" || row.kind === "take") {
-        acc.withdrawn = fromCents(toCents(acc.withdrawn || 0) + toCents(row.amount));
-      }
     }
     acc.balance = fromCents(balC);
     const { _deltaC, ...clean } = row;

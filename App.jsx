@@ -27,7 +27,7 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
 import {
   OWNER_FUND_TYPE, OWNER_FUND_WITHDRAW_TYPE, OWNER_FUNDED_BY,
   isOwnerInjection, isOwnerFundedExpense, isOwnerWithdraw,
-  buildOwnerFund, buildFunderAccounts, normalizeAllocations, formatAllocations,
+  buildOwnerFund, buildFunderAccounts, formatAllocations,
   contributorOf, funderNameOf, matchFunderId, syncFundersFromEntries, cashTakeCents,
 } from "./ownerFunds.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
@@ -55,9 +55,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.36", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.37", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.37": {
+    ar: [
+      "إصلاح تتبع سحب النقد: لا يُحسب إلا عند وسم صريح، وفصل المودَع عن المسحوب في حسابات الأشخاص",
+    ],
+    en: [
+      "Cash-take tracking only counts explicitly tagged takes; person accounts no longer double-count withdrawn vs spent",
+    ],
+  },
   "2.9.36": {
     ar: [
       "صندوق النقد أوضح: حساب لكل شخص — من أودع أو سحب نقداً (مثل المدير لشراء مازوت) يظهر بالاسم في السجل",
