@@ -54,9 +54,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.33", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.34", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.34": {
+    ar: [
+      "لوحة رمز الدخول تبقى دائماً إنجليزية (أرقام لاتينية) وفي وسط الشاشة",
+    ],
+    en: [
+      "Passcode keypad stays English (Latin digits) and centered on screen",
+    ],
+  },
   "2.9.33": {
     ar: [
       "شريط مهام سفلي بنمط ويندوز ١١ مع أيقونات ومعاينة عند التمرير — التبويبات والنوافذ في مكان واحد",
@@ -5071,26 +5079,30 @@ function Empty({ icon, title, sub, cta, onCta }) {
   </div>;
 }
 function Keypad({ value, onChange, max = 6, onSubmit }) {
-  const key = (label, fn, style) => <button type="button" key={label} onClick={fn} style={{ height: 58, borderRadius: 6, border: "none",
-    background: C.card, color: C.ink, fontFamily: "var(--mono)", fontWeight: 700, fontSize: 24, cursor: "pointer", boxShadow: sh1, ...style }}>{label}</button>;
+  const key = (label, fn, extraClass = "") => (
+    <button type="button" key={label} onClick={fn} className={`pass-keypad-key${extraClass ? ` ${extraClass}` : ""}`}>{label}</button>
+  );
   useEffect(() => {
     if (!onSubmit) return;
     const onKey = (e) => { if (e.key === "Enter" && value.length >= 4) { e.preventDefault(); onSubmit(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [value, onSubmit]);
-  return <div>
-    <div style={{ display: "flex", justifyContent: "center", gap: 12, margin: "6px 0 18px" }}>
-      {Array.from({ length: max }, (_, i) => <span key={i} style={{ width: 13, height: 13, borderRadius: "50%",
-        background: i < value.length ? C.field : "transparent", border: `2.5px solid ${i < value.length ? C.field : C.line}` }} />)}
+  return (
+    <div className="pass-keypad" dir="ltr" lang="en">
+      <div className="pass-keypad-dots" aria-hidden="true">
+        {Array.from({ length: max }, (_, i) => (
+          <span key={i} className={`pass-keypad-dot${i < value.length ? " on" : ""}`} />
+        ))}
+      </div>
+      <div className="pass-keypad-grid">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => key(d, () => value.length < max && onChange(value + d)))}
+        <span aria-hidden="true" />
+        {key("0", () => value.length < max && onChange(value + "0"))}
+        {key("⌫", () => onChange(value.slice(0, -1)), "mute")}
+      </div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9 }}>
-      {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => key(d, () => value.length < max && onChange(value + d)))}
-      <span />
-      {key("0", () => value.length < max && onChange(value + "0"))}
-      {key("⌫", () => onChange(value.slice(0, -1)), { background: C.paper, fontSize: 20 })}
-    </div>
-  </div>;
+  );
 }
 function PhotoPicker({ photo, onPick, onClear, t }) {
   const [busy, setBusy] = useState(false);
@@ -9040,7 +9052,7 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
     </div>);
 
   if (mode === "reset" && target) return shell(
-    <div className="gate-step">
+    <div className={`gate-step${resetStep === 2 ? " gate-pin" : ""}`}>
       <div className="gate-user-chip">
         <span className="gate-avatar" style={{ background: target.color }}>{target.emoji}</span>
         <div><div className="gate-user-name">{target.name}</div>
@@ -9071,7 +9083,7 @@ function ProfileGate({ lang, setLang, t, profiles, preId, clearPre, onPick, onCr
     </div>);
 
   if (mode === "pin" && target) return shell(
-    <div className="gate-step">
+    <div className="gate-step gate-pin">
       <div className="gate-user-chip">
         <span className="gate-avatar" style={{ background: target.color }}>{target.emoji}</span>
         <div><div className="gate-user-name">{target.name}</div>
@@ -14629,6 +14641,27 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .gate-h2{font-family:var(--display);font-weight:700;font-size:21px;margin:0 0 6px;color:${C.ink}}
 .gate-lead{font-size:14px;color:${C.inkSoft};font-weight:500;margin:0 0 18px;line-height:1.5}
 .gate-label{font-size:14px;font-weight:700;color:${C.inkSoft};margin:0 0 8px}
+.gate-pin{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:min(62vh,560px);text-align:center;width:100%;max-width:360px;margin:0 auto}
+.gate-pin .gate-user-chip{width:100%;justify-content:center;text-align:start}
+.gate-pin .gate-label{width:100%}
+.gate-pin .pass-keypad{margin:8px auto 4px}
+.gate-pin button{width:100%;max-width:320px}
+.gate-desk:has(.gate-pin) .gate-shell{justify-content:center}
+.gate-desk:has(.gate-pin) .gate-hero{display:none}
+.gate-desk:has(.gate-pin) .gate-panel{flex:1;max-width:none;width:100%;align-items:center;justify-content:center;padding:24px 16px}
+.gate-desk:has(.gate-pin) .gate-card{max-width:420px;width:100%;margin:0 auto}
+.pass-keypad{direction:ltr!important;unicode-bidi:isolate;max-width:300px;width:100%;
+  margin-inline:auto;text-align:center;font-family:var(--mono),"Segoe UI",system-ui,sans-serif}
+.pass-keypad-dots{display:flex;justify-content:center;gap:12px;margin:6px 0 18px}
+.pass-keypad-dot{width:13px;height:13px;border-radius:50%;background:transparent;border:2.5px solid ${C.line}}
+.pass-keypad-dot.on{background:${C.field};border-color:${C.field}}
+.pass-keypad-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;direction:ltr}
+.pass-keypad-key{height:58px;border-radius:6px;border:none;background:${C.card};color:${C.ink};
+  font-family:var(--mono),"Segoe UI",system-ui,sans-serif;font-weight:700;font-size:24px;cursor:pointer;
+  box-shadow:0 1px 2px ${C.shadow},0 0 0 1px ${C.line}}
+.pass-keypad-key.mute{background:${C.paper};font-size:20px}
+.pass-keypad-key:active{transform:scale(.97)}
 .gate-err{color:${C.red};font-weight:700;font-size:14px;margin:10px 0 0;text-align:center}
 .gate-actions{display:grid;gap:10px}
 .gate-field{display:block;margin-bottom:4px}
