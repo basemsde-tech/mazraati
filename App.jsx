@@ -11186,6 +11186,17 @@ function FarmApp() {
     if (!mgrSel) return null;
     return buildManagerStatement(entries, managers, mgrSel, mgrBounds);
   }, [entries, managers, mgrSel, mgrBounds]);
+
+  const mgrViewRows = useMemo(() => {
+    const src = mgrSel
+      ? (mgrStatement?.rows || [])
+      : (managerAccounts.list || []).flatMap((a) => (a.rows || []).map((r) => ({ ...r, _who: a.name, _mid: a.id })));
+    const qn = mgrQ.trim().toLowerCase();
+    return src.filter((r) => {
+      if (!qn) return true;
+      return `${r.day} ${r.purpose || ""} ${r.note || ""} ${r.kind} ${r.dept} ${r._who || ""}`.toLowerCase().includes(qn);
+    }).slice().reverse();
+  }, [mgrSel, mgrStatement, managerAccounts, mgrQ]);
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
     const person = cashPerson.trim().toLowerCase();
@@ -12976,16 +12987,6 @@ function FarmApp() {
     : mgrRange === "fy" ? t("mgrFy")
     : mgrRange === "custom" ? `${mgrBounds.from || "…"} — ${mgrBounds.to || "…"}`
     : t("thisMonth");
-  const mgrViewRows = useMemo(() => {
-    const src = mgrSel
-      ? (mgrStatement?.rows || [])
-      : (managerAccounts.list || []).flatMap((a) => (a.rows || []).map((r) => ({ ...r, _who: a.name, _mid: a.id })));
-    const qn = mgrQ.trim().toLowerCase();
-    return src.filter((r) => {
-      if (!qn) return true;
-      return `${r.day} ${r.purpose || ""} ${r.note || ""} ${r.kind} ${r.dept} ${r._who || ""}`.toLowerCase().includes(qn);
-    }).slice().reverse();
-  }, [mgrSel, mgrStatement, managerAccounts, mgrQ]);
   const exportMgrCsv = () => {
     if (!mgrStatement) return;
     const headers = [t("cashEntryDate"), "dept", "kind", t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")];
