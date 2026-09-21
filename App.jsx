@@ -27,7 +27,8 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
 import {
   OWNER_FUND_TYPE, OWNER_FUND_WITHDRAW_TYPE, OWNER_FUNDED_BY,
   isOwnerInjection, isOwnerFundedExpense, isOwnerWithdraw,
-  buildOwnerFund, normalizeAllocations, formatAllocations, contributorOf,
+  buildOwnerFund, buildFunderAccounts, normalizeAllocations, formatAllocations,
+  contributorOf, funderNameOf, matchFunderId, syncFundersFromEntries, cashTakeCents,
 } from "./ownerFunds.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 import {
@@ -54,9 +55,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.35", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.36", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.36": {
+    ar: [
+      "صندوق النقد أوضح: حساب لكل شخص — من أودع أو سحب نقداً (مثل المدير لشراء مازوت) يظهر بالاسم في السجل",
+    ],
+    en: [
+      "Clearer cash box: a person account for who deposited or took cash (e.g. manager for diesel) — named on the register",
+    ],
+  },
   "2.9.35": {
     ar: [
       "صندوق النقد يركز على السجل والرصيد — كشف رأس المال يُستخرج كمستند PDF للطباعة",
@@ -1104,6 +1113,10 @@ const T = {
     cashCustomerReceipts: "قبض الزبائن", cashOtherOut: "مصروفات أخرى",
     cashOwnerInject: "إيداع رأس مال المالك", cashOwnerSpend: "صرف من رأس المال",
     cashOwnerWithdraw: "سحب رأس مال", cashContributor: "المساهم / الاسم", cashSubAccount: "حساب فرعي",
+    cashPeople: "حسابات الأشخاص", cashAddPerson: "إضافة شخص", cashPersonName: "اسم الشخص",
+    cashDeposit: "إيداع نقد", cashTake: "سحب من الصندوق", cashTakeHint: "يسجّل من أخذ النقد ولأي غرض (مثل مازوت) ويظهر صرفاً في الصندوق.",
+    cashTakenBy: "سحب بواسطة", cashDepositedBy: "إيداع من", cashPersonBal: "صافي الشخص",
+    cashPersonTaken: "مسحوب", cashPersonDeposited: "مودَع", cashOpenPerson: "فتح الحساب",
     cashPurpose: "الغرض / الاستخدام", cashAllocations: "توزيع المبلغ", cashAllocLabel: "البند",
     cashAllocAmount: "المبلغ", cashAddAlloc: "إضافة بند", cashRecipient: "المستلم",
     cashPersonFilter: "حسب الشخص", cashCategoryFilter: "حسب التصنيف",
@@ -1678,6 +1691,10 @@ const T = {
     cashCustomerReceipts: "Customer receipts", cashOtherOut: "Other expenses",
     cashOwnerInject: "Owner capital in", cashOwnerSpend: "Spend owner capital",
     cashOwnerWithdraw: "Withdraw capital", cashContributor: "Contributor / name", cashSubAccount: "Sub-account",
+    cashPeople: "People accounts", cashAddPerson: "Add person", cashPersonName: "Person name",
+    cashDeposit: "Cash in", cashTake: "Take from cash box", cashTakeHint: "Records who took the cash and what for (e.g. diesel) as a cash-box outflow.",
+    cashTakenBy: "Taken by", cashDepositedBy: "Deposited by", cashPersonBal: "Person net",
+    cashPersonTaken: "Taken", cashPersonDeposited: "Deposited", cashOpenPerson: "Open account",
     cashPurpose: "Purpose / usage", cashAllocations: "Amount allocation", cashAllocLabel: "Item",
     cashAllocAmount: "Amount", cashAddAlloc: "Add line", cashRecipient: "Recipient",
     cashPersonFilter: "By person", cashCategoryFilter: "By category",
@@ -2651,7 +2668,7 @@ function applyAppUpdate(onMsg) {
 
 const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
-  profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
+  profiles: [], animals: [], workers: [], customers: [], suppliers: [], funders: [], obligations: [], entries: [],
 });
 const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "ownerFundWithdraw", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
 function trimEntries(list) {
@@ -2674,6 +2691,11 @@ function migrate(farm) {
   f.settings.docTpl = { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow", ...(f.settings.docTpl || {}) };
   if (!Array.isArray(f.obligations)) f.obligations = [];
   if (!Array.isArray(f.suppliers)) f.suppliers = [];
+  if (!Array.isArray(f.funders)) f.funders = [];
+  {
+    const synced = syncFundersFromEntries(f.funders, f.entries || [], () => uid());
+    f.funders = synced.funders;
+  }
   /* Older records used separate types for feed and livestock purchases.
      Normalize new expense fields without changing their historic paid meaning. */
   f.entries = (f.entries || []).map((e) => {
@@ -3054,10 +3076,14 @@ function cashMoveAmount(e) {
   if (e.type === "med") return +(e.cost || 0);
   return 0;
 }
-function cashPersonOf(e, customers = [], suppliers = [], t) {
+function cashPersonOf(e, customers = [], suppliers = [], t, funders = []) {
   if (!e) return "";
-  const tagged = contributorOf(e);
+  const tagged = contributorOf(e, funders);
   if (tagged) return tagged;
+  if (e.funderId) {
+    const n = funderNameOf(funders, e.funderId);
+    if (n) return n;
+  }
   if (e.type === "payment" || e.customerId) {
     const n = customerNameById(customers, e.customerId, t);
     if (n && n !== "—") return n;
@@ -3088,7 +3114,7 @@ function cashDeductAmount(e) {
   if (isCustomerPaidExpense(e) && !e.saleReimburseId && toCents(e.amount) > 0) return +(e.amount || 0);
   return 0;
 }
-function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom, from, to } = {}) {
+function buildCashBox(entries, { customers = [], suppliers = [], funders = [], lang, t, custom, from, to } = {}) {
   const cust = (id) => customerNameById(customers, id, t);
   const supp = (id) => (suppliers.find((s) => s.id === id) || {}).name || "—";
   const src = withImpliedSupplierPays(entries);
@@ -3148,20 +3174,19 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
     const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
     let parts;
     if (isOwnerInjection(e)) {
-      const who = contributorOf(e);
+      const who = cashPersonOf(e, customers, suppliers, t, funders);
       const allocTxt = formatAllocations(e.allocations, (n) => String(n));
       parts = [
-        { text: t("cashOwnerInject"), tone: "in" },
-        who ? { text: ` · ${who}`, tone: "name" } : null,
+        { text: t("cashDepositedBy"), tone: "in" },
+        who ? { text: ` · ${who}`, tone: "name" } : { text: ` · ${t("cashOwnerInject")}`, tone: "muted" },
         e.purpose ? { text: ` — ${e.purpose}`, tone: "muted" } : null,
         allocTxt ? { text: ` → ${allocTxt}`, tone: "muted" } : null,
-        e.subAccount ? { text: ` · ${e.subAccount}`, tone: "muted" } : null,
         e.note && !e.purpose ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     } else if (isOwnerWithdraw(e)) {
-      const who = contributorOf(e);
+      const who = cashPersonOf(e, customers, suppliers, t, funders);
       parts = [
-        { text: t("cashOwnerWithdraw"), tone: "out" },
+        { text: t("cashTakenBy"), tone: "out" },
         who ? { text: ` · ${who}`, tone: "name" } : null,
         e.purpose ? { text: ` — ${e.purpose}`, tone: "muted" } : null,
         e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
@@ -3200,27 +3225,40 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
     } else {
       const payReimb = e.origin === "payment_reimbursement";
       const ownerSpend = isOwnerFundedExpense(e);
+      const taken = cashTakeCents(e) > 0;
       const label = payReimb ? (e.note || e.name || catLabel(e.category, lang, custom))
         : catLabel(e.category, lang, custom);
+      const taker = cashPersonOf(e, customers, suppliers, t, funders);
       const who = e.vendor || e.party || (payReimb ? cust(e.customerId) : "");
-      parts = [
-        { text: payReimb ? t("reimbursement") : (ownerSpend ? t("cashOwnerSpend") : t("cashPaidFor")), tone: "out" },
-        { text: " · " },
-        { text: label, tone: "name" },
-        who ? { text: ` · ${who}`, tone: "muted" } : null,
-        ownerSpend && e.recipientLabel ? { text: ` · ${e.recipientLabel}`, tone: "name" } : null,
-        ownerSpend ? { text: ` · ${t("ownerFund")}`, tone: "muted" } : null,
-        (e.purpose || e.spendPurpose) ? { text: ` — ${e.purpose || e.spendPurpose}`, tone: "muted" } : null,
-        !payReimb && e.note && !(e.purpose || e.spendPurpose) ? { text: ` — ${e.note}`, tone: "muted" } : null,
-      ].filter(Boolean);
+      if (taken && !payReimb) {
+        parts = [
+          { text: t("cashTakenBy"), tone: "out" },
+          taker ? { text: ` · ${taker}`, tone: "name" } : null,
+          { text: " · " },
+          { text: label || (e.purpose || t("cashPaidFor")), tone: "name" },
+          e.purpose && label ? { text: ` — ${e.purpose}`, tone: "muted" } : null,
+          e.note && !e.purpose ? { text: ` — ${e.note}`, tone: "muted" } : null,
+        ].filter(Boolean);
+      } else {
+        parts = [
+          { text: payReimb ? t("reimbursement") : (ownerSpend ? t("cashOwnerSpend") : t("cashPaidFor")), tone: "out" },
+          { text: " · " },
+          { text: label, tone: "name" },
+          who ? { text: ` · ${who}`, tone: "muted" } : null,
+          ownerSpend && e.recipientLabel ? { text: ` · ${e.recipientLabel}`, tone: "name" } : null,
+          ownerSpend ? { text: ` · ${t("ownerFund")}`, tone: "muted" } : null,
+          (e.purpose || e.spendPurpose) ? { text: ` — ${e.purpose || e.spendPurpose}`, tone: "muted" } : null,
+          !payReimb && e.note && !(e.purpose || e.spendPurpose) ? { text: ` — ${e.note}`, tone: "muted" } : null,
+        ].filter(Boolean);
+      }
     }
     return {
       id: e.id, at: e.at, day: dayKey(e.at), ref, parts, dir: isIn ? "in" : "out",
       debit: isIn ? amt : 0, credit: isIn ? 0 : amt, balance: bal, source: e,
-      person: cashPersonOf(e, customers, suppliers, t),
+      person: cashPersonOf(e, customers, suppliers, t, funders),
       category: cashCategoryOf(e, lang, custom, t),
       purpose: e.purpose || e.spendPurpose || "",
-      contributor: contributorOf(e),
+      contributor: contributorOf(e, funders),
     };
   });
   return {
@@ -6830,21 +6868,59 @@ function SupplierForm({ lang, t, S, suppliers, initial, onSave, onClose }) {
   </Sheet>;
 }
 
-function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
+function resolveFunderRef(funders, funderId, name, makeId) {
+  const label = String(name || "").trim();
+  let id = funderId || null;
+  let list = Array.isArray(funders) ? funders.slice() : [];
+  let changed = false;
+  if (!id && label) id = matchFunderId(list, label);
+  if (!id && label) {
+    id = typeof makeId === "function" ? makeId() : `fnd-${Date.now()}`;
+    list = [...list, { id, name: label, phone: "", note: "", at: new Date().toISOString() }];
+    changed = true;
+  }
+  const hit = list.find((f) => f.id === id);
+  return { funderId: id || null, contributorLabel: (hit && hit.name) || label, funders: list, changed };
+}
+
+function FunderSheet({ lang, t, initial, onSave, onClose }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [note, setNote] = useState(initial?.note || "");
+  const [err, setErr] = useState("");
+  return <Sheet title={`👤 ${initial ? t("edit") : t("cashAddPerson")}`} onClose={onClose}>
+    <Step n="1" label={t("cashPersonName")} />
+    <input value={name} onChange={(e) => { setName(e.target.value); setErr(""); }}
+      placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} autoFocus />
+    <Step n="2" label={`${t("phone")} — ${t("optional")}`} />
+    <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("phone")}
+      style={{ ...inp, marginBottom: 10 }} inputMode="tel" />
+    <Step n="3" label={`${t("notes")} — ${t("optional")}`} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    {err && <div style={{ color: C.red, fontWeight: 700, marginBottom: 10 }}>{err}</div>}
+    <button type="button" style={primaryBtn} onClick={() => {
+      const n = name.trim();
+      if (!n) return setErr(t("nameNeeded"));
+      onSave({
+        id: initial?.id || uid(), name: n, phone: phone.trim(), note: note.trim(),
+        at: initial?.at || iso(Date.now()), archived: initial?.archived || false,
+      });
+    }}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
+function OwnerFundSheet({ lang, t, S, initial, funders = [], preFunderId, onSave, onDelete, onClose }) {
+  const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.funderId));
   const [amount, setAmount] = useState(initial?.amount || 0);
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
   const [cur, setCur] = useState(initial?.currency || "usd");
-  const [contributor, setContributor] = useState(initial?.contributorLabel || "");
-  const [subAccount, setSubAccount] = useState(initial?.subAccount || "");
+  const [funderId, setFunderId] = useState(pre?.id || initial?.funderId || "");
+  const [contributor, setContributor] = useState(pre?.name || initial?.contributorLabel || "");
   const [purpose, setPurpose] = useState(initial?.purpose || "");
-  const [allocs, setAllocs] = useState(() => {
-    const rows = normalizeAllocations(initial?.allocations || []);
-    return rows.length ? rows : [{ label: "", amount: 0 }];
-  });
-  const setAlloc = (i, patch) => setAllocs((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const addAlloc = () => setAllocs((rows) => [...rows, { label: "", amount: 0 }]);
-  return <Sheet title={`🏦 ${initial ? t("editCashMove") : t("cashOwnerInject")}`} onClose={onClose}>
+  const active = (funders || []).filter((f) => !f.archived);
+  return <Sheet title={`↙ ${initial ? t("editCashMove") : t("cashDeposit")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
       {t("ownerFundHint")}</div>
     <Step n="1" label={t("amount")} />
@@ -6852,38 +6928,32 @@ function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
         step={10} currency={cur} setCurrency={setCur} />
     </div>
-    <Step n="2" label={t("paymentDate")} />
+    <Step n="2" label={t("cashPersonName")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setContributor(f.name); }}>
+          {f.name}</Chip>
+      ))}
+    </div>}
+    <input value={contributor} onChange={(e) => {
+      setContributor(e.target.value);
+      const hit = matchFunderId(active, e.target.value);
+      setFunderId(hit || "");
+    }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={t("paymentDate")} />
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <div style={{ height: 10 }} />
-    <Step n="3" label={t("cashContributor")} />
-    <input value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder={t("cashContributor")}
-      style={{ ...inp, marginBottom: 10 }} />
-    <Step n="4" label={`${t("cashSubAccount")} — ${t("optional")}`} />
-    <input value={subAccount} onChange={(e) => setSubAccount(e.target.value)} placeholder={t("cashSubAccount")}
-      style={{ ...inp, marginBottom: 10 }} />
-    <Step n="5" label={`${t("cashPurpose")} — ${t("optional")}`} />
+    <Step n="4" label={`${t("cashPurpose")} — ${t("optional")}`} />
     <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
       style={{ ...inp, marginBottom: 10 }} />
-    <Step n="6" label={`${t("cashAllocations")} — ${t("optional")}`} />
-    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-      {allocs.map((row, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 8 }}>
-          <input value={row.label} onChange={(e) => setAlloc(i, { label: e.target.value })}
-            placeholder={t("cashAllocLabel")} style={inp} />
-          <MoneyStepper usd={row.amount || 0} onChange={(v) => setAlloc(i, { amount: v })}
-            rate={S.rate} lang={lang} t={t} step={10} />
-        </div>
-      ))}
-      <button type="button" className="dk-pill" onClick={addAlloc}>＋ {t("cashAddAlloc")}</button>
-    </div>
-    <Step n="7" label={`${t("ownerFundNote")} — ${t("optional")}`} />
+    <Step n="5" label={`${t("notes")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
       style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && contributor.trim() ? 1 : .45 }}
+      onClick={() => amount > 0 && contributor.trim() && onSave({
         type: OWNER_FUND_TYPE, amount: fromCents(toCents(amount)), note: note.trim(),
-        contributorLabel: contributor.trim(), subAccount: subAccount.trim(), purpose: purpose.trim(),
-        allocations: normalizeAllocations(allocs, amount),
+        funderId: funderId || null, contributorLabel: contributor.trim(),
+        purpose: purpose.trim(), allocations: [],
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
         ...(initial?.id ? { id: initial.id } : {}),
       })}>✓ {t("save")}</button>
@@ -6891,14 +6961,17 @@ function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
   </Sheet>;
 }
 
-function OwnerFundWithdrawSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
+function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId, onSave, onDelete, onClose }) {
+  const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.funderId));
   const [amount, setAmount] = useState(initial?.amount || 0);
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
-  const [recipient, setRecipient] = useState(initial?.contributorLabel || initial?.recipientLabel || "");
+  const [recipient, setRecipient] = useState(pre?.name || initial?.contributorLabel || initial?.recipientLabel || "");
+  const [funderId, setFunderId] = useState(pre?.id || initial?.funderId || "");
   const [purpose, setPurpose] = useState(initial?.purpose || "");
   const [cur, setCur] = useState(initial?.currency || "usd");
-  return <Sheet title={`🏦 ${initial ? t("editCashMove") : t("cashOwnerWithdraw")}`} onClose={onClose}>
+  const active = (funders || []).filter((f) => !f.archived);
+  return <Sheet title={`↗ ${initial ? t("editCashMove") : t("cashOwnerWithdraw")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
       {t("cashWithdrawHint")}</div>
     <Step n="1" label={t("amount")} />
@@ -6906,9 +6979,17 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, onSave, onDelete, onClose
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
         step={10} currency={cur} setCurrency={setCur} />
     </div>
-    <Step n="2" label={t("cashRecipient")} />
-    <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={t("cashRecipient")}
-      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="2" label={t("cashPersonName")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setRecipient(f.name); }}>
+          {f.name}</Chip>
+      ))}
+    </div>}
+    <input value={recipient} onChange={(e) => {
+      setRecipient(e.target.value);
+      setFunderId(matchFunderId(active, e.target.value) || "");
+    }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
     <Step n="3" label={`${t("cashPurpose")} — ${t("optional")}`} />
     <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
       style={{ ...inp, marginBottom: 10 }} />
@@ -6921,12 +7002,133 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, onSave, onDelete, onClose
     <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && recipient.trim() ? 1 : .45 }}
       onClick={() => amount > 0 && recipient.trim() && onSave({
         type: OWNER_FUND_WITHDRAW_TYPE, amount: fromCents(toCents(amount)),
+        funderId: funderId || null,
         contributorLabel: recipient.trim(), recipientLabel: recipient.trim(),
         purpose: purpose.trim(), note: note.trim(),
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
         ...(initial?.id ? { id: initial.id } : {}),
       })}>✓ {t("save")}</button>
     {initial && onDelete && <DeleteConfirmBlock t={t} warn={deleteWarnFor(initial, t, initial.id)} onDelete={onDelete} />}
+  </Sheet>;
+}
+
+/** Person takes cash from the drawer for a purpose (e.g. diesel) — posts as a paid farm expense. */
+function CashTakeSheet({ lang, t, S, custom, funders = [], preFunderId, initial, onSave, onDelete, onClose }) {
+  const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.funderId || initial?.takenBy));
+  const [amount, setAmount] = useState(initial?.amount || 0);
+  const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
+  const [note, setNote] = useState(initial?.note || "");
+  const [cur, setCur] = useState(initial?.currency || "usd");
+  const [funderId, setFunderId] = useState(pre?.id || initial?.funderId || initial?.takenBy || "");
+  const [who, setWho] = useState(pre?.name || initial?.contributorLabel || initial?.recipientLabel || "");
+  const [purpose, setPurpose] = useState(initial?.purpose || initial?.spendPurpose || "");
+  const [cat, setCat] = useState(initial?.category || "fuel");
+  const active = (funders || []).filter((f) => !f.archived);
+  const catChoices = [
+    ["fuel", lang === "ar" ? "وقود / مازوت" : "Fuel / diesel"],
+    ["feed", lang === "ar" ? "علف" : "Feed"],
+    ["labour", lang === "ar" ? "أجور" : "Labour"],
+    ["medicine", lang === "ar" ? "أدوية" : "Medicine"],
+    ["transport", lang === "ar" ? "نقل" : "Transport"],
+    ["other", lang === "ar" ? "أخرى" : "Other"],
+  ];
+  return <Sheet title={`↗ ${initial ? t("editCashMove") : t("cashTake")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
+      {t("cashTakeHint")}</div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="2" label={t("cashPersonName")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setWho(f.name); }}>
+          {f.name}</Chip>
+      ))}
+    </div>}
+    <input value={who} onChange={(e) => {
+      setWho(e.target.value);
+      setFunderId(matchFunderId(active, e.target.value) || "");
+    }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={t("cashPurpose")} />
+    <input value={purpose} onChange={(e) => setPurpose(e.target.value)}
+      placeholder={lang === "ar" ? "مثال: مازوت للمولد" : "e.g. diesel for generator"}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="4" label={t("category")} />
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+      {catChoices.map(([k, lb]) => (
+        <Chip key={k} active={cat === k} onClick={() => setCat(k)}>{lb}</Chip>
+      ))}
+    </div>
+    <Step n="5" label={t("paymentDate")} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <Step n="6" label={`${t("notes")} — ${t("optional")}`} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && who.trim() ? 1 : .45 }}
+      onClick={() => amount > 0 && who.trim() && onSave({
+        type: "expense", category: cat || "other",
+        amount: fromCents(toCents(amount)), paidAmount: fromCents(toCents(amount)),
+        payStatus: "paid", note: note.trim(), vendor: "",
+        supplierId: null, funderId: funderId || null, takenBy: funderId || null,
+        contributorLabel: who.trim(), recipientLabel: who.trim(),
+        purpose: purpose.trim(), spendPurpose: purpose.trim(),
+        at: dayStamp(date), currency: cur, rateUsed: S.rate,
+        group: expGroupOf(cat || "other") || "otherGrp",
+        fundedBy: null, origin: "cash_take",
+        ...(initial?.id ? { id: initial.id } : {}),
+      })}>✓ {t("save")}</button>
+    {initial && onDelete && <DeleteConfirmBlock t={t} warn={t("deleteExpenseWarn")} onDelete={onDelete} />}
+  </Sheet>;
+}
+
+function FunderAccountSheet({ lang, t, S, account, onDeposit, onTake, onWithdraw, onClose }) {
+  if (!account) return null;
+  return <Sheet title={`👤 ${account.name}`} onClose={onClose}>
+    <div className="cash-overview" style={{ marginBottom: 14 }}>
+      <div className="cash-closing">
+        <span>{t("cashPersonBal")}</span>
+        <Money usd={account.balance} rate={S.rate} lang={lang} size={26} />
+      </div>
+      {[
+        [t("cashPersonDeposited"), account.injected, C.green],
+        [t("cashPersonTaken"), account.withdrawn || account.spent, C.red],
+      ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
+        <span>{label}</span>
+        <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
+      </div>)}
+    </div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      <button type="button" className="dk-pill" onClick={onDeposit}>↙ {t("cashDeposit")}</button>
+      <button type="button" className="dk-pill" onClick={onTake}>↗ {t("cashTake")}</button>
+      <button type="button" className="dk-pill" onClick={onWithdraw}>↩ {t("cashOwnerWithdraw")}</button>
+    </div>
+    {(account.rows || []).length === 0
+      ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</div>
+      : <div style={{ display: "grid", gap: 8 }}>
+        {[...(account.rows || [])].reverse().map((r) => (
+          <div key={r.id} style={{
+            display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline",
+            padding: "10px 12px", background: C.card, border: `1px solid ${C.line}`, borderRadius: 4,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <b style={{ display: "block" }}>{dayKey(r.at)}</b>
+              <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
+                {r.kind === "deposit" ? t("cashDeposit")
+                  : r.kind === "take" ? t("cashTake")
+                  : r.kind === "withdraw" ? t("cashOwnerWithdraw")
+                  : t("cashOwnerSpend")}
+                {r.purpose ? ` — ${r.purpose}` : ""}
+              </span>
+            </div>
+            <b style={{ color: r.dir === "in" ? C.green : C.red, whiteSpace: "nowrap" }}>
+              {r.dir === "in" ? "+" : "−"}{fmtC(r.amount, S.rate, lang)}
+            </b>
+          </div>
+        ))}
+      </div>}
   </Sheet>;
 }
 
@@ -10562,6 +10764,8 @@ function FarmApp() {
   const activeCustomers = useMemo(() => customers.filter((c) => !c.archived), [customers]);
   const archivedCustomers = useMemo(() => customers.filter((c) => c.archived), [customers]);
   const activeSuppliers = useMemo(() => suppliers.filter((s) => !s.archived), [suppliers]);
+  const funders = (data && data.funders) || [];
+  const activeFunders = useMemo(() => funders.filter((f) => !f.archived), [funders]);
   /* Window helpers must sit after customers/suppliers — earlier access hits the TDZ and crashes FarmApp. */
   const popOutCustomer = useCallback((id) => {
     const c = customers.find((x) => x.id === id);
@@ -10801,9 +11005,10 @@ function FarmApp() {
   const expBounds = useMemo(() => periodBounds(expRange, expFrom, expTo), [expRange, expFrom, expTo]);
   const cashBounds = useMemo(() => periodBounds(cashRange, cashFrom, cashTo), [cashRange, cashFrom, cashTo]);
   const cashBox = useMemo(() => buildCashBox(entries, {
-      customers, suppliers, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
-    }), [entries, customers, suppliers, lang, t, S.categories, cashBounds]);
-  const ownerFund = useMemo(() => buildOwnerFund(entries), [entries]);
+      customers, suppliers, funders, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
+    }), [entries, customers, suppliers, funders, lang, t, S.categories, cashBounds]);
+  const ownerFund = useMemo(() => buildOwnerFund(entries, funders), [entries, funders]);
+  const funderAccounts = useMemo(() => buildFunderAccounts(entries, funders), [entries, funders]);
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
     const person = cashPerson.trim().toLowerCase();
@@ -12106,10 +12311,10 @@ function FarmApp() {
       run: () => { navigate("entry", { clearSheet: false }); setSheet({ k: "milkUse" }); } },
     { key: "n6", icon: "💸", label: t("logExpense"), group: "action", rank: 2,
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense" }); } },
-    { key: "n6b", icon: "🏦", label: t("cashOwnerInject"), group: "action", rank: 2.2,
+    { key: "n6b", icon: "↙", label: t("cashDeposit"), group: "action", rank: 2.2,
       run: () => { navigate("dashboard", { clearSheet: false }); setSheet({ k: "ownerFund" }); } },
-    { key: "n6c", icon: "🏦", label: t("cashOwnerSpend"), hint: t("ownerFundSpendHint"), group: "action", rank: 2.3,
-      run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense", fundFromOwner: true, fresh: uid() }); } },
+    { key: "n6c", icon: "↗", label: t("cashTake"), hint: t("cashTakeHint"), group: "action", rank: 2.3,
+      run: () => { navigate("dashboard", { clearSheet: false }); setSheet({ k: "cashTake" }); } },
     { key: "n2q", icon: "⚡", label: t("quickSale"), hint: t("quickSaleHint"), group: "action", rank: 2.5,
       run: () => { navigate("sales", { clearSheet: false }); setSheet({ k: "quickSale" }); } },
     { key: "n2", icon: "🧾", label: t("newSale"), group: "action", rank: 3,
@@ -12232,11 +12437,14 @@ function FarmApp() {
       else setSheet({ k: "confirmDeleteEntry", id: e.id });
       return;
     }
-    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med"
-      || e.type === OWNER_FUND_TYPE || e.type === OWNER_FUND_WITHDRAW_TYPE) {
-      if (e.type === OWNER_FUND_TYPE) setSheet({ k: "ownerFund", id: e.id });
-      else if (e.type === OWNER_FUND_WITHDRAW_TYPE) setSheet({ k: "ownerFundWithdraw", id: e.id });
-      else setSheet({ k: "editMoney", id: e.id });
+    if (e.type === OWNER_FUND_TYPE) { setSheet({ k: "ownerFund", id: e.id }); return; }
+    if (e.type === OWNER_FUND_WITHDRAW_TYPE) { setSheet({ k: "ownerFundWithdraw", id: e.id }); return; }
+    if (e.type === "expense" && (e.origin === "cash_take" || cashTakeCents(e) > 0) && !e.supplierId) {
+      setSheet({ k: "cashTake", id: e.id });
+      return;
+    }
+    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med") {
+      setSheet({ k: "editMoney", id: e.id });
       return;
     }
     if (e.type === "expense") {
@@ -12345,17 +12553,43 @@ function FarmApp() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
           <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund" })}>
-            🏦 {t("cashOwnerInject")}</button>
-          <button type="button" className="dk-pill"
-            onClick={() => setSheet({ k: "expense", fundFromOwner: true, fresh: uid() })}>
-            💸 {t("cashOwnerSpend")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw" })}>
-            ↩ {t("cashOwnerWithdraw")}</button>
-          <button type="button" className="dk-pill"
-            onClick={() => setSheet({ k: "ownerFundDoc" })}
-            title={t("cashOwnerLedger")}>
-            📄 {t("cashOwnerLedger")}</button>
+            ↙ {t("cashDeposit")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "cashTake" })}>
+            ↗ {t("cashTake")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>
+            ＋ {t("cashAddPerson")}</button>
         </div>
+      </DeskCard>
+
+      <DeskCard pad={0} title={`👤 ${t("cashPeople")}`}>
+        {(funderAccounts.list || []).filter((a) => a.id).length === 0 ? (
+          <div style={{ padding: 16, color: C.inkSoft, fontSize: 13.5, lineHeight: 1.45 }}>
+            {t("cashTakeHint")}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 0 }}>
+            {funderAccounts.list.filter((a) => a.id).map((a) => (
+              <button key={a.id} type="button" onClick={() => setSheet({ k: "funderAccount", id: a.id })}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                  width: "100%", textAlign: "start", padding: "12px 14px", cursor: "pointer",
+                  background: "transparent", border: "none", borderBottom: `1px solid ${C.line}`,
+                  color: C.ink, font: "inherit",
+                }}>
+                <div style={{ minWidth: 0 }}>
+                  <b style={{ display: "block" }}>{a.name}</b>
+                  <span style={{ color: C.inkSoft, fontSize: 12 }}>
+                    {t("cashPersonDeposited")} {fmtC(a.injected, S.rate, lang)}
+                    {" · "}{t("cashPersonTaken")} {fmtC(a.withdrawn || a.spent, S.rate, lang)}
+                  </span>
+                </div>
+                <b style={{ color: a.balance >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
+                  {fmtC(a.balance, S.rate, lang)}
+                </b>
+              </button>
+            ))}
+          </div>
+        )}
       </DeskCard>
 
       {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
@@ -13800,14 +14034,38 @@ function FarmApp() {
             setSheet({ k: "expense", fresh: uid(), preSupplierId: sheet.preSupplierId, fundFromOwner: sheet.fundFromOwner });
           }} />}
 
+        {sheet?.k === "funder" && <FunderSheet lang={lang} t={t}
+          onClose={() => setSheet(null)}
+          onSave={(row) => {
+            const exists = funders.some((f) => f.id === row.id);
+            const next = exists ? funders.map((f) => (f.id === row.id ? { ...f, ...row } : f)) : [...funders, row];
+            commit([{ type: "funder", name: row.name }], { funders: next });
+            setSheet(null);
+            ping(t("saved"));
+          }} />}
+
+        {sheet?.k === "funderAccount" && (() => {
+          const account = funderAccounts.byId[sheet.id] || funderAccounts.list.find((a) => a.id === sheet.id);
+          if (!account) return null;
+          return <FunderAccountSheet lang={lang} t={t} S={S} account={account}
+            onClose={() => setSheet(null)}
+            onDeposit={() => setSheet({ k: "ownerFund", funderId: account.id })}
+            onTake={() => setSheet({ k: "cashTake", funderId: account.id })}
+            onWithdraw={() => setSheet({ k: "ownerFundWithdraw", funderId: account.id })} />;
+        })()}
+
         {sheet?.k === "ownerFund" && (() => {
           const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_TYPE) : null;
           return <OwnerFundSheet lang={lang} t={t} S={S} initial={initial || undefined}
+            funders={activeFunders} preFunderId={sheet.funderId}
             onClose={() => setSheet(null)}
             onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
             onSave={(v) => {
-              if (initial) updateEntry(initial.id, v);
-              else commit([{ ...v, type: OWNER_FUND_TYPE }]);
+              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
+              const entry = { ...v, funderId: ref.funderId, contributorLabel: ref.contributorLabel, type: OWNER_FUND_TYPE };
+              const patch = ref.changed ? { funders: ref.funders } : null;
+              if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
+              else commit([entry], patch);
               setSheet(null);
               ping(t("saved"));
             }} />;
@@ -13816,11 +14074,38 @@ function FarmApp() {
         {sheet?.k === "ownerFundWithdraw" && (() => {
           const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_WITHDRAW_TYPE) : null;
           return <OwnerFundWithdrawSheet lang={lang} t={t} S={S} initial={initial || undefined}
+            funders={activeFunders} preFunderId={sheet.funderId}
             onClose={() => setSheet(null)}
             onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
             onSave={(v) => {
-              if (initial) updateEntry(initial.id, v);
-              else commit([{ ...v, type: OWNER_FUND_WITHDRAW_TYPE }]);
+              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
+              const entry = {
+                ...v, funderId: ref.funderId, contributorLabel: ref.contributorLabel,
+                recipientLabel: ref.contributorLabel, type: OWNER_FUND_WITHDRAW_TYPE,
+              };
+              const patch = ref.changed ? { funders: ref.funders } : null;
+              if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
+              else commit([entry], patch);
+              setSheet(null);
+              ping(t("saved"));
+            }} />;
+        })()}
+
+        {sheet?.k === "cashTake" && (() => {
+          const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === "expense") : null;
+          return <CashTakeSheet lang={lang} t={t} S={S} custom={S.categories}
+            funders={activeFunders} preFunderId={sheet.funderId} initial={initial || undefined}
+            onClose={() => setSheet(null)}
+            onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
+            onSave={(v) => {
+              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
+              const entry = {
+                ...v, funderId: ref.funderId, takenBy: ref.funderId,
+                contributorLabel: ref.contributorLabel, recipientLabel: ref.contributorLabel,
+              };
+              const patch = ref.changed ? { funders: ref.funders } : null;
+              if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
+              else commit([entry], patch);
               setSheet(null);
               ping(t("saved"));
             }} />;
