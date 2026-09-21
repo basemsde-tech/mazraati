@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.39", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.40", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.40": {
+    ar: [
+      "دفتر المديرين كمتتبع شخصي: افتح حساب كل شخص، سجّل حركة واحدة، وارتباط واضح بالصندوق والمصاريف والموردين والمبيعات",
+    ],
+    en: [
+      "Manager Ledger as a personal tracker: open each person, record one move, clear links to cashbox, expenses, suppliers, and sales",
+    ],
+  },
   "2.9.39": {
     ar: ["إصلاح تحميل التطبيق بعد دفتر المديرين"],
     en: ["Fix app load crash after Manager Ledger"],
@@ -1144,24 +1152,28 @@ const T = {
     cashDeposit: "إيداع نقد", cashTake: "سحب من الصندوق", cashTakeHint: "يسجّل من أخذ النقد ولأي غرض (مثل مازوت) ويظهر صرفاً في الصندوق.",
     cashTakenBy: "سحب بواسطة", cashDepositedBy: "إيداع من", cashPersonBal: "صافي الشخص",
     cashPersonTaken: "مسحوب", cashPersonDeposited: "مودَع", cashOpenPerson: "فتح الحساب",
-    managers: "دفتر المديرين", managersSub: "أموال شخصية مع الصندوق والمصاريف والمبيعات",
-    mgrNetBal: "صافي المستحق", mgrOwesThem: "المزرعة مدينة لهم", mgrTheyOwe: "هم مدينون للمزرعة",
-    mgrInject: "أدخل نقداً للصندوق", mgrWithdraw: "سحب / رد من الصندوق",
-    mgrOop: "دفع من جيبه (مصروف)", mgrSupplierPay: "دفع لمورد من جيبه",
+    managers: "متتبع المديرين", managersSub: "حساب شخصي مرتبط بالصندوق والمصاريف والموردين والمبيعات",
+    mgrNetBal: "الرصيد", mgrOwesThem: "المزرعة مدينة له/لها", mgrTheyOwe: "مدين/ة للمزرعة",
+    mgrInject: "نقد إلى الصندوق", mgrWithdraw: "نقد من الصندوق",
+    mgrOop: "دفع من الجيب", mgrSupplierPay: "دفع لمورد",
     mgrRetainSale: "احتفظ بنقد مبيعة",
-    mgrInjectHint: "يزيد رصيد الصندوق ويزيد ما تستحقه المزرعة لهذا الشخص.",
-    mgrWithdrawHint: "ينقص رصيد الصندوق وينقص المستحق لهذا الشخص.",
-    mgrOopHint: "يسجّل مصروف مزرعة دون لمس الصندوق — ويزيد المستحق للشخص.",
-    mgrSupplierHint: "يسدّد فاتورة المورد دون لمس الصندوق — ويزيد المستحق للشخص.",
-    mgrRetainHint: "يسجّل قبض الزبون كإيراد دون دخول النقد للصندوق — وينقص المستحق للشخص.",
-    mgrAdd: "إضافة مدير / مالك", mgrPick: "اختر الشخص", mgrActivity: "الحركة",
-    mgrStatement: "كشف حساب", mgrOpening: "الرصيد الافتتاحي", mgrClosing: "الرصيد الختامي",
+    mgrInjectHint: "يدخل النقد للصندوق ويزيد ما تستحقه المزرعة لهذا الشخص.",
+    mgrWithdrawHint: "يخرج النقد من الصندوق وينقص المستحق لهذا الشخص.",
+    mgrOopHint: "مصروف مزرعة من جيبه دون لمس الصندوق — يزيد المستحق له.",
+    mgrSupplierHint: "يسدّد المورد من جيبه دون لمس الصندوق — يزيد المستحق له.",
+    mgrRetainHint: "قبض زبون بقي معه — إيراد للمزرعة دون دخول الصندوق، وينقص المستحق له.",
+    mgrAdd: "إضافة شخص", mgrPick: "الأشخاص", mgrActivity: "سجل الشخص",
+    mgrStatement: "كشف حساب", mgrOpening: "افتتاحي", mgrClosing: "ختامي",
     mgrDeptCash: "الصندوق", mgrDeptExp: "المصاريف", mgrDeptSupp: "الموردون", mgrDeptSales: "المبيعات",
-    mgrTotalsInject: "مودَع للصندوق", mgrTotalsWithdraw: "مسحوب من الصندوق",
-    mgrTotalsOop: "مدفوع من الجيب", mgrTotalsSupp: "مدفوع لموردين", mgrTotalsSales: "نقد مبيعات محتفظ به",
-    mgrEmpty: "لا حركات بعد. أضف شخصاً ثم سجّل إيداعاً أو صرفاً.",
-    mgrFy: "السنة المالية", mgrExportCsv: "تصدير CSV", mgrPrint: "طباعة / PDF",
-    mgrSearch: "بحث في الحركات…", mgrAllPeople: "كل الأشخاص",
+    mgrTotalsInject: "إلى الصندوق", mgrTotalsWithdraw: "من الصندوق",
+    mgrTotalsOop: "من الجيب", mgrTotalsSupp: "للموردين", mgrTotalsSales: "من المبيعات",
+    mgrEmpty: "أضف شخصاً لبدء التتبع.",
+    mgrEmptyPerson: "لا حركات لهذا الشخص بعد.",
+    mgrFy: "السنة المالية", mgrExportCsv: "CSV", mgrPrint: "طباعة",
+    mgrSearch: "بحث…", mgrAllPeople: "كل الأشخاص",
+    mgrRecord: "تسجيل حركة", mgrRecordHint: "ماذا حدث؟",
+    mgrBackPeople: "الأشخاص", mgrOpenTracker: "فتح الحساب",
+    mgrViaCash: "عبر الصندوق", mgrViaExp: "عبر المصاريف", mgrViaSupp: "عبر الموردين", mgrViaSales: "عبر المبيعات",
     cashPurpose: "الغرض / الاستخدام", cashAllocations: "توزيع المبلغ", cashAllocLabel: "البند",
     cashAllocAmount: "المبلغ", cashAddAlloc: "إضافة بند", cashRecipient: "المستلم",
     cashPersonFilter: "حسب الشخص", cashCategoryFilter: "حسب التصنيف",
@@ -1740,24 +1752,28 @@ const T = {
     cashDeposit: "Cash in", cashTake: "Take from cash box", cashTakeHint: "Records who took the cash and what for (e.g. diesel) as a cash-box outflow.",
     cashTakenBy: "Taken by", cashDepositedBy: "Deposited by", cashPersonBal: "Person net",
     cashPersonTaken: "Taken", cashPersonDeposited: "Deposited", cashOpenPerson: "Open account",
-    managers: "Manager Ledger", managersSub: "Personal funds across cashbox, expenses, sales",
-    mgrNetBal: "Net balance", mgrOwesThem: "Business owes them", mgrTheyOwe: "They owe the business",
-    mgrInject: "Put cash in the drawer", mgrWithdraw: "Take / repay from drawer",
-    mgrOop: "Paid from pocket (expense)", mgrSupplierPay: "Paid a supplier from pocket",
+    managers: "Manager Tracker", managersSub: "Per-person balance linked to cashbox, expenses, suppliers, sales",
+    mgrNetBal: "Balance", mgrOwesThem: "Business owes them", mgrTheyOwe: "They owe the business",
+    mgrInject: "Cash into drawer", mgrWithdraw: "Cash out of drawer",
+    mgrOop: "Paid from pocket", mgrSupplierPay: "Paid a supplier",
     mgrRetainSale: "Kept sale cash",
-    mgrInjectHint: "Raises cash-box balance and raises what the business owes this person.",
-    mgrWithdrawHint: "Lowers cash-box balance and lowers what is owed to this person.",
-    mgrOopHint: "Posts a farm expense without touching the cash box — raises what is owed to them.",
-    mgrSupplierHint: "Settles a supplier bill without touching the cash box — raises what is owed to them.",
-    mgrRetainHint: "Records customer payment as revenue without drawer cash-in — lowers what is owed to them.",
-    mgrAdd: "Add manager / owner", mgrPick: "Choose person", mgrActivity: "Activity",
-    mgrStatement: "Statement", mgrOpening: "Opening balance", mgrClosing: "Closing balance",
+    mgrInjectHint: "Cash enters the drawer and raises what the business owes this person.",
+    mgrWithdrawHint: "Cash leaves the drawer and lowers what is owed to this person.",
+    mgrOopHint: "Farm expense from their pocket — no cash-box move; raises what is owed to them.",
+    mgrSupplierHint: "Pays a supplier from their pocket — no cash-box move; raises what is owed to them.",
+    mgrRetainHint: "Customer payment they kept — farm revenue without drawer cash-in; lowers what is owed to them.",
+    mgrAdd: "Add person", mgrPick: "People", mgrActivity: "Person log",
+    mgrStatement: "Statement", mgrOpening: "Opening", mgrClosing: "Closing",
     mgrDeptCash: "Cash box", mgrDeptExp: "Expenses", mgrDeptSupp: "Suppliers", mgrDeptSales: "Sales",
     mgrTotalsInject: "Into cash box", mgrTotalsWithdraw: "Out of cash box",
-    mgrTotalsOop: "Pocket expenses", mgrTotalsSupp: "Supplier pays", mgrTotalsSales: "Sale cash kept",
-    mgrEmpty: "No activity yet. Add a person, then record money in or out.",
-    mgrFy: "Financial year", mgrExportCsv: "Export CSV", mgrPrint: "Print / PDF",
-    mgrSearch: "Search activity…", mgrAllPeople: "All people",
+    mgrTotalsOop: "From pocket", mgrTotalsSupp: "To suppliers", mgrTotalsSales: "From sales",
+    mgrEmpty: "Add a person to start tracking.",
+    mgrEmptyPerson: "No moves for this person yet.",
+    mgrFy: "Financial year", mgrExportCsv: "CSV", mgrPrint: "Print",
+    mgrSearch: "Search…", mgrAllPeople: "All people",
+    mgrRecord: "Record a move", mgrRecordHint: "What happened?",
+    mgrBackPeople: "People", mgrOpenTracker: "Open",
+    mgrViaCash: "via Cash box", mgrViaExp: "via Expenses", mgrViaSupp: "via Suppliers", mgrViaSales: "via Sales",
     cashPurpose: "Purpose / usage", cashAllocations: "Amount allocation", cashAllocLabel: "Item",
     cashAllocAmount: "Amount", cashAddAlloc: "Add line", cashRecipient: "Recipient",
     cashPersonFilter: "By person", cashCategoryFilter: "By category",
@@ -7082,6 +7098,129 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
   </Sheet>;
 }
 
+/** Single record sheet — person tracker posts into cashbox / expenses / suppliers / sales. */
+function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers = [], preManagerId, onSave, onClose }) {
+  const pre = (managers || []).find((f) => f.id === preManagerId);
+  const [kind, setKind] = useState("inject");
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState(dayKey(Date.now()));
+  const [note, setNote] = useState("");
+  const [cur, setCur] = useState("usd");
+  const [managerId, setManagerId] = useState(pre?.id || "");
+  const [who, setWho] = useState(pre?.name || "");
+  const [purpose, setPurpose] = useState("");
+  const [cat, setCat] = useState("fuel");
+  const [supplierId, setSupplierId] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const active = (managers || []).filter((f) => !f.archived);
+  const activeS = (suppliers || []).filter((s) => !s.archived);
+  const activeC = (customers || []).filter((c) => !c.archived && !isWalkInCustomer(c));
+  const kinds = [
+    ["inject", t("mgrInject"), t("mgrViaCash")],
+    ["withdraw", t("mgrWithdraw"), t("mgrViaCash")],
+    ["oop", t("mgrOop"), t("mgrViaExp")],
+    ["supplier", t("mgrSupplierPay"), t("mgrViaSupp")],
+    ["retained", t("mgrRetainSale"), t("mgrViaSales")],
+  ];
+  const hint = ({
+    inject: t("mgrInjectHint"), withdraw: t("mgrWithdrawHint"), oop: t("mgrOopHint"),
+    supplier: t("mgrSupplierHint"), retained: t("mgrRetainHint"),
+  })[kind];
+  const needParty = kind === "supplier" ? !!supplierId : kind === "retained" ? !!customerId : true;
+  const canSave = amount > 0 && who.trim() && needParty;
+  const build = () => {
+    const mid = managerId || null;
+    const label = who.trim();
+    const base = {
+      managerId: mid, funderId: mid, contributorLabel: label,
+      at: dayStamp(date), currency: cur, rateUsed: S.rate,
+      amount: fromCents(toCents(amount)), purpose: purpose.trim(), note: note.trim(),
+    };
+    if (kind === "inject") return { ...base, type: OWNER_FUND_TYPE, allocations: [] };
+    if (kind === "withdraw") return { ...base, type: OWNER_FUND_WITHDRAW_TYPE, recipientLabel: label };
+    if (kind === "oop") {
+      return {
+        ...base, type: "expense", category: cat || "other",
+        paidAmount: base.amount, payStatus: "paid", vendor: "", supplierId: null,
+        recipientLabel: label, spendPurpose: purpose.trim(),
+        group: expGroupOf(cat || "other") || "otherGrp",
+        fundedBy: MGR_FUNDED, origin: MGR_OOP_ORIGIN,
+      };
+    }
+    if (kind === "supplier") {
+      return { ...base, type: "supplierPay", supplierId, paidBy: MGR_FUNDED, method: "manager" };
+    }
+    return {
+      ...base, type: "payment", customerId,
+      amount_cash: base.amount, amount_expense_offset: 0, total_credited: base.amount,
+      retainedBy: MGR_RETAINED, method: "manager_retain",
+    };
+  };
+  return <Sheet title={`📒 ${t("mgrRecord")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.45 }}>{hint}</div>
+    <Step n="1" label={t("mgrRecordHint")} />
+    <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+      {kinds.map(([k, lb, via]) => (
+        <button key={k} type="button" onClick={() => setKind(k)}
+          style={{
+            textAlign: "start", padding: "10px 12px", borderRadius: 4, cursor: "pointer", font: "inherit",
+            border: `1.5px solid ${kind === k ? C.field : C.line}`,
+            background: kind === k ? `${C.field}14` : C.card, color: C.ink,
+          }}>
+          <b style={{ display: "block" }}>{lb}</b>
+          <span style={{ fontSize: 12, color: C.inkSoft }}>{via}</span>
+        </button>
+      ))}
+    </div>
+    <Step n="2" label={t("mgrPick")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={managerId === f.id} onClick={() => { setManagerId(f.id); setWho(f.name); }}>{f.name}</Chip>
+      ))}
+    </div>}
+    <input value={who} onChange={(e) => {
+      setWho(e.target.value);
+      setManagerId(matchManagerId(active, e.target.value) || "");
+    }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
+    </div>
+    {kind === "supplier" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("suppliers")}</div>
+      <SearchPick t={t} value={supplierId || ""} onChange={(id) => setSupplierId(id || "")}
+        extras={[{ id: "", label: "—" }]}
+        items={activeS.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
+      <div style={{ height: 8 }} />
+    </>}
+    {kind === "retained" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("customers")}</div>
+      <SearchPick t={t} value={customerId || ""} onChange={(id) => setCustomerId(id || "")}
+        extras={[{ id: "", label: "—" }]}
+        items={activeC.map((c) => ({ id: c.id, label: customerLabel(c, t), hint: c.phone || "", search: `${customerLabel(c, t)} ${c.phone || ""}` }))} />
+      <div style={{ height: 8 }} />
+    </>}
+    {kind === "oop" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("category")}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {[["fuel", lang === "ar" ? "وقود" : "Fuel"], ["feed", lang === "ar" ? "علف" : "Feed"],
+          ["labour", lang === "ar" ? "أجور" : "Labour"], ["other", lang === "ar" ? "أخرى" : "Other"]].map(([k, lb]) => (
+          <Chip key={k} active={cat === k} onClick={() => setCat(k)}>{lb}</Chip>
+        ))}
+      </div>
+    </>}
+    <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
+      onClick={() => canSave && onSave(build())}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
 /** Out-of-pocket expense paid by a manager — farm expense, cash box untouched. */
 function ManagerOopSheet({ lang, t, S, funders = [], preFunderId, initial, onSave, onDelete, onClose }) {
   const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.managerId || initial?.funderId));
@@ -11201,6 +11340,10 @@ function FarmApp() {
       return `${r.day} ${r.purpose || ""} ${r.note || ""} ${r.kind} ${r.dept} ${r._who || ""}`.toLowerCase().includes(qn);
     }).slice().reverse();
   }, [mgrSel, mgrStatement, managerAccounts, mgrQ]);
+  useEffect(() => {
+    if (!mgrSel && managerAccounts.list.length === 1) setMgrSel(managerAccounts.list[0].id);
+  }, [managerAccounts.list, mgrSel]);
+
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
     const person = cashPerson.trim().toLowerCase();
@@ -12505,10 +12648,6 @@ function FarmApp() {
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense" }); } },
     { key: "n6b", icon: "📒", label: t("managers"), hint: t("managersSub"), group: "action", rank: 2.15,
       run: () => navigate("managers") },
-    { key: "n6c", icon: "↙", label: t("mgrInject"), group: "action", rank: 2.2,
-      run: () => { navigate("managers", { clearSheet: false }); setSheet({ k: "ownerFund" }); } },
-    { key: "n6d", icon: "↗", label: t("mgrWithdraw"), group: "action", rank: 2.3,
-      run: () => { navigate("managers", { clearSheet: false }); setSheet({ k: "ownerFundWithdraw" }); } },
     { key: "n2q", icon: "⚡", label: t("quickSale"), hint: t("quickSaleHint"), group: "action", rank: 2.5,
       run: () => { navigate("sales", { clearSheet: false }); setSheet({ k: "quickSale" }); } },
     { key: "n2", icon: "🧾", label: t("newSale"), group: "action", rank: 3,
@@ -12747,11 +12886,7 @@ function FarmApp() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
           <button type="button" className="dk-pill" onClick={() => navigate("managers")}>
-            📒 {t("managers")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund" })}>
-            ↙ {t("mgrInject")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw" })}>
-            ↗ {t("mgrWithdraw")}</button>
+            📒 {t("managers")} ›</button>
         </div>
       </DeskCard>
 
@@ -12991,117 +13126,133 @@ function FarmApp() {
     : mgrRange === "fy" ? t("mgrFy")
     : mgrRange === "custom" ? `${mgrBounds.from || "…"} — ${mgrBounds.to || "…"}`
     : t("thisMonth");
-  const exportMgrCsv = () => {
-    if (!mgrStatement) return;
-    const headers = [t("cashEntryDate"), "dept", "kind", t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")];
-    const csvMoney = (v) => `"${fmt(v || 0, S.rate, lang).replace(/"/g, '""')}"`;
-    const lines = [
-      headers.join(","),
-      ...managerCsvRows(mgrStatement, (n) => fmt(n, S.rate, lang)).map((row) => row.map((cell, i) => {
-        if (i >= 4 && cell !== "") return csvMoney(typeof cell === "number" ? cell : cell);
-        const s = String(cell ?? "");
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(",")),
-    ];
-    downloadBlob("\uFEFF" + lines.join("\n"), `manager-${mgrStatement.name}-${mgrBounds.from}-${mgrBounds.to}.csv`, "text/csv;charset=utf-8");
-    ping(t("saved"));
+  const openMgrRow = (r) => {
+    if (r?.source) openCashSource({ source: r.source, id: r.id });
   };
+  const mgrAcc = mgrSel ? (managerAccounts.byId[mgrSel] || null) : null;
   const DeskManagers = (
     <div style={{ display: "grid", gap: 14 }} className="cash-box">
-      <DeskCard pad={0} title={`📒 ${t("managers")}`}>
-        <div className="cash-overview">
-          <div className="cash-closing">
-            <span>{t("mgrNetBal")}</span>
-            <Money usd={(mgrSel ? (managerAccounts.byId[mgrSel]?.balance || 0) : managerAccounts.totals.balance)} rate={S.rate} lang={lang} size={28} />
-            <small>{(mgrSel ? (managerAccounts.byId[mgrSel]?.balance || 0) : managerAccounts.totals.balance) >= 0 ? t("mgrOwesThem") : t("mgrTheyOwe")}</small>
-          </div>
-          {[
-            [t("mgrTotalsInject"), mgrSel ? (managerAccounts.byId[mgrSel]?.injected || 0) : managerAccounts.totals.injected, C.green],
-            [t("mgrTotalsWithdraw"), mgrSel ? (managerAccounts.byId[mgrSel]?.withdrawn || 0) : managerAccounts.totals.withdrawn, C.red],
-            [t("mgrTotalsOop"), mgrSel ? (managerAccounts.byId[mgrSel]?.oop || 0) : managerAccounts.totals.oop, C.field],
-            [t("mgrTotalsSupp"), mgrSel ? (managerAccounts.byId[mgrSel]?.supplierPays || 0) : managerAccounts.totals.supplierPays, C.field],
-            [t("mgrTotalsSales"), mgrSel ? (managerAccounts.byId[mgrSel]?.salesRetained || 0) : managerAccounts.totals.salesRetained, C.red],
-          ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
-            <span>{label}</span>
-            <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
-          </div>)}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 12px" }}>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund", funderId: mgrSel || undefined })}>↙ {t("mgrInject")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw", funderId: mgrSel || undefined })}>↗ {t("mgrWithdraw")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrOop", funderId: mgrSel || undefined })}>💳 {t("mgrOop")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrSupplierPay", funderId: mgrSel || undefined })}>🤝 {t("mgrSupplierPay")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrRetainSale", funderId: mgrSel || undefined })}>🧾 {t("mgrRetainSale")}</button>
-        </div>
-      </DeskCard>
-
-      <DeskCard pad={12} title={t("mgrPick")}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <Chip active={!mgrSel} onClick={() => setMgrSel("")}>{t("mgrAllPeople")}</Chip>
-          {managerAccounts.list.map((a) => (
-            <Chip key={a.id} active={mgrSel === a.id} onClick={() => setMgrSel(a.id)}>
-              {a.name} · {fmtC(a.balance, S.rate, lang)}
-            </Chip>
-          ))}
-        </div>
-      </DeskCard>
-
-      <SearchFilterBar t={t} q={mgrQ} onQ={setMgrQ} qPlaceholder={t("mgrSearch")}
-        activeCount={mgrRange !== "month" ? 1 : 0}
-        onReset={() => { setMgrRange("month"); setMgrFrom(""); setMgrTo(""); setMgrQ(""); }}
-        chips={[
-          mgrRange !== "month" ? { key: "r", label: mgrPeriodLabel, onRemove: () => { setMgrRange("month"); setMgrFrom(""); setMgrTo(""); } } : null,
-        ].filter(Boolean)}>
-        <FilterGroup label={t("customRange")}>
-          {[["today", t("today")], ["week", t("thisWeek")], ["month", t("thisMonth")],
-            ["lastMonth", t("lastMonth")], ["fy", t("mgrFy")], ["custom", t("customRange")]].map(([k, lb]) => (
-            <Chip key={k} active={mgrRange === k} onClick={() => setMgrRange(k)}>{lb}</Chip>
-          ))}
-        </FilterGroup>
-        {mgrRange === "custom" && <FilterGroup>
-          <DatePick compact allowClear value={mgrFrom} onChange={setMgrFrom} ariaLabel={t("fromDate")} />
-          <DatePick compact allowClear value={mgrTo} onChange={setMgrTo} ariaLabel={t("toDate")} />
-        </FilterGroup>}
-      </SearchFilterBar>
-
-      {mgrSel && mgrStatement && <DeskCard pad={12} title={`📄 ${t("mgrStatement")} · ${mgrPeriodLabel}`}
-        right={<>
-          <button type="button" className="dk-pill" onClick={exportMgrCsv}>↧ {t("mgrExportCsv")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrStatementDoc" })}>🖨️ {t("mgrPrint")}</button>
-        </>}>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8, fontSize: 13 }}>
-          <span>{t("mgrOpening")}: <b>{fmtC(mgrStatement.opening, S.rate, lang)}</b></span>
-          <span>{t("mgrClosing")}: <b>{fmtC(mgrStatement.closing, S.rate, lang)}</b></span>
-        </div>
-      </DeskCard>}
-
-      <DeskCard pad={0} title={`📋 ${t("mgrActivity")}`}>
-        {mgrViewRows.length === 0
-          ? <div style={{ padding: 24, color: C.inkSoft, textAlign: "center" }}>{t("mgrEmpty")}</div>
-          : <div style={{ display: "grid" }}>
-            {mgrViewRows.map((r) => (
-              <div key={r.id} style={{
-                display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline",
-                padding: "12px 14px", borderBottom: `1px solid ${C.line}`,
-              }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ display: "block" }}>{r.day}{r._who ? ` · ${r._who}` : ""}</b>
-                  <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
-                    {mgrDeptLabel(r.dept)} · {mgrKindLabel(r.kind)}
-                    {r.purpose ? ` — ${r.purpose}` : ""}
-                  </span>
-                </div>
-                <b style={{ color: r.delta >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
-                  {r.delta >= 0 ? "+" : ""}{fmtC(r.delta, S.rate, lang)}
-                </b>
+      {!mgrSel ? (
+        <>
+          <DeskCard pad={14} title={`📒 ${t("managers")}`}
+            right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>}>
+            <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 12, lineHeight: 1.45 }}>{t("managersSub")}</div>
+            {managerAccounts.list.length === 0 ? (
+              <div style={{ padding: "18px 0", textAlign: "center", color: C.inkSoft }}>{t("mgrEmpty")}</div>
+            ) : (
+              <div style={{ display: "grid", gap: 0 }}>
+                {managerAccounts.list.map((a) => {
+                  const last = (a.rows || [])[(a.rows || []).length - 1];
+                  return (
+                    <button key={a.id} type="button" onClick={() => setMgrSel(a.id)}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                        width: "100%", textAlign: "start", padding: "14px 4px", cursor: "pointer",
+                        background: "transparent", border: "none", borderBottom: `1px solid ${C.line}`,
+                        color: C.ink, font: "inherit",
+                      }}>
+                      <div style={{ minWidth: 0 }}>
+                        <b style={{ display: "block", fontSize: 16 }}>{a.name}</b>
+                        <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
+                          {last
+                            ? `${dayKey(last.at)} · ${mgrKindLabel(last.kind)}${last.purpose ? ` — ${last.purpose}` : ""}`
+                            : t("mgrEmptyPerson")}
+                        </span>
+                      </div>
+                      <div style={{ textAlign: "end", whiteSpace: "nowrap" }}>
+                        <b style={{ display: "block", color: a.balance >= 0 ? C.green : C.red }}>{fmtC(a.balance, S.rate, lang)}</b>
+                        <span style={{ fontSize: 11, color: C.inkSoft }}>{t("mgrOpenTracker")} ›</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            )}
+          </DeskCard>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="dk-pill" onClick={() => setMgrSel("")}>‹ {t("mgrBackPeople")}</button>
+            <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>
+          </div>
+
+          <DeskCard pad={0} title={mgrAcc?.name || t("managers")}>
+            <div className="cash-overview">
+              <div className="cash-closing">
+                <span>{t("mgrNetBal")}</span>
+                <Money usd={mgrAcc?.balance || 0} rate={S.rate} lang={lang} size={30} />
+                <small>{(mgrAcc?.balance || 0) >= 0 ? t("mgrOwesThem") : t("mgrTheyOwe")}</small>
+              </div>
+              {[
+                [t("mgrDeptCash"), (mgrAcc?.byDept?.cashbox || 0), () => navigate("dashboard")],
+                [t("mgrDeptExp"), (mgrAcc?.byDept?.expenses || 0), () => navigate("expenses")],
+                [t("mgrDeptSupp"), (mgrAcc?.byDept?.suppliers || 0), () => navigate("suppliers")],
+                [t("mgrDeptSales"), (mgrAcc?.byDept?.sales || 0), () => navigate("sales")],
+              ].map(([label, value, go]) => (
+                <button key={label} type="button" className="cash-overview-stat" onClick={go}
+                  style={{ cursor: "pointer", font: "inherit", color: "inherit", textAlign: "start" }}>
+                  <span>{label} ›</span>
+                  <b style={{ color: value >= 0 ? C.green : C.red }}>{fmtC(value, S.rate, lang)}</b>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
+              <button type="button" style={{ ...primaryBtn, width: "auto", minWidth: 150, padding: "10px 16px" }}
+                onClick={() => setSheet({ k: "mgrMove", funderId: mgrSel })}>＋ {t("mgrRecord")}</button>
+              <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrStatementDoc" })}>
+                📄 {t("mgrStatement")}</button>
+            </div>
+          </DeskCard>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {[["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+              <Chip key={k} active={mgrRange === k} onClick={() => setMgrRange(k)}>{lb}</Chip>
             ))}
-          </div>}
-      </DeskCard>
+            {mgrRange === "custom" && <>
+              <DatePick compact allowClear value={mgrFrom} onChange={setMgrFrom} ariaLabel={t("fromDate")} />
+              <DatePick compact allowClear value={mgrTo} onChange={setMgrTo} ariaLabel={t("toDate")} />
+            </>}
+            <input value={mgrQ} onChange={(e) => setMgrQ(e.target.value)} placeholder={t("mgrSearch")}
+              style={{ ...inp, flex: 1, minWidth: 120, margin: 0 }} />
+          </div>
+
+          <DeskCard pad={0} title={`${t("mgrActivity")} · ${mgrPeriodLabel}`}>
+            {mgrSel && mgrStatement && (
+              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.inkSoft, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <span>{t("mgrOpening")}: <b style={{ color: C.ink }}>{fmtC(mgrStatement.opening, S.rate, lang)}</b></span>
+                <span>{t("mgrClosing")}: <b style={{ color: C.ink }}>{fmtC(mgrStatement.closing, S.rate, lang)}</b></span>
+              </div>
+            )}
+            {mgrViewRows.length === 0
+              ? <div style={{ padding: 28, color: C.inkSoft, textAlign: "center" }}>{t("mgrEmptyPerson")}</div>
+              : <div style={{ display: "grid" }}>
+                {mgrViewRows.map((r) => (
+                  <button key={r.id} type="button" onClick={() => openMgrRow(r)}
+                    style={{
+                      display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline",
+                      padding: "12px 14px", borderBottom: `1px solid ${C.line}`, cursor: "pointer",
+                      background: "transparent", borderLeft: "none", borderRight: "none", borderTop: "none",
+                      color: C.ink, font: "inherit", textAlign: "start", width: "100%",
+                    }}>
+                    <div style={{ minWidth: 0 }}>
+                      <b style={{ display: "block" }}>{r.day}</b>
+                      <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
+                        {mgrDeptLabel(r.dept)} · {mgrKindLabel(r.kind)}
+                        {r.purpose ? ` — ${r.purpose}` : ""}
+                      </span>
+                    </div>
+                    <b style={{ color: r.delta >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
+                      {r.delta >= 0 ? "+" : ""}{fmtC(r.delta, S.rate, lang)}
+                    </b>
+                  </button>
+                ))}
+              </div>}
+          </DeskCard>
+        </>
+      )}
     </div>
   );
-
 
   const herdStatusKeys = [...new Set(animals.map((a) => a.status).filter(Boolean))];
   const herdFilterActive = (spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0) + (q.trim() ? 1 : 0);
@@ -14323,6 +14474,24 @@ function FarmApp() {
             commit(es, changed ? { suppliers: list } : null);
             ping(t("saved"));
             setSheet({ k: "expense", fresh: uid(), preSupplierId: sheet.preSupplierId, fundFromOwner: sheet.fundFromOwner });
+          }} />}
+
+        {sheet?.k === "mgrMove" && <ManagerMoveSheet lang={lang} t={t} S={S}
+          managers={activeManagers} suppliers={activeSuppliers} customers={activeCustomers}
+          preManagerId={sheet.funderId || sheet.managerId || mgrSel}
+          onClose={() => setSheet(null)}
+          onSave={(v) => {
+            const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
+            const entry = {
+              ...v, managerId: ref.managerId, funderId: ref.managerId,
+              contributorLabel: ref.contributorLabel,
+              recipientLabel: v.recipientLabel || ref.contributorLabel,
+            };
+            const patch = ref.changed ? { managers: ref.managers } : null;
+            commit([entry], patch);
+            if (ref.managerId) setMgrSel(ref.managerId);
+            setSheet(null);
+            ping(t("saved"));
           }} />}
 
         {sheet?.k === "funder" && <FunderSheet lang={lang} t={t}
