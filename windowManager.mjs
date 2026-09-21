@@ -14,7 +14,7 @@ export const WM_SNAP_TOP = 18;
 
 /** Core desk modules that can stay open as workspace tabs / floating windows. */
 export const MODULE_ROUTES = Object.freeze([
-  "dashboard", "animals", "entry", "sales", "suppliers", "expenses", "reports", "settings",
+  "dashboard", "managers", "animals", "entry", "sales", "suppliers", "expenses", "reports", "settings",
 ]);
 
 /** Distinct accents so concurrent windows stay visually separable. */

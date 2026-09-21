@@ -27,9 +27,16 @@ import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } fr
 import {
   OWNER_FUND_TYPE, OWNER_FUND_WITHDRAW_TYPE, OWNER_FUNDED_BY,
   isOwnerInjection, isOwnerFundedExpense, isOwnerWithdraw,
-  buildOwnerFund, buildFunderAccounts, formatAllocations,
-  contributorOf, funderNameOf, matchFunderId, syncFundersFromEntries, cashTakeCents,
+  buildOwnerFund, formatAllocations,
+  contributorOf, funderNameOf, cashTakeCents,
 } from "./ownerFunds.mjs";
+import {
+  MGR_FUNDED, MGR_OOP_ORIGIN, MGR_RETAINED,
+  isManagerOop, isManagerSupplierPay, isManagerRetainedSale,
+  buildManagerAccounts, buildManagerStatement, managerPeriodBounds,
+  migrateManagersFarm, resolveManagerRef, managerNameOf, managerIdOf,
+  matchManagerId, managerCsvRows,
+} from "./managerLedger.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 import {
   checkLineMath, checkStockCover, checkDiscount, checkPaymentSplit,
@@ -55,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.37", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.38", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.38": {
+    ar: [
+      "دفتر المديرين: حساب لكل شخص، ربط مع الصندوق والمصاريف والموردين والمبيعات، وكشف بحساب مخصص للتواريخ",
+    ],
+    en: [
+      "Manager Ledger: per-person balances across Cashbox, Expenses, Suppliers, and Sales — with dated statements",
+    ],
+  },
   "2.9.37": {
     ar: [
       "إصلاح تتبع سحب النقد: لا يُحسب إلا عند وسم صريح، وفصل المودَع عن المسحوب في حسابات الأشخاص",
@@ -967,7 +982,7 @@ const moneyStatus = (billC, paidC) => {
 /* Cash that left the box for a non-supplier expense. Supplier bills use supplierPay.
    Payment expense offsets are non-cash — they must not move the drawer. */
 const expenseCounted = (e) => {
-  if (e.supplierId || isCustomerPaidExpense(e) || isDeductionReimbursement(e)) return 0;
+  if (e.supplierId || isCustomerPaidExpense(e) || isDeductionReimbursement(e) || isManagerOop(e)) return 0;
   const st = e.payStatus || "paid";
   if (st === "unpaid") return 0;
   if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
@@ -1125,6 +1140,24 @@ const T = {
     cashDeposit: "إيداع نقد", cashTake: "سحب من الصندوق", cashTakeHint: "يسجّل من أخذ النقد ولأي غرض (مثل مازوت) ويظهر صرفاً في الصندوق.",
     cashTakenBy: "سحب بواسطة", cashDepositedBy: "إيداع من", cashPersonBal: "صافي الشخص",
     cashPersonTaken: "مسحوب", cashPersonDeposited: "مودَع", cashOpenPerson: "فتح الحساب",
+    managers: "دفتر المديرين", managersSub: "أموال شخصية مع الصندوق والمصاريف والمبيعات",
+    mgrNetBal: "صافي المستحق", mgrOwesThem: "المزرعة مدينة لهم", mgrTheyOwe: "هم مدينون للمزرعة",
+    mgrInject: "أدخل نقداً للصندوق", mgrWithdraw: "سحب / رد من الصندوق",
+    mgrOop: "دفع من جيبه (مصروف)", mgrSupplierPay: "دفع لمورد من جيبه",
+    mgrRetainSale: "احتفظ بنقد مبيعة",
+    mgrInjectHint: "يزيد رصيد الصندوق ويزيد ما تستحقه المزرعة لهذا الشخص.",
+    mgrWithdrawHint: "ينقص رصيد الصندوق وينقص المستحق لهذا الشخص.",
+    mgrOopHint: "يسجّل مصروف مزرعة دون لمس الصندوق — ويزيد المستحق للشخص.",
+    mgrSupplierHint: "يسدّد فاتورة المورد دون لمس الصندوق — ويزيد المستحق للشخص.",
+    mgrRetainHint: "يسجّل قبض الزبون كإيراد دون دخول النقد للصندوق — وينقص المستحق للشخص.",
+    mgrAdd: "إضافة مدير / مالك", mgrPick: "اختر الشخص", mgrActivity: "الحركة",
+    mgrStatement: "كشف حساب", mgrOpening: "الرصيد الافتتاحي", mgrClosing: "الرصيد الختامي",
+    mgrDeptCash: "الصندوق", mgrDeptExp: "المصاريف", mgrDeptSupp: "الموردون", mgrDeptSales: "المبيعات",
+    mgrTotalsInject: "مودَع للصندوق", mgrTotalsWithdraw: "مسحوب من الصندوق",
+    mgrTotalsOop: "مدفوع من الجيب", mgrTotalsSupp: "مدفوع لموردين", mgrTotalsSales: "نقد مبيعات محتفظ به",
+    mgrEmpty: "لا حركات بعد. أضف شخصاً ثم سجّل إيداعاً أو صرفاً.",
+    mgrFy: "السنة المالية", mgrExportCsv: "تصدير CSV", mgrPrint: "طباعة / PDF",
+    mgrSearch: "بحث في الحركات…", mgrAllPeople: "كل الأشخاص",
     cashPurpose: "الغرض / الاستخدام", cashAllocations: "توزيع المبلغ", cashAllocLabel: "البند",
     cashAllocAmount: "المبلغ", cashAddAlloc: "إضافة بند", cashRecipient: "المستلم",
     cashPersonFilter: "حسب الشخص", cashCategoryFilter: "حسب التصنيف",
@@ -1703,6 +1736,24 @@ const T = {
     cashDeposit: "Cash in", cashTake: "Take from cash box", cashTakeHint: "Records who took the cash and what for (e.g. diesel) as a cash-box outflow.",
     cashTakenBy: "Taken by", cashDepositedBy: "Deposited by", cashPersonBal: "Person net",
     cashPersonTaken: "Taken", cashPersonDeposited: "Deposited", cashOpenPerson: "Open account",
+    managers: "Manager Ledger", managersSub: "Personal funds across cashbox, expenses, sales",
+    mgrNetBal: "Net balance", mgrOwesThem: "Business owes them", mgrTheyOwe: "They owe the business",
+    mgrInject: "Put cash in the drawer", mgrWithdraw: "Take / repay from drawer",
+    mgrOop: "Paid from pocket (expense)", mgrSupplierPay: "Paid a supplier from pocket",
+    mgrRetainSale: "Kept sale cash",
+    mgrInjectHint: "Raises cash-box balance and raises what the business owes this person.",
+    mgrWithdrawHint: "Lowers cash-box balance and lowers what is owed to this person.",
+    mgrOopHint: "Posts a farm expense without touching the cash box — raises what is owed to them.",
+    mgrSupplierHint: "Settles a supplier bill without touching the cash box — raises what is owed to them.",
+    mgrRetainHint: "Records customer payment as revenue without drawer cash-in — lowers what is owed to them.",
+    mgrAdd: "Add manager / owner", mgrPick: "Choose person", mgrActivity: "Activity",
+    mgrStatement: "Statement", mgrOpening: "Opening balance", mgrClosing: "Closing balance",
+    mgrDeptCash: "Cash box", mgrDeptExp: "Expenses", mgrDeptSupp: "Suppliers", mgrDeptSales: "Sales",
+    mgrTotalsInject: "Into cash box", mgrTotalsWithdraw: "Out of cash box",
+    mgrTotalsOop: "Pocket expenses", mgrTotalsSupp: "Supplier pays", mgrTotalsSales: "Sale cash kept",
+    mgrEmpty: "No activity yet. Add a person, then record money in or out.",
+    mgrFy: "Financial year", mgrExportCsv: "Export CSV", mgrPrint: "Print / PDF",
+    mgrSearch: "Search activity…", mgrAllPeople: "All people",
     cashPurpose: "Purpose / usage", cashAllocations: "Amount allocation", cashAllocLabel: "Item",
     cashAllocAmount: "Amount", cashAddAlloc: "Add line", cashRecipient: "Recipient",
     cashPersonFilter: "By person", cashCategoryFilter: "By category",
@@ -2676,7 +2727,7 @@ function applyAppUpdate(onMsg) {
 
 const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
-  profiles: [], animals: [], workers: [], customers: [], suppliers: [], funders: [], obligations: [], entries: [],
+  profiles: [], animals: [], workers: [], customers: [], suppliers: [], managers: [], funders: [], obligations: [], entries: [],
 });
 const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "ownerFundWithdraw", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
 function trimEntries(list) {
@@ -2699,10 +2750,13 @@ function migrate(farm) {
   f.settings.docTpl = { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow", ...(f.settings.docTpl || {}) };
   if (!Array.isArray(f.obligations)) f.obligations = [];
   if (!Array.isArray(f.suppliers)) f.suppliers = [];
+  if (!Array.isArray(f.managers)) f.managers = [];
   if (!Array.isArray(f.funders)) f.funders = [];
   {
-    const synced = syncFundersFromEntries(f.funders, f.entries || [], () => uid());
-    f.funders = synced.funders;
+    const migrated = migrateManagersFarm(f, () => uid());
+    f.managers = migrated.managers;
+    f.funders = migrated.funders;
+    f.entries = migrated.entries;
   }
   /* Older records used separate types for feed and livestock purchases.
      Normalize new expense fields without changing their historic paid meaning. */
@@ -3076,10 +3130,16 @@ function initials(name) {
    Expense offsets appear as non-cash deduct rows and do not change the balance.
    Older sale reimbursements stay non-cash so historical drawers still reconcile. */
 function cashMoveAmount(e) {
-  if (e.type === "payment") return fromCents(paymentCashCents(e) || toCents(e.amount));
+  if (e.type === "payment") {
+    if (isManagerRetainedSale(e)) return 0;
+    return fromCents(paymentCashCents(e) || toCents(e.amount));
+  }
   if (e.type === OWNER_FUND_TYPE || isOwnerInjection(e)) return +(e.amount || 0);
   if (e.type === OWNER_FUND_WITHDRAW_TYPE || isOwnerWithdraw(e)) return +(e.amount || 0);
-  if (e.type === "supplierPay") return +(e.amount || 0);
+  if (e.type === "supplierPay") {
+    if (isManagerSupplierPay(e)) return 0;
+    return +(e.amount || 0);
+  }
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
   return 0;
@@ -3114,6 +3174,7 @@ function cashCategoryOf(e, lang, custom, t) {
 }
 function paymentTenderAmount(e) {
   if (!e || e.type !== "payment") return cashMoveAmount(e);
+  if (isManagerRetainedSale(e)) return 0;
   return fromCents(paymentCashCents(e));
 }
 function cashDeductAmount(e) {
@@ -6876,19 +6937,16 @@ function SupplierForm({ lang, t, S, suppliers, initial, onSave, onClose }) {
   </Sheet>;
 }
 
-function resolveFunderRef(funders, funderId, name, makeId) {
-  const label = String(name || "").trim();
-  let id = funderId || null;
-  let list = Array.isArray(funders) ? funders.slice() : [];
-  let changed = false;
-  if (!id && label) id = matchFunderId(list, label);
-  if (!id && label) {
-    id = typeof makeId === "function" ? makeId() : `fnd-${Date.now()}`;
-    list = [...list, { id, name: label, phone: "", note: "", at: new Date().toISOString() }];
-    changed = true;
-  }
-  const hit = list.find((f) => f.id === id);
-  return { funderId: id || null, contributorLabel: (hit && hit.name) || label, funders: list, changed };
+function resolveFunderRef(managers, managerId, name, makeId) {
+  const ref = resolveManagerRef(managers, managerId, name, makeId);
+  return {
+    funderId: ref.managerId,
+    managerId: ref.managerId,
+    contributorLabel: ref.name,
+    funders: ref.managers,
+    managers: ref.managers,
+    changed: ref.changed,
+  };
 }
 
 function FunderSheet({ lang, t, initial, onSave, onClose }) {
@@ -6896,7 +6954,7 @@ function FunderSheet({ lang, t, initial, onSave, onClose }) {
   const [phone, setPhone] = useState(initial?.phone || "");
   const [note, setNote] = useState(initial?.note || "");
   const [err, setErr] = useState("");
-  return <Sheet title={`👤 ${initial ? t("edit") : t("cashAddPerson")}`} onClose={onClose}>
+  return <Sheet title={`👤 ${initial ? t("edit") : t("mgrAdd")}`} onClose={onClose}>
     <Step n="1" label={t("cashPersonName")} />
     <input value={name} onChange={(e) => { setName(e.target.value); setErr(""); }}
       placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} autoFocus />
@@ -6945,7 +7003,7 @@ function OwnerFundSheet({ lang, t, S, initial, funders = [], preFunderId, onSave
     </div>}
     <input value={contributor} onChange={(e) => {
       setContributor(e.target.value);
-      const hit = matchFunderId(active, e.target.value);
+      const hit = matchManagerId(active, e.target.value);
       setFunderId(hit || "");
     }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
     <Step n="3" label={t("paymentDate")} />
@@ -6960,7 +7018,7 @@ function OwnerFundSheet({ lang, t, S, initial, funders = [], preFunderId, onSave
     <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && contributor.trim() ? 1 : .45 }}
       onClick={() => amount > 0 && contributor.trim() && onSave({
         type: OWNER_FUND_TYPE, amount: fromCents(toCents(amount)), note: note.trim(),
-        funderId: funderId || null, contributorLabel: contributor.trim(),
+        funderId: funderId || null, managerId: funderId || null, contributorLabel: contributor.trim(),
         purpose: purpose.trim(), allocations: [],
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
         ...(initial?.id ? { id: initial.id } : {}),
@@ -6996,7 +7054,7 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
     </div>}
     <input value={recipient} onChange={(e) => {
       setRecipient(e.target.value);
-      setFunderId(matchFunderId(active, e.target.value) || "");
+      setFunderId(matchManagerId(active, e.target.value) || "");
     }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
     <Step n="3" label={`${t("cashPurpose")} — ${t("optional")}`} />
     <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
@@ -7010,7 +7068,7 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
     <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && recipient.trim() ? 1 : .45 }}
       onClick={() => amount > 0 && recipient.trim() && onSave({
         type: OWNER_FUND_WITHDRAW_TYPE, amount: fromCents(toCents(amount)),
-        funderId: funderId || null,
+        funderId: funderId || null, managerId: funderId || null,
         contributorLabel: recipient.trim(), recipientLabel: recipient.trim(),
         purpose: purpose.trim(), note: note.trim(),
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
@@ -7020,15 +7078,15 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
   </Sheet>;
 }
 
-/** Person takes cash from the drawer for a purpose (e.g. diesel) — posts as a paid farm expense. */
-function CashTakeSheet({ lang, t, S, custom, funders = [], preFunderId, initial, onSave, onDelete, onClose }) {
-  const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.funderId || initial?.takenBy));
+/** Out-of-pocket expense paid by a manager — farm expense, cash box untouched. */
+function ManagerOopSheet({ lang, t, S, funders = [], preFunderId, initial, onSave, onDelete, onClose }) {
+  const pre = (funders || []).find((f) => f.id === (preFunderId || initial?.managerId || initial?.funderId));
   const [amount, setAmount] = useState(initial?.amount || 0);
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
   const [cur, setCur] = useState(initial?.currency || "usd");
-  const [funderId, setFunderId] = useState(pre?.id || initial?.funderId || initial?.takenBy || "");
-  const [who, setWho] = useState(pre?.name || initial?.contributorLabel || initial?.recipientLabel || "");
+  const [funderId, setFunderId] = useState(pre?.id || initial?.managerId || initial?.funderId || "");
+  const [who, setWho] = useState(pre?.name || initial?.contributorLabel || "");
   const [purpose, setPurpose] = useState(initial?.purpose || initial?.spendPurpose || "");
   const [cat, setCat] = useState(initial?.category || "fuel");
   const active = (funders || []).filter((f) => !f.archived);
@@ -7040,15 +7098,15 @@ function CashTakeSheet({ lang, t, S, custom, funders = [], preFunderId, initial,
     ["transport", lang === "ar" ? "نقل" : "Transport"],
     ["other", lang === "ar" ? "أخرى" : "Other"],
   ];
-  return <Sheet title={`↗ ${initial ? t("editCashMove") : t("cashTake")}`} onClose={onClose}>
+  return <Sheet title={`💳 ${initial ? t("editCashMove") : t("mgrOop")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
-      {t("cashTakeHint")}</div>
+      {t("mgrOopHint")}</div>
     <Step n="1" label={t("amount")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
         step={5} currency={cur} setCurrency={setCur} />
     </div>
-    <Step n="2" label={t("cashPersonName")} />
+    <Step n="2" label={t("mgrPick")} />
     {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
       {active.map((f) => (
         <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setWho(f.name); }}>
@@ -7057,7 +7115,7 @@ function CashTakeSheet({ lang, t, S, custom, funders = [], preFunderId, initial,
     </div>}
     <input value={who} onChange={(e) => {
       setWho(e.target.value);
-      setFunderId(matchFunderId(active, e.target.value) || "");
+      setFunderId(matchManagerId(active, e.target.value) || "");
     }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
     <Step n="3" label={t("cashPurpose")} />
     <input value={purpose} onChange={(e) => setPurpose(e.target.value)}
@@ -7080,64 +7138,158 @@ function CashTakeSheet({ lang, t, S, custom, funders = [], preFunderId, initial,
         type: "expense", category: cat || "other",
         amount: fromCents(toCents(amount)), paidAmount: fromCents(toCents(amount)),
         payStatus: "paid", note: note.trim(), vendor: "",
-        supplierId: null, funderId: funderId || null, takenBy: funderId || null,
+        supplierId: null, managerId: funderId || null, funderId: funderId || null,
         contributorLabel: who.trim(), recipientLabel: who.trim(),
         purpose: purpose.trim(), spendPurpose: purpose.trim(),
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
         group: expGroupOf(cat || "other") || "otherGrp",
-        fundedBy: null, origin: "cash_take",
+        fundedBy: MGR_FUNDED, origin: MGR_OOP_ORIGIN,
         ...(initial?.id ? { id: initial.id } : {}),
       })}>✓ {t("save")}</button>
     {initial && onDelete && <DeleteConfirmBlock t={t} warn={t("deleteExpenseWarn")} onDelete={onDelete} />}
   </Sheet>;
 }
 
-function FunderAccountSheet({ lang, t, S, account, onDeposit, onTake, onWithdraw, onClose }) {
-  if (!account) return null;
-  return <Sheet title={`👤 ${account.name}`} onClose={onClose}>
-    <div className="cash-overview" style={{ marginBottom: 14 }}>
-      <div className="cash-closing">
-        <span>{t("cashPersonBal")}</span>
-        <Money usd={account.balance} rate={S.rate} lang={lang} size={26} />
-      </div>
-      {[
-        [t("cashPersonDeposited"), account.injected, C.green],
-        [t("cashPersonTaken"), account.withdrawn || account.spent, C.red],
-      ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
-        <span>{label}</span>
-        <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
-      </div>)}
+function ManagerSupplierPaySheet({ lang, t, S, funders = [], suppliers = [], preFunderId, onSave, onClose }) {
+  const pre = (funders || []).find((f) => f.id === preFunderId);
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState(dayKey(Date.now()));
+  const [note, setNote] = useState("");
+  const [cur, setCur] = useState("usd");
+  const [funderId, setFunderId] = useState(pre?.id || "");
+  const [who, setWho] = useState(pre?.name || "");
+  const [supplierId, setSupplierId] = useState("");
+  const active = (funders || []).filter((f) => !f.archived);
+  const activeS = (suppliers || []).filter((s) => !s.archived);
+  return <Sheet title={`🤝 ${t("mgrSupplierPay")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
+      {t("mgrSupplierHint")}</div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
     </div>
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-      <button type="button" className="dk-pill" onClick={onDeposit}>↙ {t("cashDeposit")}</button>
-      <button type="button" className="dk-pill" onClick={onTake}>↗ {t("cashTake")}</button>
-      <button type="button" className="dk-pill" onClick={onWithdraw}>↩ {t("cashOwnerWithdraw")}</button>
-    </div>
-    {(account.rows || []).length === 0
-      ? <div style={{ color: C.inkSoft, fontSize: 14 }}>{t("cashEmpty")}</div>
-      : <div style={{ display: "grid", gap: 8 }}>
-        {[...(account.rows || [])].reverse().map((r) => (
-          <div key={r.id} style={{
-            display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline",
-            padding: "10px 12px", background: C.card, border: `1px solid ${C.line}`, borderRadius: 4,
-          }}>
-            <div style={{ minWidth: 0 }}>
-              <b style={{ display: "block" }}>{dayKey(r.at)}</b>
-              <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
-                {r.kind === "deposit" ? t("cashDeposit")
-                  : r.kind === "take" ? t("cashTake")
-                  : r.kind === "withdraw" ? t("cashOwnerWithdraw")
-                  : t("cashOwnerSpend")}
-                {r.purpose ? ` — ${r.purpose}` : ""}
-              </span>
-            </div>
-            <b style={{ color: r.dir === "in" ? C.green : C.red, whiteSpace: "nowrap" }}>
-              {r.dir === "in" ? "+" : "−"}{fmtC(r.amount, S.rate, lang)}
-            </b>
-          </div>
-        ))}
-      </div>}
+    <Step n="2" label={t("mgrPick")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setWho(f.name); }}>{f.name}</Chip>
+      ))}
+    </div>}
+    <input value={who} onChange={(e) => { setWho(e.target.value); setFunderId(matchManagerId(active, e.target.value) || ""); }}
+      placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={t("suppliers")} />
+    <SearchPick t={t} value={supplierId || ""}
+      onChange={(id) => setSupplierId(id || "")}
+      extras={[{ id: "", label: "—" }]}
+      items={activeS.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
+    <div style={{ height: 8 }} />
+    <Step n="4" label={t("paymentDate")} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && who.trim() && supplierId ? 1 : .45 }}
+      onClick={() => amount > 0 && who.trim() && supplierId && onSave({
+        type: "supplierPay", amount: fromCents(toCents(amount)),
+        supplierId, managerId: funderId || null, funderId: funderId || null,
+        paidBy: MGR_FUNDED, contributorLabel: who.trim(),
+        note: note.trim(), at: dayStamp(date), currency: cur, rateUsed: S.rate, method: "manager",
+      })}>✓ {t("save")}</button>
   </Sheet>;
+}
+
+function ManagerRetainSaleSheet({ lang, t, S, funders = [], customers = [], preFunderId, onSave, onClose }) {
+  const pre = (funders || []).find((f) => f.id === preFunderId);
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState(dayKey(Date.now()));
+  const [note, setNote] = useState("");
+  const [cur, setCur] = useState("usd");
+  const [funderId, setFunderId] = useState(pre?.id || "");
+  const [who, setWho] = useState(pre?.name || "");
+  const [customerId, setCustomerId] = useState("");
+  const active = (funders || []).filter((f) => !f.archived);
+  const activeC = (customers || []).filter((c) => !c.archived && !isWalkInCustomer(c));
+  return <Sheet title={`🧾 ${t("mgrRetainSale")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
+      {t("mgrRetainHint")}</div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={5} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="2" label={t("mgrPick")} />
+    {active.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {active.map((f) => (
+        <Chip key={f.id} active={funderId === f.id} onClick={() => { setFunderId(f.id); setWho(f.name); }}>{f.name}</Chip>
+      ))}
+    </div>}
+    <input value={who} onChange={(e) => { setWho(e.target.value); setFunderId(matchManagerId(active, e.target.value) || ""); }}
+      placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={t("customers")} />
+    <SearchPick t={t} value={customerId || ""}
+      onChange={(id) => setCustomerId(id || "")}
+      extras={[{ id: "", label: "—" }]}
+      items={activeC.map((c) => ({ id: c.id, label: customerLabel(c, t), hint: c.phone || "", search: `${customerLabel(c, t)} ${c.phone || ""}` }))} />
+    <div style={{ height: 8 }} />
+    <Step n="4" label={t("paymentDate")} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && who.trim() && customerId ? 1 : .45 }}
+      onClick={() => amount > 0 && who.trim() && customerId && onSave({
+        type: "payment", customerId,
+        amount: fromCents(toCents(amount)), amount_cash: fromCents(toCents(amount)),
+        amount_expense_offset: 0, total_credited: fromCents(toCents(amount)),
+        managerId: funderId || null, funderId: funderId || null,
+        retainedBy: MGR_RETAINED, contributorLabel: who.trim(),
+        note: note.trim(), at: dayStamp(date), currency: cur, rateUsed: S.rate, method: "manager_retain",
+      })}>✓ {t("save")}</button>
+  </Sheet>;
+}
+
+function PrintManagerStatement({ lang, t, S, me, statement }) {
+  const money = (n) => fmt(n, S.rate, lang);
+  return <div className="print-doc" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <h2 style={{ margin: "0 0 6px", fontFamily: "var(--display)" }}>{t("mgrStatement")} — {statement?.name}</h2>
+    <div style={{ color: "#666", fontSize: 12.5, marginBottom: 14 }}>
+      {(statement?.from || "…")} → {(statement?.to || "…")}
+      {me?.name ? ` · ${me.name}` : ""}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
+      {[[t("mgrOpening"), statement?.opening || 0],
+        [t("mgrClosing"), statement?.closing || 0],
+        [t("mgrNetBal"), statement?.closing || 0]].map(([lb, v]) => (
+        <div key={lb} style={{ border: "1px solid #ddd", padding: 10, borderRadius: 4 }}>
+          <div style={{ fontSize: 11, color: "#666" }}>{lb}</div>
+          <b>{money(v)}</b>
+        </div>
+      ))}
+    </div>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      <thead>
+        <tr>
+          {[t("cashEntryDate"), t("mgrActivity"), t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")].map((h) => (
+            <th key={h} style={{ borderBottom: "2px solid #222", textAlign: "start", padding: "6px 4px" }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {(statement?.rows || []).length === 0
+          ? <tr><td colSpan={6} style={{ padding: 20, textAlign: "center", color: "#666" }}>{t("mgrEmpty")}</td></tr>
+          : (statement.rows || []).map((r) => (
+            <tr key={r.id}>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{r.day}</td>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{r.dept} · {r.kind}</td>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{r.purpose || r.note || ""}</td>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{r.dir === "in" ? money(r.amount) : ""}</td>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{r.dir === "out" ? money(r.amount) : ""}</td>
+              <td style={{ padding: "5px 4px", borderBottom: "1px solid #eee" }}>{money(r.balance)}</td>
+            </tr>
+          ))}
+      </tbody>
+    </table>
+  </div>;
 }
 
 function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBillId, busy }) {
@@ -10110,6 +10262,11 @@ function FarmApp() {
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
   const [cashQ, setCashQ] = useState("");
+  const [mgrSel, setMgrSel] = useState("");
+  const [mgrRange, setMgrRange] = useState("month");
+  const [mgrFrom, setMgrFrom] = useState("");
+  const [mgrTo, setMgrTo] = useState("");
+  const [mgrQ, setMgrQ] = useState("");
   const [cashPerson, setCashPerson] = useState("");
   const [cashCategory, setCashCategory] = useState("");
   const [cashRefOpen, setCashRefOpen] = useState(false);
@@ -10656,6 +10813,8 @@ function FarmApp() {
         workers: replace?.workers ? (patchRest.workers || []) : (patchRest.workers ? mergeById(base.workers, patchRest.workers) : base.workers),
         customers: replace?.customers ? (patchRest.customers || []) : (patchRest.customers ? mergeById(base.customers, patchRest.customers) : base.customers),
         suppliers: replace?.suppliers ? (patchRest.suppliers || []) : (patchRest.suppliers ? mergeById(base.suppliers, patchRest.suppliers) : base.suppliers),
+        managers: replace?.managers ? (patchRest.managers || []) : (patchRest.managers ? mergeById(base.managers, patchRest.managers) : base.managers),
+        funders: replace?.funders ? (patchRest.funders || []) : (patchRest.funders ? mergeById(base.funders, patchRest.funders) : (patchRest.managers ? patchRest.managers : base.funders)),
         obligations: replace?.obligations ? (patchRest.obligations || []) : (patchRest.obligations ? mergeById(base.obligations, patchRest.obligations) : base.obligations),
         entries: trimEntries([...stamped, ...(base.entries || [])]) };
       const payload = JSON.stringify(merged);
@@ -10772,8 +10931,10 @@ function FarmApp() {
   const activeCustomers = useMemo(() => customers.filter((c) => !c.archived), [customers]);
   const archivedCustomers = useMemo(() => customers.filter((c) => c.archived), [customers]);
   const activeSuppliers = useMemo(() => suppliers.filter((s) => !s.archived), [suppliers]);
-  const funders = (data && data.funders) || [];
-  const activeFunders = useMemo(() => funders.filter((f) => !f.archived), [funders]);
+  const managers = (data && data.managers) || [];
+  const activeManagers = useMemo(() => managers.filter((m) => !m.archived), [managers]);
+  const funders = managers; /* legacy alias for cash helpers */
+  const activeFunders = activeManagers;
   /* Window helpers must sit after customers/suppliers — earlier access hits the TDZ and crashes FarmApp. */
   const popOutCustomer = useCallback((id) => {
     const c = customers.find((x) => x.id === id);
@@ -10811,7 +10972,7 @@ function FarmApp() {
   }, [suppliers, viewport]);
   const popOutModule = useCallback((mod) => {
     if (!isModuleRoute(mod) || viewport.width < 900) return;
-    const row = [["dashboard", "💵", t("cashBox")],
+    const row = [["dashboard", "💵", t("cashBox")], ["managers", "📒", t("managers")],
       ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")],
       ["suppliers", "🤝", t("suppliers")], ["sales", "🧾", t("sales")],
       ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]].find((n) => n[0] === mod);
@@ -11015,8 +11176,16 @@ function FarmApp() {
   const cashBox = useMemo(() => buildCashBox(entries, {
       customers, suppliers, funders, lang, t, custom: S.categories, from: cashBounds.from, to: cashBounds.to,
     }), [entries, customers, suppliers, funders, lang, t, S.categories, cashBounds]);
-  const ownerFund = useMemo(() => buildOwnerFund(entries, funders), [entries, funders]);
-  const funderAccounts = useMemo(() => buildFunderAccounts(entries, funders), [entries, funders]);
+  const ownerFund = useMemo(() => buildOwnerFund(entries, managers), [entries, managers]);
+  const managerAccounts = useMemo(() => buildManagerAccounts(entries, managers), [entries, managers]);
+  const mgrBounds = useMemo(() => {
+    if (mgrRange === "custom") return managerPeriodBounds("custom", { from: mgrFrom, to: mgrTo });
+    return managerPeriodBounds(mgrRange === "thisMonth" ? "month" : mgrRange);
+  }, [mgrRange, mgrFrom, mgrTo]);
+  const mgrStatement = useMemo(() => {
+    if (!mgrSel) return null;
+    return buildManagerStatement(entries, managers, mgrSel, mgrBounds);
+  }, [entries, managers, mgrSel, mgrBounds]);
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
     const person = cashPerson.trim().toLowerCase();
@@ -12319,10 +12488,12 @@ function FarmApp() {
       run: () => { navigate("entry", { clearSheet: false }); setSheet({ k: "milkUse" }); } },
     { key: "n6", icon: "💸", label: t("logExpense"), group: "action", rank: 2,
       run: () => { navigate("expenses", { clearSheet: false }); setSheet({ k: "expense" }); } },
-    { key: "n6b", icon: "↙", label: t("cashDeposit"), group: "action", rank: 2.2,
-      run: () => { navigate("dashboard", { clearSheet: false }); setSheet({ k: "ownerFund" }); } },
-    { key: "n6c", icon: "↗", label: t("cashTake"), hint: t("cashTakeHint"), group: "action", rank: 2.3,
-      run: () => { navigate("dashboard", { clearSheet: false }); setSheet({ k: "cashTake" }); } },
+    { key: "n6b", icon: "📒", label: t("managers"), hint: t("managersSub"), group: "action", rank: 2.15,
+      run: () => navigate("managers") },
+    { key: "n6c", icon: "↙", label: t("mgrInject"), group: "action", rank: 2.2,
+      run: () => { navigate("managers", { clearSheet: false }); setSheet({ k: "ownerFund" }); } },
+    { key: "n6d", icon: "↗", label: t("mgrWithdraw"), group: "action", rank: 2.3,
+      run: () => { navigate("managers", { clearSheet: false }); setSheet({ k: "ownerFundWithdraw" }); } },
     { key: "n2q", icon: "⚡", label: t("quickSale"), hint: t("quickSaleHint"), group: "action", rank: 2.5,
       run: () => { navigate("sales", { clearSheet: false }); setSheet({ k: "quickSale" }); } },
     { key: "n2", icon: "🧾", label: t("newSale"), group: "action", rank: 3,
@@ -12361,7 +12532,7 @@ function FarmApp() {
       run: () => setLang(lang === "ar" ? "en" : "ar") },
     { key: "n20", icon: theme === "dark" ? "☀" : "☾", label: t("theme"), hint: theme === "dark" ? t("themeLight") : t("themeDark"),
       group: "action", rank: 25, run: () => cycleTheme() },
-    ...[["dashboard", "💵", t("cashBox")], ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")],
+    ...[["dashboard", "💵", t("cashBox")], ["managers", "📒", t("managers")], ["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")],
       ["expenses", "💸", t("moneyOut")], ["sales", "🧾", t("sales")], ["reports", "▦", t("reports")],
       ["settings", "⚙", t("settings")]].map(([r, ic, lb], idx) => (
       { key: `g-${r}`, icon: ic, label: lb, hint: t("goTo"), group: "go", rank: 30 + idx, run: () => navigate(r) })),
@@ -12447,8 +12618,8 @@ function FarmApp() {
     }
     if (e.type === OWNER_FUND_TYPE) { setSheet({ k: "ownerFund", id: e.id }); return; }
     if (e.type === OWNER_FUND_WITHDRAW_TYPE) { setSheet({ k: "ownerFundWithdraw", id: e.id }); return; }
-    if (e.type === "expense" && (e.origin === "cash_take" || cashTakeCents(e) > 0) && !e.supplierId) {
-      setSheet({ k: "cashTake", id: e.id });
+    if (e.type === "expense" && (e.origin === MGR_OOP_ORIGIN || e.origin === "cash_take" || isManagerOop(e)) && !e.supplierId) {
+      setSheet({ k: "mgrOop", id: e.id });
       return;
     }
     if (e.type === "payment" || e.type === "supplierPay" || e.type === "med") {
@@ -12560,44 +12731,13 @@ function FarmApp() {
           </div>)}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
+          <button type="button" className="dk-pill" onClick={() => navigate("managers")}>
+            📒 {t("managers")}</button>
           <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund" })}>
-            ↙ {t("cashDeposit")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "cashTake" })}>
-            ↗ {t("cashTake")}</button>
-          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>
-            ＋ {t("cashAddPerson")}</button>
+            ↙ {t("mgrInject")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw" })}>
+            ↗ {t("mgrWithdraw")}</button>
         </div>
-      </DeskCard>
-
-      <DeskCard pad={0} title={`👤 ${t("cashPeople")}`}>
-        {(funderAccounts.list || []).filter((a) => a.id).length === 0 ? (
-          <div style={{ padding: 16, color: C.inkSoft, fontSize: 13.5, lineHeight: 1.45 }}>
-            {t("cashTakeHint")}
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 0 }}>
-            {funderAccounts.list.filter((a) => a.id).map((a) => (
-              <button key={a.id} type="button" onClick={() => setSheet({ k: "funderAccount", id: a.id })}
-                style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                  width: "100%", textAlign: "start", padding: "12px 14px", cursor: "pointer",
-                  background: "transparent", border: "none", borderBottom: `1px solid ${C.line}`,
-                  color: C.ink, font: "inherit",
-                }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ display: "block" }}>{a.name}</b>
-                  <span style={{ color: C.inkSoft, fontSize: 12 }}>
-                    {t("cashPersonDeposited")} {fmtC(a.injected, S.rate, lang)}
-                    {" · "}{t("cashPersonTaken")} {fmtC(a.withdrawn || a.spent, S.rate, lang)}
-                  </span>
-                </div>
-                <b style={{ color: a.balance >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
-                  {fmtC(a.balance, S.rate, lang)}
-                </b>
-              </button>
-            ))}
-          </div>
-        )}
       </DeskCard>
 
       {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
@@ -12819,6 +12959,144 @@ function FarmApp() {
       </DeskCard>}
     </div>
   );
+
+
+  const mgrKindLabel = (kind) => ({
+    inject: t("mgrInject"), withdraw: t("mgrWithdraw"), oop: t("mgrOop"),
+    supplier: t("mgrSupplierPay"), retained: t("mgrRetainSale"),
+  }[kind] || kind);
+  const mgrDeptLabel = (d) => ({
+    cashbox: t("mgrDeptCash"), expenses: t("mgrDeptExp"),
+    suppliers: t("mgrDeptSupp"), sales: t("mgrDeptSales"),
+  }[d] || d);
+  const mgrPeriodLabel = mgrRange === "today" ? t("today")
+    : mgrRange === "week" ? t("thisWeek")
+    : mgrRange === "month" ? t("thisMonth")
+    : mgrRange === "lastMonth" ? t("lastMonth")
+    : mgrRange === "fy" ? t("mgrFy")
+    : mgrRange === "custom" ? `${mgrBounds.from || "…"} — ${mgrBounds.to || "…"}`
+    : t("thisMonth");
+  const mgrViewRows = useMemo(() => {
+    const src = mgrSel
+      ? (mgrStatement?.rows || [])
+      : (managerAccounts.list || []).flatMap((a) => (a.rows || []).map((r) => ({ ...r, _who: a.name, _mid: a.id })));
+    const qn = mgrQ.trim().toLowerCase();
+    return src.filter((r) => {
+      if (!qn) return true;
+      return `${r.day} ${r.purpose || ""} ${r.note || ""} ${r.kind} ${r.dept} ${r._who || ""}`.toLowerCase().includes(qn);
+    }).slice().reverse();
+  }, [mgrSel, mgrStatement, managerAccounts, mgrQ]);
+  const exportMgrCsv = () => {
+    if (!mgrStatement) return;
+    const headers = [t("cashEntryDate"), "dept", "kind", t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")];
+    const csvMoney = (v) => `"${fmt(v || 0, S.rate, lang).replace(/"/g, '""')}"`;
+    const lines = [
+      headers.join(","),
+      ...managerCsvRows(mgrStatement, (n) => fmt(n, S.rate, lang)).map((row) => row.map((cell, i) => {
+        if (i >= 4 && cell !== "") return csvMoney(typeof cell === "number" ? cell : cell);
+        const s = String(cell ?? "");
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(",")),
+    ];
+    downloadBlob("\uFEFF" + lines.join("\n"), `manager-${mgrStatement.name}-${mgrBounds.from}-${mgrBounds.to}.csv`, "text/csv;charset=utf-8");
+    ping(t("saved"));
+  };
+  const DeskManagers = (
+    <div style={{ display: "grid", gap: 14 }} className="cash-box">
+      <DeskCard pad={0} title={`📒 ${t("managers")}`}>
+        <div className="cash-overview">
+          <div className="cash-closing">
+            <span>{t("mgrNetBal")}</span>
+            <Money usd={(mgrSel ? (managerAccounts.byId[mgrSel]?.balance || 0) : managerAccounts.totals.balance)} rate={S.rate} lang={lang} size={28} />
+            <small>{(mgrSel ? (managerAccounts.byId[mgrSel]?.balance || 0) : managerAccounts.totals.balance) >= 0 ? t("mgrOwesThem") : t("mgrTheyOwe")}</small>
+          </div>
+          {[
+            [t("mgrTotalsInject"), mgrSel ? (managerAccounts.byId[mgrSel]?.injected || 0) : managerAccounts.totals.injected, C.green],
+            [t("mgrTotalsWithdraw"), mgrSel ? (managerAccounts.byId[mgrSel]?.withdrawn || 0) : managerAccounts.totals.withdrawn, C.red],
+            [t("mgrTotalsOop"), mgrSel ? (managerAccounts.byId[mgrSel]?.oop || 0) : managerAccounts.totals.oop, C.field],
+            [t("mgrTotalsSupp"), mgrSel ? (managerAccounts.byId[mgrSel]?.supplierPays || 0) : managerAccounts.totals.supplierPays, C.field],
+            [t("mgrTotalsSales"), mgrSel ? (managerAccounts.byId[mgrSel]?.salesRetained || 0) : managerAccounts.totals.salesRetained, C.red],
+          ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
+            <span>{label}</span>
+            <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
+          </div>)}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 12px" }}>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFund", funderId: mgrSel || undefined })}>↙ {t("mgrInject")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw", funderId: mgrSel || undefined })}>↗ {t("mgrWithdraw")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrOop", funderId: mgrSel || undefined })}>💳 {t("mgrOop")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrSupplierPay", funderId: mgrSel || undefined })}>🤝 {t("mgrSupplierPay")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrRetainSale", funderId: mgrSel || undefined })}>🧾 {t("mgrRetainSale")}</button>
+        </div>
+      </DeskCard>
+
+      <DeskCard pad={12} title={t("mgrPick")}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <Chip active={!mgrSel} onClick={() => setMgrSel("")}>{t("mgrAllPeople")}</Chip>
+          {managerAccounts.list.map((a) => (
+            <Chip key={a.id} active={mgrSel === a.id} onClick={() => setMgrSel(a.id)}>
+              {a.name} · {fmtC(a.balance, S.rate, lang)}
+            </Chip>
+          ))}
+        </div>
+      </DeskCard>
+
+      <SearchFilterBar t={t} q={mgrQ} onQ={setMgrQ} qPlaceholder={t("mgrSearch")}
+        activeCount={mgrRange !== "month" ? 1 : 0}
+        onReset={() => { setMgrRange("month"); setMgrFrom(""); setMgrTo(""); setMgrQ(""); }}
+        chips={[
+          mgrRange !== "month" ? { key: "r", label: mgrPeriodLabel, onRemove: () => { setMgrRange("month"); setMgrFrom(""); setMgrTo(""); } } : null,
+        ].filter(Boolean)}>
+        <FilterGroup label={t("customRange")}>
+          {[["today", t("today")], ["week", t("thisWeek")], ["month", t("thisMonth")],
+            ["lastMonth", t("lastMonth")], ["fy", t("mgrFy")], ["custom", t("customRange")]].map(([k, lb]) => (
+            <Chip key={k} active={mgrRange === k} onClick={() => setMgrRange(k)}>{lb}</Chip>
+          ))}
+        </FilterGroup>
+        {mgrRange === "custom" && <FilterGroup>
+          <DatePick compact allowClear value={mgrFrom} onChange={setMgrFrom} ariaLabel={t("fromDate")} />
+          <DatePick compact allowClear value={mgrTo} onChange={setMgrTo} ariaLabel={t("toDate")} />
+        </FilterGroup>}
+      </SearchFilterBar>
+
+      {mgrSel && mgrStatement && <DeskCard pad={12} title={`📄 ${t("mgrStatement")} · ${mgrPeriodLabel}`}
+        right={<>
+          <button type="button" className="dk-pill" onClick={exportMgrCsv}>↧ {t("mgrExportCsv")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrStatementDoc" })}>🖨️ {t("mgrPrint")}</button>
+        </>}>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8, fontSize: 13 }}>
+          <span>{t("mgrOpening")}: <b>{fmtC(mgrStatement.opening, S.rate, lang)}</b></span>
+          <span>{t("mgrClosing")}: <b>{fmtC(mgrStatement.closing, S.rate, lang)}</b></span>
+        </div>
+      </DeskCard>}
+
+      <DeskCard pad={0} title={`📋 ${t("mgrActivity")}`}>
+        {mgrViewRows.length === 0
+          ? <div style={{ padding: 24, color: C.inkSoft, textAlign: "center" }}>{t("mgrEmpty")}</div>
+          : <div style={{ display: "grid" }}>
+            {mgrViewRows.map((r) => (
+              <div key={r.id} style={{
+                display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline",
+                padding: "12px 14px", borderBottom: `1px solid ${C.line}`,
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <b style={{ display: "block" }}>{r.day}{r._who ? ` · ${r._who}` : ""}</b>
+                  <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
+                    {mgrDeptLabel(r.dept)} · {mgrKindLabel(r.kind)}
+                    {r.purpose ? ` — ${r.purpose}` : ""}
+                  </span>
+                </div>
+                <b style={{ color: r.delta >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
+                  {r.delta >= 0 ? "+" : ""}{fmtC(r.delta, S.rate, lang)}
+                </b>
+              </div>
+            ))}
+          </div>}
+      </DeskCard>
+    </div>
+  );
+
 
   const herdStatusKeys = [...new Set(animals.map((a) => a.status).filter(Boolean))];
   const herdFilterActive = (spFilter !== "all" ? 1 : 0) + (herdStatusFilter !== "all" ? 1 : 0) + (q.trim() ? 1 : 0);
@@ -14045,35 +14323,30 @@ function FarmApp() {
         {sheet?.k === "funder" && <FunderSheet lang={lang} t={t}
           onClose={() => setSheet(null)}
           onSave={(row) => {
-            const exists = funders.some((f) => f.id === row.id);
-            const next = exists ? funders.map((f) => (f.id === row.id ? { ...f, ...row } : f)) : [...funders, row];
-            commit([{ type: "funder", name: row.name }], { funders: next });
+            const exists = managers.some((f) => f.id === row.id);
+            const next = exists ? managers.map((f) => (f.id === row.id ? { ...f, ...row } : f)) : [...managers, row];
+            commit([{ type: "manager", name: row.name }], { managers: next, funders: next });
+            if (!mgrSel) setMgrSel(row.id);
             setSheet(null);
             ping(t("saved"));
           }} />}
 
-        {sheet?.k === "funderAccount" && (() => {
-          const account = funderAccounts.byId[sheet.id] || funderAccounts.list.find((a) => a.id === sheet.id);
-          if (!account) return null;
-          return <FunderAccountSheet lang={lang} t={t} S={S} account={account}
-            onClose={() => setSheet(null)}
-            onDeposit={() => setSheet({ k: "ownerFund", funderId: account.id })}
-            onTake={() => setSheet({ k: "cashTake", funderId: account.id })}
-            onWithdraw={() => setSheet({ k: "ownerFundWithdraw", funderId: account.id })} />;
-        })()}
-
         {sheet?.k === "ownerFund" && (() => {
           const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_TYPE) : null;
           return <OwnerFundSheet lang={lang} t={t} S={S} initial={initial || undefined}
-            funders={activeFunders} preFunderId={sheet.funderId}
+            funders={activeManagers} preFunderId={sheet.funderId || sheet.managerId || mgrSel}
             onClose={() => setSheet(null)}
             onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
             onSave={(v) => {
-              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
-              const entry = { ...v, funderId: ref.funderId, contributorLabel: ref.contributorLabel, type: OWNER_FUND_TYPE };
-              const patch = ref.changed ? { funders: ref.funders } : null;
+              const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
+              const entry = {
+                ...v, managerId: ref.managerId, funderId: ref.managerId,
+                contributorLabel: ref.contributorLabel, type: OWNER_FUND_TYPE,
+              };
+              const patch = ref.changed ? { managers: ref.managers, funders: ref.managers } : null;
               if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
               else commit([entry], patch);
+              if (ref.managerId) setMgrSel(ref.managerId);
               setSheet(null);
               ping(t("saved"));
             }} />;
@@ -14082,42 +14355,76 @@ function FarmApp() {
         {sheet?.k === "ownerFundWithdraw" && (() => {
           const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_WITHDRAW_TYPE) : null;
           return <OwnerFundWithdrawSheet lang={lang} t={t} S={S} initial={initial || undefined}
-            funders={activeFunders} preFunderId={sheet.funderId}
+            funders={activeManagers} preFunderId={sheet.funderId || sheet.managerId || mgrSel}
             onClose={() => setSheet(null)}
             onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
             onSave={(v) => {
-              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
+              const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
               const entry = {
-                ...v, funderId: ref.funderId, contributorLabel: ref.contributorLabel,
-                recipientLabel: ref.contributorLabel, type: OWNER_FUND_WITHDRAW_TYPE,
+                ...v, managerId: ref.managerId, funderId: ref.managerId,
+                contributorLabel: ref.contributorLabel, recipientLabel: ref.contributorLabel,
+                type: OWNER_FUND_WITHDRAW_TYPE,
               };
-              const patch = ref.changed ? { funders: ref.funders } : null;
+              const patch = ref.changed ? { managers: ref.managers, funders: ref.managers } : null;
               if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
               else commit([entry], patch);
+              if (ref.managerId) setMgrSel(ref.managerId);
               setSheet(null);
               ping(t("saved"));
             }} />;
         })()}
 
-        {sheet?.k === "cashTake" && (() => {
+        {sheet?.k === "mgrOop" && (() => {
           const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === "expense") : null;
-          return <CashTakeSheet lang={lang} t={t} S={S} custom={S.categories}
-            funders={activeFunders} preFunderId={sheet.funderId} initial={initial || undefined}
+          return <ManagerOopSheet lang={lang} t={t} S={S}
+            funders={activeManagers} preFunderId={sheet.funderId || mgrSel} initial={initial || undefined}
             onClose={() => setSheet(null)}
             onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
             onSave={(v) => {
-              const ref = resolveFunderRef(funders, v.funderId, v.contributorLabel, uid);
+              const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
               const entry = {
-                ...v, funderId: ref.funderId, takenBy: ref.funderId,
+                ...v, managerId: ref.managerId, funderId: ref.managerId,
                 contributorLabel: ref.contributorLabel, recipientLabel: ref.contributorLabel,
               };
-              const patch = ref.changed ? { funders: ref.funders } : null;
+              const patch = ref.changed ? { managers: ref.managers, funders: ref.managers } : null;
               if (initial) { updateEntry(initial.id, entry); if (patch) commit([], patch); }
               else commit([entry], patch);
+              if (ref.managerId) setMgrSel(ref.managerId);
               setSheet(null);
               ping(t("saved"));
             }} />;
         })()}
+
+        {sheet?.k === "mgrSupplierPay" && <ManagerSupplierPaySheet lang={lang} t={t} S={S}
+          funders={activeManagers} suppliers={activeSuppliers} preFunderId={sheet.funderId || mgrSel}
+          onClose={() => setSheet(null)}
+          onSave={(v) => {
+            const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
+            const entry = { ...v, managerId: ref.managerId, funderId: ref.managerId, contributorLabel: ref.contributorLabel };
+            const patch = ref.changed ? { managers: ref.managers, funders: ref.managers } : null;
+            commit([entry], patch);
+            if (ref.managerId) setMgrSel(ref.managerId);
+            setSheet(null);
+            ping(t("saved"));
+          }} />}
+
+        {sheet?.k === "mgrRetainSale" && <ManagerRetainSaleSheet lang={lang} t={t} S={S}
+          funders={activeManagers} customers={activeCustomers} preFunderId={sheet.funderId || mgrSel}
+          onClose={() => setSheet(null)}
+          onSave={(v) => {
+            const ref = resolveFunderRef(managers, v.managerId || v.funderId, v.contributorLabel, uid);
+            const entry = { ...v, managerId: ref.managerId, funderId: ref.managerId, contributorLabel: ref.contributorLabel };
+            const patch = ref.changed ? { managers: ref.managers, funders: ref.managers } : null;
+            commit([entry], patch);
+            if (ref.managerId) setMgrSel(ref.managerId);
+            setSheet(null);
+            ping(t("saved"));
+          }} />}
+
+        {sheet?.k === "mgrStatementDoc" && mgrStatement && <DocPreviewSheet lang={lang} t={t} title={`📒 ${t("mgrStatement")}`}
+          onClose={() => setSheet(null)} onPrint={() => window.print()}>
+          <PrintManagerStatement lang={lang} t={t} S={S} me={me} statement={mgrStatement} />
+        </DocPreviewSheet>}
 
         {sheet?.k === "editExpense" && (() => {
           const e = entries.find((x) => x.id === sheet.id && x.type === "expense");
@@ -14579,6 +14886,7 @@ function FarmApp() {
           </div>
           <nav style={{ padding: "6px 8px 10px", overflowY: "auto" }}>
             {navBtn("dashboard", "💵", t("cashBox"), route === "dashboard", go("dashboard"))}
+            {navBtn("managers", "📒", t("managers"), route === "managers", go("managers"))}
             <NavGroup title={t("farmWork")} open={navFarmOpen} onToggle={() => setNavFarmOpen((o) => !o)} dir={dir}>
               {farmNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k, go(k)))}
             </NavGroup>
@@ -14704,6 +15012,7 @@ function FarmApp() {
                 : route;
               const bodyOf = (mod) => {
                 if (mod === "dashboard") return DeskDashboard;
+                if (mod === "managers") return DeskManagers;
                 if (mod === "animals") return DeskAnimals;
                 if (mod === "entry") return DeskEntry;
                 if (mod === "sales") return DeskSales;
@@ -14791,6 +15100,7 @@ function FarmApp() {
           const mod = w.payload?.route || (w.id.startsWith("mod:") ? w.id.slice(4) : null);
           if (!isModuleRoute(mod)) return null;
           const body = mod === "dashboard" ? DeskDashboard
+            : mod === "managers" ? DeskManagers
             : mod === "animals" ? DeskAnimals
             : mod === "entry" ? DeskEntry
             : mod === "sales" ? DeskSales
