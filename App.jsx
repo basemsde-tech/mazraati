@@ -62,9 +62,13 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.38", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.39", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.39": {
+    ar: ["إصلاح تحميل التطبيق بعد دفتر المديرين"],
+    en: ["Fix app load crash after Manager Ledger"],
+  },
   "2.9.38": {
     ar: [
       "دفتر المديرين: حساب لكل شخص، ربط مع الصندوق والمصاريف والموردين والمبيعات، وكشف بحساب مخصص للتواريخ",
