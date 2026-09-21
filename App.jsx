@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.40", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.41", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.41": {
+    ar: [
+      "صناديق الملخص في الصندوق ومتتبع المديرين: ألوان أوضح حسب الإشارة وتخطيط أنظف",
+    ],
+    en: [
+      "Cash and Manager Tracker summary boxes: clearer signed colors and a tighter layout",
+    ],
+  },
   "2.9.40": {
     ar: [
       "دفتر المديرين كمتتبع شخصي: افتح حساب كل شخص، سجّل حركة واحدة، وارتباط واضح بالصندوق والمصاريف والموردين والمبيعات",
@@ -12871,17 +12879,18 @@ function FarmApp() {
         <div className="cash-overview">
           <div className="cash-closing">
             <span>{t("cashClosing")}</span>
-            <Money usd={cashBox.closing} rate={S.rate} lang={lang} size={30} />
+            <Money usd={cashBox.closing} rate={S.rate} lang={lang} size={28}
+              tone={cashBox.closing > 0 ? C.green : cashBox.closing < 0 ? C.red : C.ink} />
             <small>{cashPeriodLabel}</small>
           </div>
           {[
-            [t("cashOpening"), cashBox.opening, C.field],
+            [t("cashOpening"), cashBox.opening, cashBox.opening > 0 ? C.green : cashBox.opening < 0 ? C.red : C.ink],
             [t("cashIn"), cashBox.totalIn, C.green],
             [t("cashOut"), cashBox.totalOut, C.red],
-            [t("cashNet"), cashNet, cashNet >= 0 ? C.green : C.red],
+            [t("cashNet"), cashNet, cashNet > 0 ? C.green : cashNet < 0 ? C.red : C.ink],
           ].map(([label, value, tone]) => <div className="cash-overview-stat" key={label}>
             <span>{label}</span>
-            <b style={{ color: tone }}>{fmtC(value, S.rate, lang)}</b>
+            <Money usd={value} rate={S.rate} lang={lang} size={15} tone={tone} />
           </div>)}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
@@ -13130,123 +13139,125 @@ function FarmApp() {
     if (r?.source) openCashSource({ source: r.source, id: r.id });
   };
   const mgrAcc = mgrSel ? (managerAccounts.byId[mgrSel] || null) : null;
+  const mgrBal = mgrAcc?.balance || 0;
+  const mgrBalTone = mgrBal > 0 ? C.green : mgrBal < 0 ? C.red : C.ink;
+  const mgrDepts = [
+    [t("mgrDeptCash"), mgrAcc?.byDept?.cashbox || 0, () => navigate("dashboard")],
+    [t("mgrDeptExp"), mgrAcc?.byDept?.expenses || 0, () => navigate("expenses")],
+    [t("mgrDeptSupp"), mgrAcc?.byDept?.suppliers || 0, () => navigate("suppliers")],
+    [t("mgrDeptSales"), mgrAcc?.byDept?.sales || 0, () => navigate("sales")],
+  ];
   const DeskManagers = (
-    <div style={{ display: "grid", gap: 14 }} className="cash-box">
+    <div style={{ display: "grid", gap: 14 }} className="cash-box mgr-tracker">
       {!mgrSel ? (
-        <>
-          <DeskCard pad={14} title={`📒 ${t("managers")}`}
-            right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>}>
-            <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 12, lineHeight: 1.45 }}>{t("managersSub")}</div>
-            {managerAccounts.list.length === 0 ? (
-              <div style={{ padding: "18px 0", textAlign: "center", color: C.inkSoft }}>{t("mgrEmpty")}</div>
-            ) : (
-              <div style={{ display: "grid", gap: 0 }}>
-                {managerAccounts.list.map((a) => {
-                  const last = (a.rows || [])[(a.rows || []).length - 1];
-                  return (
-                    <button key={a.id} type="button" onClick={() => setMgrSel(a.id)}
-                      style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                        width: "100%", textAlign: "start", padding: "14px 4px", cursor: "pointer",
-                        background: "transparent", border: "none", borderBottom: `1px solid ${C.line}`,
-                        color: C.ink, font: "inherit",
-                      }}>
-                      <div style={{ minWidth: 0 }}>
-                        <b style={{ display: "block", fontSize: 16 }}>{a.name}</b>
-                        <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
-                          {last
-                            ? `${dayKey(last.at)} · ${mgrKindLabel(last.kind)}${last.purpose ? ` — ${last.purpose}` : ""}`
-                            : t("mgrEmptyPerson")}
-                        </span>
-                      </div>
-                      <div style={{ textAlign: "end", whiteSpace: "nowrap" }}>
-                        <b style={{ display: "block", color: a.balance >= 0 ? C.green : C.red }}>{fmtC(a.balance, S.rate, lang)}</b>
-                        <span style={{ fontSize: 11, color: C.inkSoft }}>{t("mgrOpenTracker")} ›</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </DeskCard>
-        </>
+        <DeskCard pad={0} title={`📒 ${t("managers")}`}
+          right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>}>
+          <div className="mgr-list-hint">{t("managersSub")}</div>
+          {managerAccounts.list.length === 0 ? (
+            <div className="mgr-empty">{t("mgrEmpty")}</div>
+          ) : (
+            <div className="mgr-people">
+              {managerAccounts.list.map((a, ix) => {
+                const last = (a.rows || [])[(a.rows || []).length - 1];
+                const tone = a.balance > 0 ? C.green : a.balance < 0 ? C.red : C.ink;
+                return (
+                  <button key={a.id} type="button" className="mgr-person" onClick={() => setMgrSel(a.id)}>
+                    <span className="mgr-avatar" style={{ background: AVATAR_COLORS[ix % AVATAR_COLORS.length] }}>
+                      {initials(a.name)}
+                    </span>
+                    <span className="mgr-person-main">
+                      <b>{a.name}</b>
+                      <i>
+                        {last
+                          ? `${dayKey(last.at)} · ${mgrKindLabel(last.kind)}${last.purpose ? ` — ${last.purpose}` : ""}`
+                          : t("mgrEmptyPerson")}
+                      </i>
+                    </span>
+                    <span className="mgr-person-bal">
+                      <Money usd={a.balance} rate={S.rate} lang={lang} size={15} tone={tone} />
+                      <em>{t("mgrOpenTracker")} ›</em>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </DeskCard>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div className="mgr-toolbar">
             <button type="button" className="dk-pill" onClick={() => setMgrSel("")}>‹ {t("mgrBackPeople")}</button>
             <button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>
           </div>
 
           <DeskCard pad={0} title={mgrAcc?.name || t("managers")}>
-            <div className="cash-overview">
-              <div className="cash-closing">
+            <div className="mgr-hero">
+              <div className="mgr-hero-bal">
                 <span>{t("mgrNetBal")}</span>
-                <Money usd={mgrAcc?.balance || 0} rate={S.rate} lang={lang} size={30} />
-                <small>{(mgrAcc?.balance || 0) >= 0 ? t("mgrOwesThem") : t("mgrTheyOwe")}</small>
+                <Money usd={mgrBal} rate={S.rate} lang={lang} size={28} tone={mgrBalTone} />
+                <small>{mgrBal >= 0 ? t("mgrOwesThem") : t("mgrTheyOwe")}</small>
               </div>
-              {[
-                [t("mgrDeptCash"), (mgrAcc?.byDept?.cashbox || 0), () => navigate("dashboard")],
-                [t("mgrDeptExp"), (mgrAcc?.byDept?.expenses || 0), () => navigate("expenses")],
-                [t("mgrDeptSupp"), (mgrAcc?.byDept?.suppliers || 0), () => navigate("suppliers")],
-                [t("mgrDeptSales"), (mgrAcc?.byDept?.sales || 0), () => navigate("sales")],
-              ].map(([label, value, go]) => (
-                <button key={label} type="button" className="cash-overview-stat" onClick={go}
-                  style={{ cursor: "pointer", font: "inherit", color: "inherit", textAlign: "start" }}>
-                  <span>{label} ›</span>
-                  <b style={{ color: value >= 0 ? C.green : C.red }}>{fmtC(value, S.rate, lang)}</b>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 14px 14px" }}>
-              <button type="button" style={{ ...primaryBtn, width: "auto", minWidth: 150, padding: "10px 16px" }}
-                onClick={() => setSheet({ k: "mgrMove", funderId: mgrSel })}>＋ {t("mgrRecord")}</button>
-              <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrStatementDoc" })}>
-                📄 {t("mgrStatement")}</button>
+              <div className="mgr-depts">
+                {mgrDepts.map(([label, value, go]) => {
+                  const tone = value > 0 ? C.green : value < 0 ? C.red : C.inkSoft;
+                  return (
+                    <button key={label} type="button" className="mgr-dept" onClick={go}>
+                      <span>{label}</span>
+                      <Money usd={value} rate={S.rate} lang={lang} size={14} tone={tone} />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mgr-hero-actions">
+                <button type="button" style={{ ...primaryBtn, width: "auto", minWidth: 140, padding: "10px 16px" }}
+                  onClick={() => setSheet({ k: "mgrMove", funderId: mgrSel })}>＋ {t("mgrRecord")}</button>
+                <button type="button" className="dk-pill" onClick={() => setSheet({ k: "mgrStatementDoc" })}>
+                  📄 {t("mgrStatement")}</button>
+              </div>
             </div>
           </DeskCard>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            {[["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
-              <Chip key={k} active={mgrRange === k} onClick={() => setMgrRange(k)}>{lb}</Chip>
-            ))}
-            {mgrRange === "custom" && <>
-              <DatePick compact allowClear value={mgrFrom} onChange={setMgrFrom} ariaLabel={t("fromDate")} />
-              <DatePick compact allowClear value={mgrTo} onChange={setMgrTo} ariaLabel={t("toDate")} />
-            </>}
-            <input value={mgrQ} onChange={(e) => setMgrQ(e.target.value)} placeholder={t("mgrSearch")}
-              style={{ ...inp, flex: 1, minWidth: 120, margin: 0 }} />
-          </div>
-
-          <DeskCard pad={0} title={`${t("mgrActivity")} · ${mgrPeriodLabel}`}>
+          <DeskCard pad={0} title={`${t("mgrActivity")} · ${mgrPeriodLabel}`}
+            right={<div className="mgr-range">
+              {[["month", t("thisMonth")], ["lastMonth", t("lastMonth")], ["custom", t("customRange")]].map(([k, lb]) => (
+                <Chip key={k} active={mgrRange === k} onClick={() => setMgrRange(k)}>{lb}</Chip>
+              ))}
+            </div>}>
+            <div className="mgr-filters">
+              {mgrRange === "custom" && <>
+                <DatePick compact allowClear value={mgrFrom} onChange={setMgrFrom} ariaLabel={t("fromDate")} />
+                <DatePick compact allowClear value={mgrTo} onChange={setMgrTo} ariaLabel={t("toDate")} />
+              </>}
+              <input value={mgrQ} onChange={(e) => setMgrQ(e.target.value)} placeholder={t("mgrSearch")}
+                style={{ ...inp, flex: 1, minWidth: 120, margin: 0 }} />
+            </div>
             {mgrSel && mgrStatement && (
-              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.inkSoft, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                <span>{t("mgrOpening")}: <b style={{ color: C.ink }}>{fmtC(mgrStatement.opening, S.rate, lang)}</b></span>
-                <span>{t("mgrClosing")}: <b style={{ color: C.ink }}>{fmtC(mgrStatement.closing, S.rate, lang)}</b></span>
+              <div className="mgr-period-sum">
+                <span>{t("mgrOpening")}{" "}
+                  <Money usd={mgrStatement.opening} rate={S.rate} lang={lang} size={13}
+                    tone={mgrStatement.opening > 0 ? C.green : mgrStatement.opening < 0 ? C.red : C.ink} /></span>
+                <span>{t("mgrClosing")}{" "}
+                  <Money usd={mgrStatement.closing} rate={S.rate} lang={lang} size={13}
+                    tone={mgrStatement.closing > 0 ? C.green : mgrStatement.closing < 0 ? C.red : C.ink} /></span>
               </div>
             )}
             {mgrViewRows.length === 0
-              ? <div style={{ padding: 28, color: C.inkSoft, textAlign: "center" }}>{t("mgrEmptyPerson")}</div>
-              : <div style={{ display: "grid" }}>
-                {mgrViewRows.map((r) => (
-                  <button key={r.id} type="button" onClick={() => openMgrRow(r)}
-                    style={{
-                      display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline",
-                      padding: "12px 14px", borderBottom: `1px solid ${C.line}`, cursor: "pointer",
-                      background: "transparent", borderLeft: "none", borderRight: "none", borderTop: "none",
-                      color: C.ink, font: "inherit", textAlign: "start", width: "100%",
-                    }}>
-                    <div style={{ minWidth: 0 }}>
-                      <b style={{ display: "block" }}>{r.day}</b>
-                      <span style={{ color: C.inkSoft, fontSize: 12.5 }}>
-                        {mgrDeptLabel(r.dept)} · {mgrKindLabel(r.kind)}
-                        {r.purpose ? ` — ${r.purpose}` : ""}
+              ? <div className="mgr-empty">{t("mgrEmptyPerson")}</div>
+              : <div className="mgr-activity">
+                {mgrViewRows.map((r) => {
+                  const tone = r.delta > 0 ? C.green : r.delta < 0 ? C.red : C.ink;
+                  return (
+                    <button key={r.id} type="button" className="mgr-row" onClick={() => openMgrRow(r)}>
+                      <span className="mgr-row-main">
+                        <b>{r.day}</b>
+                        <i>{mgrDeptLabel(r.dept)} · {mgrKindLabel(r.kind)}{r.purpose ? ` — ${r.purpose}` : ""}</i>
                       </span>
-                    </div>
-                    <b style={{ color: r.delta >= 0 ? C.green : C.red, whiteSpace: "nowrap" }}>
-                      {r.delta >= 0 ? "+" : ""}{fmtC(r.delta, S.rate, lang)}
-                    </b>
-                  </button>
-                ))}
+                      <span className="mgr-row-amt">
+                        <Money usd={r.delta} rate={S.rate} lang={lang} size={14} tone={tone} />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>}
           </DeskCard>
         </>
@@ -15821,9 +15832,58 @@ body.sale-picking .dk-body{padding-bottom:76px}
   border-inline-start:4px solid ${C.field}}
 .cash-closing>span{font-size:12px;font-weight:700;color:${C.inkSoft}}
 .cash-closing>small{font-size:11.5px;color:${C.inkSoft}}
-.cash-overview-stat{padding:16px;border-inline-start:1px solid ${C.line};display:grid;align-content:center;gap:7px;min-height:82px}
+.cash-overview-stat{padding:16px;border-inline-start:1px solid ${C.line};display:grid;align-content:center;gap:7px;min-height:82px;
+  background:transparent;min-width:0}
 .cash-overview-stat span{color:${C.inkSoft};font-size:11.5px;font-weight:700}
 .cash-overview-stat b{font-family:var(--mono);font-size:15px;line-height:1.35}
+button.cash-overview-stat{appearance:none;-webkit-appearance:none;border:none;border-inline-start:1px solid ${C.line};
+  margin:0;font:inherit;color:inherit;text-align:start;cursor:pointer;width:100%}
+button.cash-overview-stat:hover{background:${C.paper}}
+.mgr-tracker{max-width:920px}
+.mgr-list-hint{padding:12px 16px 4px;font-size:13px;color:${C.inkSoft};line-height:1.45}
+.mgr-empty{padding:28px 16px;color:${C.inkSoft};text-align:center;font-size:14px}
+.mgr-people{display:grid}
+.mgr-person{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;margin:0;cursor:pointer;
+  background:transparent;border:none;border-bottom:1px solid ${C.line};color:${C.ink};font:inherit;text-align:start}
+.mgr-person:last-child{border-bottom:none}
+.mgr-person:hover{background:${C.paper}}
+.mgr-avatar{flex:0 0 auto;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+  color:#fff;font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.mgr-person-main{flex:1;min-width:0;display:grid;gap:3px}
+.mgr-person-main b{font-size:15.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mgr-person-main i{font-style:normal;font-size:12.5px;color:${C.inkSoft};overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mgr-person-bal{flex:0 0 auto;display:grid;justify-items:end;gap:3px;max-width:46%}
+.mgr-person-bal em{font-style:normal;font-size:11px;color:${C.inkSoft};font-weight:600}
+.mgr-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mgr-hero{display:grid}
+.mgr-hero-bal{padding:18px 16px 14px;display:grid;gap:6px;border-bottom:1px solid ${C.line};
+  border-inline-start:4px solid ${C.field}}
+.mgr-hero-bal>span{font-size:12px;font-weight:700;color:${C.inkSoft}}
+.mgr-hero-bal>small{font-size:11.5px;color:${C.inkSoft}}
+.mgr-depts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid ${C.line}}
+.mgr-dept{appearance:none;-webkit-appearance:none;display:grid;gap:6px;align-content:start;min-width:0;
+  margin:0;padding:14px 12px;background:transparent;border:none;border-inline-end:1px solid ${C.line};
+  color:${C.ink};font:inherit;text-align:start;cursor:pointer}
+.mgr-dept:last-child{border-inline-end:none}
+.mgr-dept:hover{background:${C.paper}}
+.mgr-dept>span{font-size:11.5px;font-weight:700;color:${C.inkSoft}}
+.mgr-dept>span::after{content:" ›"}
+.mgr-hero-actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px 14px}
+.mgr-range{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.mgr-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;
+  border-bottom:1px solid ${C.line};background:${C.paper}}
+.mgr-period-sum{display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid ${C.line};
+  font-size:13px;color:${C.inkSoft};align-items:center}
+.mgr-activity{display:grid}
+.mgr-row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;width:100%;
+  margin:0;padding:12px 14px;cursor:pointer;background:transparent;border:none;border-bottom:1px solid ${C.line};
+  color:${C.ink};font:inherit;text-align:start}
+.mgr-row:last-child{border-bottom:none}
+.mgr-row:hover{background:${C.paper}}
+.mgr-row-main{min-width:0;display:grid;gap:3px}
+.mgr-row-main b{font-size:13.5px}
+.mgr-row-main i{font-style:normal;font-size:12.5px;color:${C.inkSoft};overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mgr-row-amt{flex:0 0 auto;max-width:48%;text-align:end}
 .cash-register-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .cash-dir{display:flex;gap:4px}
 .cash-dir .dk-pill{padding:6px 10px}
@@ -15870,6 +15930,11 @@ body.sale-picking .dk-body{padding-bottom:76px}
   .cash-register-tools{justify-content:flex-start;width:100%}.cash-search{order:3;width:100%}.cash-search input{width:100%}
   .cash-secondary-actions .dk-pill:last-child{margin-inline-start:0!important}
   .cash-customize-top{align-items:flex-start}.cash-column-list{grid-template-columns:1fr}
+  .mgr-depts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mgr-dept:nth-child(2){border-inline-end:none}
+  .mgr-dept:nth-child(1),.mgr-dept:nth-child(2){border-bottom:1px solid ${C.line}}
+  .mgr-person-bal{max-width:42%}
+  .mgr-range{width:100%;justify-content:flex-start}
 }
 .sf-wrap{position:relative;display:grid;gap:8px}
 .sf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
