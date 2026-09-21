@@ -25,8 +25,9 @@ import {
 } from "./salesPosting.mjs";
 import { voidSales, saleIdsOf, VOID_RESTORE, VOID_WRITEOFF, VOID_REASON_MIN } from "./salesVoid.mjs";
 import {
-  OWNER_FUND_TYPE, OWNER_FUNDED_BY, isOwnerInjection, isOwnerFundedExpense,
-  buildOwnerFund,
+  OWNER_FUND_TYPE, OWNER_FUND_WITHDRAW_TYPE, OWNER_FUNDED_BY,
+  isOwnerInjection, isOwnerFundedExpense, isOwnerWithdraw,
+  buildOwnerFund, normalizeAllocations, formatAllocations, contributorOf,
 } from "./ownerFunds.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 import {
@@ -43,7 +44,7 @@ import {
   WIN_ACCENTS, WIN_ACCENT_KEYS, accentOf, snapWindow, tileSideBySide,
   toggleMaximize, maximizeWindow, setWindowAccent, reflowSnapped, applySavedLayout,
   sanitizeDeskLayoutPrefs, deskLayoutFromWindows,
-  detectSnapZone, snapPreviewGeom, dragFloatGeom,
+  detectSnapZone, snapPreviewGeom, dragFloatGeom, WM_DOCK_H,
 } from "./windowManager.mjs";
 
 /* =====================================================================
@@ -53,9 +54,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.32", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.33", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.33": {
+    ar: [
+      "شريط مهام سفلي بنمط ويندوز ١١ مع أيقونات ومعاينة عند التمرير — التبويبات والنوافذ في مكان واحد",
+      "صندوق النقد: أسماء المساهمين، الغرض والتخصيص، سحب رأس المال، فلاتر ورسوم، وتصدير CSV/Excel/PDF",
+    ],
+    en: [
+      "Windows 11-style bottom taskbar with icons and hover previews — modules and windows in one place",
+      "Cash box: contributor tags, purpose/allocations, capital withdrawals, filters and charts, CSV/Excel/PDF export",
+    ],
+  },
   "2.9.32": {
     ar: [
       "إصلاح سحب النوافذ للحافة: الإفلات على اليسار/اليمين/الأعلى يثبت التقسيم أو التكبير كما يجب",
@@ -1076,6 +1087,14 @@ const T = {
     cashExportComplete: "تصدير الفترة كاملة", cashOpenSource: "فتح القيد",
     cashCustomerReceipts: "قبض الزبائن", cashOtherOut: "مصروفات أخرى",
     cashOwnerInject: "إيداع رأس مال المالك", cashOwnerSpend: "صرف من رأس المال",
+    cashOwnerWithdraw: "سحب رأس مال", cashContributor: "المساهم / الاسم", cashSubAccount: "حساب فرعي",
+    cashPurpose: "الغرض / الاستخدام", cashAllocations: "توزيع المبلغ", cashAllocLabel: "البند",
+    cashAllocAmount: "المبلغ", cashAddAlloc: "إضافة بند", cashRecipient: "المستلم",
+    cashPersonFilter: "حسب الشخص", cashCategoryFilter: "حسب التصنيف",
+    cashInsights: "ملخص مالي", cashTopContributors: "أبرز المساهمين", cashReserve: "الاحتياطي النقدي",
+    cashByCategory: "الإنفاق حسب التصنيف", cashExportExcel: "Excel", cashExportPdf: "PDF",
+    cashOwnerLedger: "كشف رأس المال", cashWithdrawHint: "يعيد رأس المال لشخص دون تسجيل مصروف مزرعة.",
+    taskbar: "شريط المهام", taskbarPreview: "معاينة النافذة", taskbarMinimized: "مصغّرة",
     ownerFund: "رأس مال المالك", ownerFundBal: "رصيد رأس المال", ownerFundInjected: "المودَع",
     ownerFundSpent: "المصروف منه", ownerFundHint: "يزيد رصيد الصندوق، ويُتتبَّع برصيد جارٍ مستقل لرأس المال.",
     ownerFundSpendHint: "الصرف من رأس المال يُسجَّل مصروف مزرعة ويظهر صرفًا في الصندوق.",
@@ -1642,6 +1661,14 @@ const T = {
     cashExportComplete: "Export full period", cashOpenSource: "Open source",
     cashCustomerReceipts: "Customer receipts", cashOtherOut: "Other expenses",
     cashOwnerInject: "Owner capital in", cashOwnerSpend: "Spend owner capital",
+    cashOwnerWithdraw: "Withdraw capital", cashContributor: "Contributor / name", cashSubAccount: "Sub-account",
+    cashPurpose: "Purpose / usage", cashAllocations: "Amount allocation", cashAllocLabel: "Item",
+    cashAllocAmount: "Amount", cashAddAlloc: "Add line", cashRecipient: "Recipient",
+    cashPersonFilter: "By person", cashCategoryFilter: "By category",
+    cashInsights: "Financial snapshot", cashTopContributors: "Top contributors", cashReserve: "Cash reserve",
+    cashByCategory: "Spending by category", cashExportExcel: "Excel", cashExportPdf: "PDF",
+    cashOwnerLedger: "Owner fund statement", cashWithdrawHint: "Returns capital to a person without posting a farm expense.",
+    taskbar: "Taskbar", taskbarPreview: "Window preview", taskbarMinimized: "Minimized",
     ownerFund: "Owner capital", ownerFundBal: "Owner fund balance", ownerFundInjected: "Injected",
     ownerFundSpent: "Spent from fund", ownerFundHint: "Adds cash to the drawer and tracks an independent owner-fund running balance.",
     ownerFundSpendHint: "Spending from owner capital posts a farm expense and a cash-box cash out.",
@@ -2610,7 +2637,7 @@ const emptyFarm = () => ({
   version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
   profiles: [], animals: [], workers: [], customers: [], suppliers: [], obligations: [], entries: [],
 });
-const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
+const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "ownerFundWithdraw", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
 function trimEntries(list) {
   const keep = [], vol = [];
   list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
@@ -3005,10 +3032,35 @@ function initials(name) {
 function cashMoveAmount(e) {
   if (e.type === "payment") return fromCents(paymentCashCents(e) || toCents(e.amount));
   if (e.type === OWNER_FUND_TYPE || isOwnerInjection(e)) return +(e.amount || 0);
+  if (e.type === OWNER_FUND_WITHDRAW_TYPE || isOwnerWithdraw(e)) return +(e.amount || 0);
   if (e.type === "supplierPay") return +(e.amount || 0);
   if (e.type === "expense") return +expenseCounted(e);
   if (e.type === "med") return +(e.cost || 0);
   return 0;
+}
+function cashPersonOf(e, customers = [], suppliers = [], t) {
+  if (!e) return "";
+  const tagged = contributorOf(e);
+  if (tagged) return tagged;
+  if (e.type === "payment" || e.customerId) {
+    const n = customerNameById(customers, e.customerId, t);
+    if (n && n !== "—") return n;
+  }
+  if (e.type === "supplierPay" || e.supplierId) {
+    const s = (suppliers.find((x) => x.id === e.supplierId) || {}).name || e.vendor;
+    if (s) return s;
+  }
+  return String(e.vendor || e.party || "").trim();
+}
+function cashCategoryOf(e, lang, custom, t) {
+  if (!e) return "";
+  if (isOwnerInjection(e)) return t("ownerFund");
+  if (isOwnerWithdraw(e)) return t("cashOwnerWithdraw");
+  if (e.type === "payment") return t("cashCustomerReceipts");
+  if (e.type === "med") return t("medicine");
+  if (e.type === "supplierPay") return t("supplierPays");
+  if (e.category) return catLabel(e.category, lang, custom);
+  return "";
 }
 function paymentTenderAmount(e) {
   if (!e || e.type !== "payment") return cashMoveAmount(e);
@@ -3042,7 +3094,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
       if (!(amt > 0.0001)) return;
       if (dayKey(e.at) >= from) return;
       if (e.type === "payment" || isOwnerInjection(e)) opening += amt;
-      else if (e.type === "supplierPay" || e.type === "expense" || e.type === "med") opening -= amt;
+      else if (e.type === "supplierPay" || e.type === "expense" || e.type === "med" || isOwnerWithdraw(e)) opening -= amt;
     });
   }
   opening = +opening.toFixed(2);
@@ -3076,12 +3128,26 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
     else { bal = +(bal - amt).toFixed(2); outN += amt; }
     const pref = isIn
       ? (isOwnerInjection(e) ? "OF" : "RC")
-      : (e.type === "supplierPay" ? "VP" : e.type === "med" ? "MD" : "PA");
+      : (isOwnerWithdraw(e) ? "OW" : e.type === "supplierPay" ? "VP" : e.type === "med" ? "MD" : "PA");
     const ref = `${pref}${String(i + 1).padStart(6, "0")}`;
     let parts;
     if (isOwnerInjection(e)) {
+      const who = contributorOf(e);
+      const allocTxt = formatAllocations(e.allocations, (n) => String(n));
       parts = [
         { text: t("cashOwnerInject"), tone: "in" },
+        who ? { text: ` · ${who}`, tone: "name" } : null,
+        e.purpose ? { text: ` — ${e.purpose}`, tone: "muted" } : null,
+        allocTxt ? { text: ` → ${allocTxt}`, tone: "muted" } : null,
+        e.subAccount ? { text: ` · ${e.subAccount}`, tone: "muted" } : null,
+        e.note && !e.purpose ? { text: ` — ${e.note}`, tone: "muted" } : null,
+      ].filter(Boolean);
+    } else if (isOwnerWithdraw(e)) {
+      const who = contributorOf(e);
+      parts = [
+        { text: t("cashOwnerWithdraw"), tone: "out" },
+        who ? { text: ` · ${who}`, tone: "name" } : null,
+        e.purpose ? { text: ` — ${e.purpose}`, tone: "muted" } : null,
         e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     } else if (e.type === "payment") {
@@ -3126,13 +3192,19 @@ function buildCashBox(entries, { customers = [], suppliers = [], lang, t, custom
         { text: " · " },
         { text: label, tone: "name" },
         who ? { text: ` · ${who}`, tone: "muted" } : null,
+        ownerSpend && e.recipientLabel ? { text: ` · ${e.recipientLabel}`, tone: "name" } : null,
         ownerSpend ? { text: ` · ${t("ownerFund")}`, tone: "muted" } : null,
-        !payReimb && e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
+        (e.purpose || e.spendPurpose) ? { text: ` — ${e.purpose || e.spendPurpose}`, tone: "muted" } : null,
+        !payReimb && e.note && !(e.purpose || e.spendPurpose) ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     }
     return {
       id: e.id, at: e.at, day: dayKey(e.at), ref, parts, dir: isIn ? "in" : "out",
       debit: isIn ? amt : 0, credit: isIn ? 0 : amt, balance: bal, source: e,
+      person: cashPersonOf(e, customers, suppliers, t),
+      category: cashCategoryOf(e, lang, custom, t),
+      purpose: e.purpose || e.spendPurpose || "",
+      contributor: contributorOf(e),
     };
   });
   return {
@@ -6123,6 +6195,8 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
   const [fromOwner, setFromOwner] = useState(
     !!(fundFromOwner || initial?.fundedBy === OWNER_FUNDED_BY || initial?.origin === "owner_fund"),
   );
+  const [recipientLabel, setRecipientLabel] = useState(initial?.recipientLabel || "");
+  const [spendPurpose, setSpendPurpose] = useState(initial?.purpose || initial?.spendPurpose || "");
 
   const activeSuppliers = (suppliers || []).filter((s) => !s.archived);
   const pickSupplier = (s) => {
@@ -6169,6 +6243,9 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
       group: expGroupOf(cat) || group || "otherGrp",
       fundedBy: useOwner ? OWNER_FUNDED_BY : null,
       origin: useOwner ? "owner_fund" : (initial?.origin && initial.origin !== "owner_fund" ? initial.origin : null),
+      recipientLabel: useOwner ? recipientLabel.trim() : "",
+      purpose: useOwner ? spendPurpose.trim() : (initial?.purpose || ""),
+      spendPurpose: useOwner ? spendPurpose.trim() : "",
       ...(initial?.id ? { id: initial.id } : {}),
     };
   };
@@ -6255,8 +6332,16 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           <Chip active={fromOwner} onClick={() => setFromOwner((v) => !v)}>🏦 {t("fromOwnerCapital")}</Chip>
         </div>
-        {fromOwner && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>
-          {t("fromOwnerCapitalHint")}</div>}
+        {fromOwner && <>
+          <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 8, lineHeight: 1.4 }}>
+            {t("fromOwnerCapitalHint")}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("cashRecipient")}</div>
+          <input value={recipientLabel} onChange={(e) => setRecipientLabel(e.target.value)}
+            placeholder={t("cashRecipient")} style={{ ...inp, marginBottom: 8 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("cashPurpose")}</div>
+          <input value={spendPurpose} onChange={(e) => setSpendPurpose(e.target.value)}
+            placeholder={t("cashPurpose")} style={{ ...inp, marginBottom: 10 }} />
+        </>}
       </>}
       {pay.status !== "paid" && <>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("dueOn")}</div>
@@ -6296,8 +6381,16 @@ function ExpenseSheet({ lang, t, S, custom, species, animals, lastPriceOf, onSav
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           <Chip active={fromOwner} onClick={() => setFromOwner((v) => !v)}>🏦 {t("fromOwnerCapital")}</Chip>
         </div>
-        {fromOwner && <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>
-          {t("fromOwnerCapitalHint")}</div>}
+        {fromOwner && <>
+          <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 8, lineHeight: 1.4 }}>
+            {t("fromOwnerCapitalHint")}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("cashRecipient")}</div>
+          <input value={recipientLabel} onChange={(e) => setRecipientLabel(e.target.value)}
+            placeholder={t("cashRecipient")} style={{ ...inp, marginBottom: 8 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("cashPurpose")}</div>
+          <input value={spendPurpose} onChange={(e) => setSpendPurpose(e.target.value)}
+            placeholder={t("cashPurpose")} style={{ ...inp, marginBottom: 10 }} />
+        </>}
       </>}
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("expenseNote")}</div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("expenseNoteHint")} style={{ ...inp, marginBottom: 12 }} />
@@ -6722,6 +6815,15 @@ function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
   const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
   const [note, setNote] = useState(initial?.note || "");
   const [cur, setCur] = useState(initial?.currency || "usd");
+  const [contributor, setContributor] = useState(initial?.contributorLabel || "");
+  const [subAccount, setSubAccount] = useState(initial?.subAccount || "");
+  const [purpose, setPurpose] = useState(initial?.purpose || "");
+  const [allocs, setAllocs] = useState(() => {
+    const rows = normalizeAllocations(initial?.allocations || []);
+    return rows.length ? rows : [{ label: "", amount: 0 }];
+  });
+  const setAlloc = (i, patch) => setAllocs((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addAlloc = () => setAllocs((rows) => [...rows, { label: "", amount: 0 }]);
   return <Sheet title={`🏦 ${initial ? t("editCashMove") : t("cashOwnerInject")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
       {t("ownerFundHint")}</div>
@@ -6733,12 +6835,74 @@ function OwnerFundSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
     <Step n="2" label={t("paymentDate")} />
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <div style={{ height: 10 }} />
-    <Step n="3" label={`${t("ownerFundNote")} — ${t("optional")}`} />
+    <Step n="3" label={t("cashContributor")} />
+    <input value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder={t("cashContributor")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="4" label={`${t("cashSubAccount")} — ${t("optional")}`} />
+    <input value={subAccount} onChange={(e) => setSubAccount(e.target.value)} placeholder={t("cashSubAccount")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="5" label={`${t("cashPurpose")} — ${t("optional")}`} />
+    <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="6" label={`${t("cashAllocations")} — ${t("optional")}`} />
+    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+      {allocs.map((row, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 8 }}>
+          <input value={row.label} onChange={(e) => setAlloc(i, { label: e.target.value })}
+            placeholder={t("cashAllocLabel")} style={inp} />
+          <MoneyStepper usd={row.amount || 0} onChange={(v) => setAlloc(i, { amount: v })}
+            rate={S.rate} lang={lang} t={t} step={10} />
+        </div>
+      ))}
+      <button type="button" className="dk-pill" onClick={addAlloc}>＋ {t("cashAddAlloc")}</button>
+    </div>
+    <Step n="7" label={`${t("ownerFundNote")} — ${t("optional")}`} />
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
       style={{ ...inp, marginBottom: 14 }} />
     <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
       onClick={() => amount > 0 && onSave({
         type: OWNER_FUND_TYPE, amount: fromCents(toCents(amount)), note: note.trim(),
+        contributorLabel: contributor.trim(), subAccount: subAccount.trim(), purpose: purpose.trim(),
+        allocations: normalizeAllocations(allocs, amount),
+        at: dayStamp(date), currency: cur, rateUsed: S.rate,
+        ...(initial?.id ? { id: initial.id } : {}),
+      })}>✓ {t("save")}</button>
+    {initial && onDelete && <DeleteConfirmBlock t={t} warn={deleteWarnFor(initial, t, initial.id)} onDelete={onDelete} />}
+  </Sheet>;
+}
+
+function OwnerFundWithdrawSheet({ lang, t, S, initial, onSave, onDelete, onClose }) {
+  const [amount, setAmount] = useState(initial?.amount || 0);
+  const [date, setDate] = useState(initial?.at ? dayKey(initial.at) : dayKey(Date.now()));
+  const [note, setNote] = useState(initial?.note || "");
+  const [recipient, setRecipient] = useState(initial?.contributorLabel || initial?.recipientLabel || "");
+  const [purpose, setPurpose] = useState(initial?.purpose || "");
+  const [cur, setCur] = useState(initial?.currency || "usd");
+  return <Sheet title={`🏦 ${initial ? t("editCashMove") : t("cashOwnerWithdraw")}`} onClose={onClose}>
+    <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 12, lineHeight: 1.45 }}>
+      {t("cashWithdrawHint")}</div>
+    <Step n="1" label={t("amount")} />
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+      <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
+        step={10} currency={cur} setCurrency={setCur} />
+    </div>
+    <Step n="2" label={t("cashRecipient")} />
+    <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={t("cashRecipient")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="3" label={`${t("cashPurpose")} — ${t("optional")}`} />
+    <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
+      style={{ ...inp, marginBottom: 10 }} />
+    <Step n="4" label={t("paymentDate")} />
+    <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
+    <div style={{ height: 10 }} />
+    <Step n="5" label={`${t("notes")} — ${t("optional")}`} />
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
+      style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 && recipient.trim() ? 1 : .45 }}
+      onClick={() => amount > 0 && recipient.trim() && onSave({
+        type: OWNER_FUND_WITHDRAW_TYPE, amount: fromCents(toCents(amount)),
+        contributorLabel: recipient.trim(), recipientLabel: recipient.trim(),
+        purpose: purpose.trim(), note: note.trim(),
         at: dayStamp(date), currency: cur, rateUsed: S.rate,
         ...(initial?.id ? { id: initial.id } : {}),
       })}>✓ {t("save")}</button>
@@ -9654,6 +9818,8 @@ function FarmApp() {
   const [cashFrom, setCashFrom] = useState(""); const [cashTo, setCashTo] = useState("");
   const [cashDir, setCashDir] = useState("all");
   const [cashQ, setCashQ] = useState("");
+  const [cashPerson, setCashPerson] = useState("");
+  const [cashCategory, setCashCategory] = useState("");
   const [cashRefOpen, setCashRefOpen] = useState(false);
   const [cashFlowOpen, setCashFlowOpen] = useState(false);
   const [cashCustomizeOpen, setCashCustomizeOpen] = useState(false);
@@ -9824,7 +9990,7 @@ function FarmApp() {
   }, [viewport.width]);
   useEffect(() => {
     if (viewport.width < 900) return;
-    setDeskWins((wins) => reflowSnapped(wins, viewport, { dockH: 56 }));
+    setDeskWins((wins) => reflowSnapped(wins, viewport, { dockH: WM_DOCK_H }));
   }, [viewport.width, viewport.height]);
   useEffect(() => {
     const next = sanitizeDeskLayoutPrefs(deskLayoutFromWindows(deskWins));
@@ -10019,19 +10185,19 @@ function FarmApp() {
     setDeskWins((wins) => moveWindow(wins, id, patch, viewport));
   }, [viewport]);
   const maximizeDeskWin = useCallback((id) => {
-    setDeskWins((wins) => toggleMaximize(wins, id, viewport, { dockH: 56 }));
+    setDeskWins((wins) => toggleMaximize(wins, id, viewport, { dockH: WM_DOCK_H }));
   }, [viewport]);
   const forceMaximizeDeskWin = useCallback((id) => {
-    setDeskWins((wins) => maximizeWindow(wins, id, viewport, { dockH: 56 }));
+    setDeskWins((wins) => maximizeWindow(wins, id, viewport, { dockH: WM_DOCK_H }));
   }, [viewport]);
   const snapDeskWin = useCallback((id, zone) => {
-    setDeskWins((wins) => snapWindow(wins, id, zone, viewport, { dockH: 56 }));
+    setDeskWins((wins) => snapWindow(wins, id, zone, viewport, { dockH: WM_DOCK_H }));
   }, [viewport]);
   const accentDeskWin = useCallback((id, accent) => {
     setDeskWins((wins) => setWindowAccent(wins, id, accent));
   }, []);
   const tileDeskWins = useCallback(() => {
-    setDeskWins((wins) => tileSideBySide(wins, viewport, { dockH: 56 }));
+    setDeskWins((wins) => tileSideBySide(wins, viewport, { dockH: WM_DOCK_H }));
   }, [viewport]);
 
   const resolveSupplierPatch = (payload) => {
@@ -10558,17 +10724,52 @@ function FarmApp() {
   const ownerFund = useMemo(() => buildOwnerFund(entries), [entries]);
   const cashView = useMemo(() => {
     const q = cashQ.trim().toLowerCase();
+    const person = cashPerson.trim().toLowerCase();
+    const cat = cashCategory.trim().toLowerCase();
     const rows = cashBox.rows.filter((r) => {
       if (cashDir === "in" && !(r.debit > 0)) return false;
       if (cashDir === "out" && !(r.credit > 0)) return false;
+      if (person && !(r.person || "").toLowerCase().includes(person)
+        && !(r.contributor || "").toLowerCase().includes(person)) return false;
+      if (cat && !(r.category || "").toLowerCase().includes(cat)) return false;
       if (!q) return true;
       const statement = (r.parts || []).map((p) => p.text).join("");
-      return `${r.day} ${r.ref} ${statement} ${r.debit || ""} ${r.credit || ""}`.toLowerCase().includes(q);
+      return `${r.day} ${r.ref} ${statement} ${r.debit || ""} ${r.credit || ""} ${r.purpose || ""}`.toLowerCase().includes(q);
     });
     const totalIn = +rows.filter((r) => !r.nonCash).reduce((a, r) => a + r.debit, 0).toFixed(2);
     const totalOut = +rows.filter((r) => !r.nonCash).reduce((a, r) => a + r.credit, 0).toFixed(2);
-    return { rows, totalIn, totalOut, filtered: cashDir !== "all" || !!q };
-  }, [cashBox, cashDir, cashQ]);
+    return {
+      rows, totalIn, totalOut,
+      filtered: cashDir !== "all" || !!q || !!person || !!cat,
+    };
+  }, [cashBox, cashDir, cashQ, cashPerson, cashCategory]);
+  const cashPeople = useMemo(() => {
+    const set = new Set();
+    cashBox.rows.forEach((r) => { if (r.person) set.add(r.person); if (r.contributor) set.add(r.contributor); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [cashBox]);
+  const cashCategories = useMemo(() => {
+    const set = new Set();
+    cashBox.rows.forEach((r) => { if (r.category) set.add(r.category); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [cashBox]);
+  const cashInsights = useMemo(() => {
+    const byCat = {};
+    const byPerson = {};
+    cashBox.rows.forEach((r) => {
+      if (r.nonCash) return;
+      if (r.dir === "out" && r.category) {
+        byCat[r.category] = (byCat[r.category] || 0) + (r.credit || 0);
+      }
+      const who = r.contributor || r.person;
+      if (who && r.dir === "in") byPerson[who] = (byPerson[who] || 0) + (r.debit || 0);
+    });
+    const cats = Object.entries(byCat).map(([label, amount]) => ({ label, amount: +amount.toFixed(2) }))
+      .sort((a, b) => b.amount - a.amount).slice(0, 8);
+    const people = Object.entries(byPerson).map(([label, amount]) => ({ label, amount: +amount.toFixed(2) }))
+      .sort((a, b) => b.amount - a.amount).slice(0, 8);
+    return { cats, people, reserve: cashBox.closing, ownerReserve: ownerFund.balance };
+  }, [cashBox, ownerFund]);
   const cashTrailIssues = useMemo(
     () => checkCashTrail(cashView.rows || cashBox.rows || []),
     [cashView.rows, cashBox.rows],
@@ -11893,22 +12094,49 @@ function FarmApp() {
   );
   const go = (r) => () => navigate(r);
 
+  const cashExportRows = () => cashBox.rows.map((r) => ([
+    r.day, r.ref,
+    (r.parts || []).map((p) => p.text).join(""),
+    r.person || r.contributor || "",
+    r.category || "",
+    r.purpose || "",
+    r.debit || "", r.credit || "", r.balance,
+  ]));
   const exportCashBox = () => {
-    const headers = [t("cashEntryDate"), t("cashRef"), t("cashStatement"), t("cashIn"), t("cashOut"), t("cashBalance")];
+    const headers = [t("cashEntryDate"), t("cashRef"), t("cashStatement"), t("cashContributor"),
+      t("cashCategoryFilter"), t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")];
     const csvMoney = (v) => `"${fmt(v || 0, S.rate, lang).replace(/"/g, '""')}"`;
     const lines = [
       headers.join(","),
-      ...cashBox.rows.map((r) => [
-        r.day, r.ref,
-        `"${(r.parts || []).map((p) => p.text).join("").replace(/"/g, '""')}"`,
-        r.debit ? csvMoney(r.debit) : "", r.credit ? csvMoney(r.credit) : "", csvMoney(r.balance),
-      ].join(",")),
-      ["", "", t("cashTotals"), csvMoney(cashBox.totalIn),
+      ...cashExportRows().map((row) => row.map((cell, i) => {
+        if (i >= 6 && cell !== "") return csvMoney(cell);
+        const s = String(cell ?? "");
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(",")),
+      ["", "", t("cashTotals"), "", "", "", csvMoney(cashBox.totalIn),
         csvMoney(cashBox.totalOut), csvMoney(cashBox.closing)].join(","),
     ];
     downloadBlob("\uFEFF" + lines.join("\n"), `cashbox-${cashBounds.from}-${cashBounds.to}.csv`, "text/csv;charset=utf-8");
     ping(t("saved"));
   };
+  const exportCashExcel = () => {
+    try {
+      writeSheets([{
+        name: t("cashBox"),
+        cols: [12, 10, 42, 16, 16, 22, 12, 12, 12],
+        rows: [
+          [t("cashEntryDate"), t("cashRef"), t("cashStatement"), t("cashContributor"),
+            t("cashCategoryFilter"), t("cashPurpose"), t("cashIn"), t("cashOut"), t("cashBalance")],
+          ...cashExportRows(),
+          ["", "", t("cashTotals"), "", "", "", cashBox.totalIn, cashBox.totalOut, cashBox.closing],
+        ],
+      }], lang, `cashbox-${cashBounds.from}-${cashBounds.to}`);
+      ping(`${t("saved")} · .xlsx`);
+    } catch (err) {
+      ping(L(lang, "تعذّر إنشاء الملف.", "Could not build the file."));
+    }
+  };
+  const exportCashPdf = () => { window.print(); };
 
   const openCashSource = (r) => {
     const e = r && r.source;
@@ -11922,8 +12150,10 @@ function FarmApp() {
       else setSheet({ k: "confirmDeleteEntry", id: e.id });
       return;
     }
-    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med" || e.type === OWNER_FUND_TYPE) {
+    if (e.type === "payment" || e.type === "supplierPay" || e.type === "med"
+      || e.type === OWNER_FUND_TYPE || e.type === OWNER_FUND_WITHDRAW_TYPE) {
       if (e.type === OWNER_FUND_TYPE) setSheet({ k: "ownerFund", id: e.id });
+      else if (e.type === OWNER_FUND_WITHDRAW_TYPE) setSheet({ k: "ownerFundWithdraw", id: e.id });
       else setSheet({ k: "editMoney", id: e.id });
       return;
     }
@@ -11977,11 +12207,14 @@ function FarmApp() {
             aria-expanded={cashCustomizeOpen} onClick={() => setCashCustomizeOpen((v) => !v)}>
             ⚙ {t("cashTableSettings")}</button>
         </>}
-        activeCount={(cashRange !== "today" ? 1 : 0) + (cashDir !== "all" ? 1 : 0)}
-        onReset={() => { setCashRange("today"); setCashFrom(""); setCashTo(""); setCashDir("all"); }}
+        activeCount={(cashRange !== "today" ? 1 : 0) + (cashDir !== "all" ? 1 : 0)
+          + (cashPerson ? 1 : 0) + (cashCategory ? 1 : 0)}
+        onReset={() => { setCashRange("today"); setCashFrom(""); setCashTo(""); setCashDir("all"); setCashPerson(""); setCashCategory(""); setCashQ(""); }}
         chips={[
           cashRange !== "today" ? { key: "range", label: cashPeriodLabel, onRemove: () => { setCashRange("today"); setCashFrom(""); setCashTo(""); } } : null,
           cashDir !== "all" ? { key: "dir", label: cashDir === "in" ? t("cashFilterIn") : t("cashFilterOut"), onRemove: () => setCashDir("all") } : null,
+          cashPerson ? { key: "person", label: cashPerson, onRemove: () => setCashPerson("") } : null,
+          cashCategory ? { key: "cat", label: cashCategory, onRemove: () => setCashCategory("") } : null,
         ].filter(Boolean)}>
         <FilterGroup label={t("customRange")}>
           {[["today", t("today")], ["yesterday", t("yesterday")], ["week", t("thisWeek")],
@@ -11997,6 +12230,18 @@ function FarmApp() {
           {[["all", t("cashFilterAll")], ["in", t("cashFilterIn")], ["out", t("cashFilterOut")]].map(([k, lb]) => (
             <Chip key={k} active={cashDir === k} onClick={() => setCashDir(k)}>{lb}</Chip>))}
         </FilterGroup>
+        {cashPeople.length > 0 && <FilterGroup label={t("cashPersonFilter")}>
+          <Chip active={!cashPerson} onClick={() => setCashPerson("")}>{t("cashFilterAll")}</Chip>
+          {cashPeople.slice(0, 12).map((name) => (
+            <Chip key={name} active={cashPerson === name} onClick={() => setCashPerson(cashPerson === name ? "" : name)}>{name}</Chip>
+          ))}
+        </FilterGroup>}
+        {cashCategories.length > 0 && <FilterGroup label={t("cashCategoryFilter")}>
+          <Chip active={!cashCategory} onClick={() => setCashCategory("")}>{t("cashFilterAll")}</Chip>
+          {cashCategories.slice(0, 12).map((name) => (
+            <Chip key={name} active={cashCategory === name} onClick={() => setCashCategory(cashCategory === name ? "" : name)}>{name}</Chip>
+          ))}
+        </FilterGroup>}
       </SearchFilterBar>
 
       <DeskCard pad={0} title={`✦ ${t("cashOverview")}`}>
@@ -12023,6 +12268,8 @@ function FarmApp() {
           <button type="button" className="dk-pill"
             onClick={() => setSheet({ k: "expense", fundFromOwner: true, fresh: uid() })}>
             💸 {t("cashOwnerSpend")}</button>
+          <button type="button" className="dk-pill" onClick={() => setSheet({ k: "ownerFundWithdraw" })}>
+            ↩ {t("cashOwnerWithdraw")}</button>
         </div>
         {(ownerFund.injected > 0 || ownerFund.spent > 0) && (
           <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: C.inkSoft, fontWeight: 600 }}>
@@ -12031,6 +12278,74 @@ function FarmApp() {
           </div>
         )}
       </DeskCard>
+
+      <DeskCard title={`📈 ${t("cashInsights")} · ${cashPeriodLabel}`}>
+        <div className="cash-insights">
+          <div className="cash-insight-stat">
+            <span>{t("cashReserve")}</span>
+            <b style={{ color: cashInsights.reserve >= 0 ? C.green : C.red }}>{fmtC(cashInsights.reserve, S.rate, lang)}</b>
+            <small>{t("ownerFundBal")}: {fmtC(cashInsights.ownerReserve, S.rate, lang)}</small>
+          </div>
+          <div className="cash-insight-col">
+            <b>{t("cashByCategory")}</b>
+            {(cashInsights.cats.length ? cashInsights.cats : [{ label: "—", amount: 0 }]).map((g) => {
+              const max = cashInsights.cats[0]?.amount || 1;
+              const pct = Math.round((g.amount / max) * 100);
+              return <div className="cash-flow-row" key={g.label}>
+                <div><b>{g.label}</b></div>
+                <strong style={{ color: C.red }}>{fmtC(g.amount, S.rate, lang)}</strong>
+                <i><span style={{ width: `${pct}%`, background: C.red }} /></i>
+              </div>;
+            })}
+          </div>
+          <div className="cash-insight-col">
+            <b>{t("cashTopContributors")}</b>
+            {(cashInsights.people.length ? cashInsights.people : [{ label: "—", amount: 0 }]).map((g) => {
+              const max = cashInsights.people[0]?.amount || 1;
+              const pct = Math.round((g.amount / max) * 100);
+              return <div className="cash-flow-row" key={g.label}>
+                <div><b>{g.label}</b></div>
+                <strong style={{ color: C.green }}>{fmtC(g.amount, S.rate, lang)}</strong>
+                <i><span style={{ width: `${pct}%`, background: C.green }} /></i>
+              </div>;
+            })}
+          </div>
+        </div>
+      </DeskCard>
+
+      {ownerFund.rows.length > 0 && <DeskCard pad={0} title={`🏦 ${t("cashOwnerLedger")}`}>
+        <div className="overflow-x-auto">
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <Th>{t("cashEntryDate")}</Th>
+              <Th>{t("cashContributor")}</Th>
+              <Th>{t("cashPurpose")}</Th>
+              <Th align="end">{t("cashIn")}</Th>
+              <Th align="end">{t("cashOut")}</Th>
+              <Th align="end">{t("cashBalance")}</Th>
+            </tr></thead>
+            <tbody>
+              {ownerFund.rows.map((r) => (
+                <tr key={r.id} style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    const e = r.source;
+                    if (!e) return;
+                    if (e.type === OWNER_FUND_TYPE) setSheet({ k: "ownerFund", id: e.id });
+                    else if (e.type === OWNER_FUND_WITHDRAW_TYPE) setSheet({ k: "ownerFundWithdraw", id: e.id });
+                    else if (e.type === "expense") setSheet({ k: "editExpense", id: e.id });
+                  }}>
+                  <Td mono>{dayKey(r.at)}</Td>
+                  <Td>{r.contributor || "—"}</Td>
+                  <Td tone={C.inkSoft}>{r.purpose || (r.allocations?.length ? formatAllocations(r.allocations, (n) => fmtC(n, S.rate, lang)) : r.note) || "—"}</Td>
+                  <Td align="end" mono strong tone={C.green}>{r.dir === "in" ? fmtC(r.amount, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong tone={C.red}>{r.dir === "out" ? fmtC(r.amount, S.rate, lang) : "—"}</Td>
+                  <Td align="end" mono strong>{fmtC(r.balance, S.rate, lang)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </DeskCard>}
 
       {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
@@ -12192,8 +12507,9 @@ function FarmApp() {
       </DeskCard>
 
       <div className="cash-secondary-actions">
-        <button type="button" className="dk-pill" onClick={exportCashBox}>↧ {t("cashExport")} · {t("cashFullPeriod")}</button>
-        <button type="button" className="dk-pill" onClick={() => window.print()}>🖨️ {t("print")}</button>
+        <button type="button" className="dk-pill" onClick={exportCashBox}>↧ CSV · {t("cashFullPeriod")}</button>
+        <button type="button" className="dk-pill" onClick={exportCashExcel}>↧ {t("cashExportExcel")}</button>
+        <button type="button" className="dk-pill" onClick={exportCashPdf}>🖨️ {t("cashExportPdf")}</button>
         <button type="button" className="dk-pill" onClick={() => setCashFlowOpen((v) => !v)}>
           📊 {cashFlowOpen ? t("cashHideFlow") : t("cashShowFlow")} {cashFlowOpen ? "▴" : "▾"}</button>
         <button type="button" className="dk-pill" style={{ marginInlineStart: "auto" }}
@@ -13455,6 +13771,19 @@ function FarmApp() {
             }} />;
         })()}
 
+        {sheet?.k === "ownerFundWithdraw" && (() => {
+          const initial = sheet.id ? entries.find((x) => x.id === sheet.id && x.type === OWNER_FUND_WITHDRAW_TYPE) : null;
+          return <OwnerFundWithdrawSheet lang={lang} t={t} S={S} initial={initial || undefined}
+            onClose={() => setSheet(null)}
+            onDelete={initial ? () => { deleteEntry(initial.id); setSheet(null); } : undefined}
+            onSave={(v) => {
+              if (initial) updateEntry(initial.id, v);
+              else commit([{ ...v, type: OWNER_FUND_WITHDRAW_TYPE }]);
+              setSheet(null);
+              ping(t("saved"));
+            }} />;
+        })()}
+
         {sheet?.k === "editExpense" && (() => {
           const e = entries.find((x) => x.id === sheet.id && x.type === "expense");
           if (!e) return null;
@@ -14003,7 +14332,8 @@ function FarmApp() {
                   {setup[k] ? "✓ " : ""}{lb}</button>))}
             </div>)}
 
-          <div className="dk-body">
+          <div className={`dk-body${viewport.width >= 900 ? " has-taskbar" : ""}`}>
+            {viewport.width < 900 && (
             <WinTabStrip t={t} label={t("workspace")}
               selected={route}
               tabs={openMods.map((id) => {
@@ -14017,8 +14347,8 @@ function FarmApp() {
               }).filter(Boolean)}
               onSelect={selectModuleTab}
               onClose={closeModuleTab}
-              onPopOut={viewport.width >= 900 ? popOutModule : undefined}
             />
+            )}
             {(() => {
               const docked = openMods.filter((m) => !floatingModIds.has(m));
               if (!docked.length) {
@@ -14143,7 +14473,25 @@ function FarmApp() {
         }
         return null;
       })}
-      <WindowDock windows={deskWins} t={t} onRestore={minimizeDeskWin} onClose={closeDeskWin} onFocus={focusDeskWin} onTile={tileDeskWins} />
+      <Taskbar
+        t={t}
+        modules={openMods.map((id) => {
+          const row = allNav.find((n) => n[0] === id);
+          if (!row) return null;
+          return { id, icon: row[1], title: row[2], floating: floatingModIds.has(id) };
+        }).filter(Boolean)}
+        windows={deskWins}
+        activeModule={route}
+        activeWinId={activeDeskWinId}
+        onSelectModule={selectModuleTab}
+        onCloseModule={closeModuleTab}
+        onPopOutModule={viewport.width >= 900 ? popOutModule : undefined}
+        onFocusWin={focusDeskWin}
+        onRestoreWin={minimizeDeskWin}
+        onCloseWin={closeDeskWin}
+        onTile={tileDeskWins}
+        visible={viewport.width >= 900}
+      />
       {sheets}
       <CtxMenu menu={ctx} onClose={() => setCtx(null)} />
       {toast && <div className="toast">✓ {toast}</div>}
@@ -14429,20 +14777,51 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .subwin-edge.sw{left:0;bottom:0;cursor:nesw-resize}
 .subwin-edge.ne{right:0;top:0;cursor:nesw-resize}
 .subwin-edge.nw{left:0;top:0;cursor:nwse-resize}
-.win-dock{position:fixed;inset-inline:12px;bottom:12px;z-index:55;display:flex;align-items:center;gap:8px;
-  flex-wrap:wrap;padding:8px 10px;background:${C.card};border:1px solid ${C.line};border-radius:12px;
-  box-shadow:0 10px 28px rgba(12,58,49,.18);max-width:calc(100vw - 24px)}
-.win-dock-label{font-size:11.5px;font-weight:700;color:${C.inkSoft};margin-inline-end:4px}
-.win-dock-chip{display:inline-flex;align-items:center;gap:6px;background:${C.paper};border:1px solid ${C.line};
-  border-radius:999px;padding:6px 10px;font-size:12.5px;font-weight:700;cursor:pointer;color:${C.ink};
-  font-family:var(--body);max-width:220px}
-.win-dock-chip:hover{border-color:${C.field}}
-.win-dock-x{opacity:.65;padding:0 2px}
+.win-taskbar{position:fixed;inset-inline:0;bottom:0;z-index:55;height:64px;
+  background:color-mix(in srgb, ${C.fieldDeep} 92%, #0b1f1a);border-top:1px solid rgba(255,255,255,.12);
+  box-shadow:0 -8px 28px rgba(12,58,49,.28);backdrop-filter:blur(14px)}
+.win-taskbar-inner{height:100%;display:flex;align-items:center;gap:10px;padding:0 14px;max-width:100%}
+.win-taskbar-brand{font-size:18px;opacity:.9;flex-shrink:0}
+.win-taskbar-apps{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow-x:auto;padding:6px 0;
+  scrollbar-width:none}
+.win-taskbar-apps::-webkit-scrollbar{display:none}
+.win-taskbar-btn{position:relative;display:inline-flex;align-items:center;gap:7px;min-height:44px;
+  background:rgba(255,255,255,.06);border:1px solid transparent;border-radius:10px;padding:6px 10px 8px;
+  color:#fff;cursor:pointer;font-family:var(--body);font-weight:700;font-size:12.5px;flex-shrink:0;max-width:200px}
+.win-taskbar-btn:hover,.win-taskbar-btn.on{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.18)}
+.win-taskbar-btn.floated{opacity:.72}
+.win-taskbar-btn.is-min{opacity:.55}
+.win-taskbar-ic{width:22px;text-align:center;flex-shrink:0}
+.win-taskbar-lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.win-taskbar-pip{position:absolute;left:50%;bottom:3px;transform:translateX(-50%);width:16px;height:3px;
+  border-radius:999px;background:#fff}
+.win-taskbar-x{opacity:0;margin-inline-start:2px;padding:0 2px;font-size:11px}
+.win-taskbar-btn:hover .win-taskbar-x{opacity:.75}
+.win-taskbar-tile{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;
+  border-radius:10px;padding:8px 12px;font-family:var(--body);font-weight:700;font-size:12.5px;cursor:pointer;flex-shrink:0}
+.win-taskbar-preview{position:fixed;transform:translateX(-50%);z-index:70;min-width:180px;max-width:260px;
+  background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px 12px;
+  box-shadow:0 16px 40px rgba(12,58,49,.28);pointer-events:none}
+.win-taskbar-preview-head{display:flex;align-items:center;gap:8px;font-weight:700}
+.win-taskbar-preview-body{margin-top:6px;font-size:12px;color:${C.inkSoft};display:flex;gap:8px;flex-wrap:wrap}
+.dk-body.has-taskbar{padding-bottom:76px}
+.cash-insights{display:grid;grid-template-columns:minmax(140px,.8fr) 1.2fr 1.2fr;gap:14px;padding:4px 2px}
+.cash-insight-stat{display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:${C.paper};
+  border:1px solid ${C.line};border-radius:12px}
+.cash-insight-stat span{font-size:12px;font-weight:600;color:${C.inkSoft}}
+.cash-insight-stat b{font-family:var(--mono);font-size:22px}
+.cash-insight-stat small{font-size:11.5px;color:${C.inkSoft}}
+.cash-insight-col{display:grid;gap:8px;align-content:start}
+.cash-insight-col > b{font-size:13px}
 @media (max-width:899px){
-  .subwin,.win-dock{display:none!important}
+  .subwin,.win-taskbar,.win-taskbar-preview{display:none!important}
+}
+@media (max-width:900px){
+  .cash-insights{grid-template-columns:1fr}
 }
 @media print{
-  .subwin,.win-dock,.win-tabs{display:none!important}
+  .subwin,.win-taskbar,.win-tabs,.win-taskbar-preview{display:none!important}
+  .cash-secondary-actions,.dk-side,.dk-top,.search-filter-bar{display:none!important}
 }
 .hscroll::-webkit-scrollbar{display:none}
 .hscroll{scrollbar-width:none;border-bottom:1px solid ${C.line}}
@@ -15191,7 +15570,7 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
   const preview = snapZone ? snapPreviewGeom(snapZone, {
     width: typeof window !== "undefined" ? window.innerWidth : 1280,
     height: typeof window !== "undefined" ? window.innerHeight : 800,
-  }, { dockH: 56 }) : null;
+  }, { dockH: WM_DOCK_H }) : null;
   return createPortal(
     <>
     <div className={`subwin${active ? " on" : ""}${win.minimized ? " is-min" : ""}${win.maximized ? " is-max" : ""}${dragging ? " is-dragging" : ""}${win.split ? ` split-${win.split}` : ""}`}
@@ -15266,33 +15645,103 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
   );
 }
 
-function WindowDock({ windows, t, onRestore, onClose, onFocus, onTile }) {
-  const mins = (windows || []).filter((w) => w.minimized);
-  const visible = (windows || []).filter((w) => !w.minimized);
-  if (!mins.length && visible.length < 2) return null;
+function Taskbar({
+  t, modules = [], windows = [], activeModule, activeWinId,
+  onSelectModule, onCloseModule, onPopOutModule,
+  onFocusWin, onRestoreWin, onCloseWin, onTile, visible,
+}) {
+  const [hoverId, setHoverId] = useState(null);
+  const [hoverRect, setHoverRect] = useState(null);
+  if (!visible) return null;
+  const floats = sortByZ(windows || []);
+  const visibleFloats = floats.filter((w) => !w.minimized);
+  const showPreview = (id, el, data) => {
+    const r = el.getBoundingClientRect();
+    setHoverId(id);
+    setHoverRect({ left: r.left + r.width / 2, bottom: window.innerHeight - r.top + 10, data });
+  };
+  const clearPreview = () => { setHoverId(null); setHoverRect(null); };
   return (
-    <div className="win-dock" role="toolbar" aria-label={t("windowDock")}>
-      <span className="win-dock-label">{t("windowDock")}</span>
-      {visible.length >= 2 && onTile && (
-        <button type="button" className="win-dock-chip" onClick={onTile} title={t("tileWindows")}>
-          ⧉ {t("tileWindows")}
-        </button>
+    <>
+      <div className="win-taskbar" role="toolbar" aria-label={t("taskbar")}>
+        <div className="win-taskbar-inner">
+          <span className="win-taskbar-brand" aria-hidden="true">🌾</span>
+          <div className="win-taskbar-apps">
+            {modules.map((m) => {
+              const on = activeModule === m.id && !m.floating;
+              return (
+                <button type="button" key={`m:${m.id}`}
+                  className={`win-taskbar-btn${on ? " on" : ""}${m.floating ? " floated" : ""}`}
+                  title={m.title}
+                  onMouseEnter={(e) => showPreview(`m:${m.id}`, e.currentTarget, {
+                    title: m.title, icon: m.icon, kind: t("workspace"),
+                    meta: m.floating ? "⧉" : "",
+                  })}
+                  onMouseLeave={clearPreview}
+                  onClick={() => onSelectModule(m.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    /* lightweight: close / pop-out via existing handlers */
+                    if (onPopOutModule && !m.floating) onPopOutModule(m.id);
+                  }}>
+                  <span className="win-taskbar-ic">{m.icon}</span>
+                  <span className="win-taskbar-lb">{m.title}</span>
+                  {on && <i className="win-taskbar-pip" />}
+                  <span className="win-taskbar-x" onClick={(ev) => { ev.stopPropagation(); onCloseModule(m.id); }}
+                    aria-label={t("closeWindow")}>✕</span>
+                </button>
+              );
+            })}
+            {floats.map((w) => {
+              const acc = accentOf(w.accent);
+              const on = activeWinId === w.id && !w.minimized;
+              return (
+                <button type="button" key={w.id}
+                  className={`win-taskbar-btn win${w.minimized ? " is-min" : ""}${on ? " on" : ""}`}
+                  title={w.title}
+                  style={{ ["--win-accent"]: acc.color }}
+                  onMouseEnter={(e) => showPreview(w.id, e.currentTarget, {
+                    title: w.title, icon: "⧉", kind: w.kind || "window",
+                    meta: w.minimized ? t("taskbarMinimized") : (w.split || (w.maximized ? "max" : "")),
+                    accent: acc.color,
+                  })}
+                  onMouseLeave={clearPreview}
+                  onClick={() => {
+                    if (w.minimized) onRestoreWin(w.id);
+                    onFocusWin(w.id);
+                  }}>
+                  <span className="win-taskbar-ic" style={{ boxShadow: `inset 3px 0 0 ${acc.color}` }}>⧉</span>
+                  <span className="win-taskbar-lb">{w.title}</span>
+                  {on && <i className="win-taskbar-pip" style={{ background: acc.color }} />}
+                  <span className="win-taskbar-x" onClick={(ev) => { ev.stopPropagation(); onCloseWin(w.id); }}
+                    aria-label={t("closeWindow")}>✕</span>
+                </button>
+              );
+            })}
+          </div>
+          {visibleFloats.length >= 2 && onTile && (
+            <button type="button" className="win-taskbar-tile" onClick={onTile} title={t("tileWindows")}>
+              ⧉ {t("tileWindows")}
+            </button>
+          )}
+        </div>
+      </div>
+      {hoverId && hoverRect && createPortal(
+        <div className="win-taskbar-preview" role="tooltip" aria-label={t("taskbarPreview")}
+          style={{ left: hoverRect.left, bottom: hoverRect.bottom,
+            borderColor: hoverRect.data.accent || undefined }}>
+          <div className="win-taskbar-preview-head">
+            <span>{hoverRect.data.icon}</span>
+            <b>{hoverRect.data.title}</b>
+          </div>
+          <div className="win-taskbar-preview-body">
+            <span>{hoverRect.data.kind}</span>
+            {hoverRect.data.meta ? <em>{hoverRect.data.meta}</em> : null}
+          </div>
+        </div>,
+        document.body,
       )}
-      {mins.map((w) => {
-        const acc = accentOf(w.accent);
-        return (
-          <button type="button" key={w.id} className="win-dock-chip"
-            onClick={() => { onRestore(w.id); onFocus(w.id); }}
-            title={t("restoreWindow")}
-            style={{ borderColor: acc.color, boxShadow: `inset 3px 0 0 ${acc.color}` }}>
-            <span className="subwin-accent" style={{ background: acc.color }} aria-hidden="true" />
-            {w.title}
-            <span className="win-dock-x" onClick={(e) => { e.stopPropagation(); onClose(w.id); }}
-              aria-label={t("closeWindow")}>✕</span>
-          </button>
-        );
-      })}
-    </div>
+    </>
   );
 }
 

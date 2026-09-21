@@ -6,6 +6,8 @@ export const WM_MIN_H = 240;
 export const WM_Z_BASE = 40;
 export const WM_SPLIT_GAP = 10;
 export const WM_SPLIT_PAD = 12;
+/** Reserved bottom height for the Win11-style taskbar (snap/maximize clear this). */
+export const WM_DOCK_H = 64;
 /** How close the pointer must be to a screen edge to preview/commit a Win11-style snap. */
 export const WM_SNAP_EDGE = 28;
 export const WM_SNAP_TOP = 18;
@@ -74,7 +76,7 @@ export function maximizeGeom(viewport = {}, opts = {}) {
   const vw = Math.max(WM_MIN_W, +(viewport.width || 1280));
   const vh = Math.max(WM_MIN_H, +(viewport.height || 800));
   const pad = opts.pad != null ? +opts.pad : WM_SPLIT_PAD;
-  const dockH = opts.dockH != null ? +opts.dockH : 56;
+  const dockH = opts.dockH != null ? +opts.dockH : WM_DOCK_H;
   return normalizeGeom({
     x: pad,
     y: pad,
@@ -152,7 +154,7 @@ export function splitGeom(zone, viewport = {}, opts = {}) {
   const vh = Math.max(WM_MIN_H, +(viewport.height || 800));
   const pad = opts.pad != null ? +opts.pad : WM_SPLIT_PAD;
   const gap = opts.gap != null ? +opts.gap : WM_SPLIT_GAP;
-  const dockH = opts.dockH != null ? +opts.dockH : 56;
+  const dockH = opts.dockH != null ? +opts.dockH : WM_DOCK_H;
   const top = pad;
   const bottom = Math.max(pad + WM_MIN_H, vh - pad - dockH);
   const left = pad;
