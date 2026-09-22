@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.47", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.48", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.48": {
+    ar: [
+      "إدخال المبالغ بلوحة أرقام للصندوق: بالماوس أو لوحة المفاتيح بدل أزرار زائد وناقص",
+    ],
+    en: [
+      "Cashier money keypad for amounts: mouse or keyboard instead of plus/minus steppers",
+    ],
+  },
   "2.9.47": {
     ar: [
       "تسجيل دفعة بأسلوب الصندوق: طرق نقد/بطاقة/تحويل، حالة حفظ ونجاح، وصوت جرس عند التسجيل",
@@ -1532,6 +1540,7 @@ const T = {
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
     paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", card: "بطاقة", transfer: "تحويل",
     paymentRef: "مرجع / ملاحظة", paymentRecorded: "تم التسجيل",
+    keypadHint: "اكتب من لوحة المفاتيح أو المس الأزرار", keypadClear: "مسح",
     invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", purchaseInvoice: "فاتورة شراء", invoiceNo: "رقم الفاتورة",
     priceAsTotal: "إدخال الإجمالي", pricePerUnit: "سعر الوحدة", priceFull: "السعر الكامل",
     calculatedTotal: "الإجمالي المحسوب", calculatedUnit: "سعر الوحدة المحسوب",
@@ -2137,6 +2146,7 @@ const T = {
     collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record Payment",
     paymentAmount: "Payment amount", method: "Method", cash: "Cash", card: "Card", transfer: "Transfer",
     paymentRef: "Reference / note", paymentRecorded: "Payment recorded",
+    keypadHint: "Type on the keyboard or tap the pad", keypadClear: "Clear",
     invoice: "Invoice", receipt: "Receipt", statement: "Statement", purchaseInvoice: "Purchase invoice", invoiceNo: "Invoice no.",
     priceAsTotal: "Enter total", pricePerUnit: "Price per unit", priceFull: "Full price",
     calculatedTotal: "Calculated total", calculatedUnit: "Calculated unit price",
@@ -5281,6 +5291,123 @@ function Stepper({ value, onChange, step = 1, suffix, big, decimals, compact, ti
     {btn("+", step)}
   </div>;
 }
+
+/* Cashier-style amount pad: mouse keys + physical/numpad keyboard. Replaces ± steppers for money. */
+function moneyKeypadFormat(n, decimals) {
+  const v = Math.max(0, +n || 0);
+  if (decimals <= 0) return String(Math.round(v));
+  const fixed = v.toFixed(decimals);
+  return fixed.replace(/\.?0+$/, "") || "0";
+}
+function moneyKeypadParse(raw, decimals) {
+  const s = String(raw || "").replace(",", ".");
+  if (s === "" || s === ".") return 0;
+  const n = parseFloat(s);
+  if (isNaN(n) || n < 0) return 0;
+  if (decimals <= 0) return Math.round(n);
+  return +n.toFixed(decimals);
+}
+function moneyKeypadApply(buf, key, decimals) {
+  let next = buf == null ? "" : String(buf);
+  if (key === "C" || key === "Clear") return "";
+  if (key === "⌫" || key === "Backspace") return next.slice(0, -1);
+  if (key === "00") {
+    if (next.includes(".")) {
+      const frac = next.split(".")[1] || "";
+      if (frac.length >= decimals) return next;
+      const room = Math.max(0, decimals - frac.length);
+      return next + "00".slice(0, room);
+    }
+    if (next === "" || next === "0") return "0";
+    if (next.length >= 10) return next;
+    return next + "00";
+  }
+  if (key === "." || key === ",") {
+    if (decimals <= 0) return next;
+    if (!next) return "0.";
+    if (next.includes(".")) return next;
+    return next + ".";
+  }
+  if (/^[0-9]$/.test(key)) {
+    if (next.includes(".")) {
+      const frac = next.split(".")[1] || "";
+      if (frac.length >= decimals) return next;
+      return next + key;
+    }
+    if (next === "0") return key;
+    if (next.length >= 10) return next;
+    return next + key;
+  }
+  return next;
+}
+function MoneyKeypad({ value, onChange, decimals = 2, suffix, t }) {
+  const [buf, setBuf] = useState(null);
+  const [armed, setArmed] = useState(true); /* first digit replaces preset amount */
+  const [hot, setHot] = useState(true);
+  const pressRef = useRef(() => {});
+  const shown = buf !== null ? buf : moneyKeypadFormat(value, decimals);
+  const push = (raw, nextArmed) => {
+    setBuf(raw);
+    setArmed(!!nextArmed);
+    onChange(moneyKeypadParse(raw, decimals));
+  };
+  const press = (key) => {
+    if (armed && /^[0-9]$/.test(key)) {
+      push(moneyKeypadApply("", key, decimals), false);
+      return;
+    }
+    if (armed && key === "00") {
+      push("0", false);
+      return;
+    }
+    const base = buf !== null ? buf : moneyKeypadFormat(value, decimals);
+    const start = (key === "C" || key === "Clear") ? "" : base;
+    push(moneyKeypadApply(start, key, decimals), key === "C" || key === "Clear");
+  };
+  pressRef.current = press;
+  useEffect(() => {
+    /* Currency / precision change — fresh entry. Do not reset on every value commit. */
+    setBuf(null);
+    setArmed(true);
+  }, [decimals]);
+  useEffect(() => {
+    if (!hot) return;
+    const onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      let key = null;
+      if (e.key >= "0" && e.key <= "9") key = e.key;
+      else if (e.key === "." || e.key === "," || e.code === "NumpadDecimal") key = ".";
+      else if (e.key === "Backspace") key = "⌫";
+      else if (e.key === "Delete" || e.key === "Escape") key = "C";
+      if (!key) return;
+      e.preventDefault();
+      pressRef.current(key);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hot]);
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", ".", "00", "⌫"];
+  return (
+    <div className="money-keypad" dir="ltr" lang="en"
+      onMouseDown={() => setHot(true)} role="group" aria-label={t ? t("paymentAmount") : "Amount"}>
+      <div className="money-keypad-display">
+        <span className="money-keypad-value">{shown || "0"}</span>
+        {suffix && <span className="money-keypad-suffix">{suffix}</span>}
+      </div>
+      {t && <div className="money-keypad-hint">{t("keypadHint")}</div>}
+      <div className="money-keypad-grid">
+        {keys.map((k) => (
+          <button type="button" key={k}
+            className={`money-keypad-key${k === "C" || k === "⌫" ? " mute" : ""}${k === "00" ? " span1" : ""}${k === "⌫" ? " span2" : ""}${decimals <= 0 && k === "." ? " disabled" : ""}`}
+            disabled={decimals <= 0 && k === "."}
+            onClick={() => press(k)}>{k === "C" ? (t ? t("keypadClear") : "C") : k}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
 /* Amounts are stored in USD but can be entered in either currency;
    the rate applied at that moment is recorded with the entry. */
 function MoneyStepper({ usd, onChange, rate, lang, t, step = 5, big, currency, setCurrency }) {
@@ -5288,14 +5415,14 @@ function MoneyStepper({ usd, onChange, rate, lang, t, step = 5, big, currency, s
   const cur = currency || own;
   const setCur = setCurrency || setOwn;
   const live = cur === "usd" ? (usd || 0) : Math.round((usd || 0) * rate);
-  const lbpStep = Math.max(1000, Math.round((step * rate) / 1000) * 1000);
+  const decimals = cur === "lbp" ? 0 : 2;
   const commit = (v) => onChange(cur === "usd" ? v : (rate > 0 ? +(v / rate).toFixed(4) : 0));
   return <div>
     {rate > 0 && <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 12 }}>
       <Chip active={cur === "usd"} onClick={() => setCur("usd")}>$ {t("usd")}</Chip>
       <Chip active={cur === "lbp"} onClick={() => setCur("lbp")}>ل.ل {t("lbp")}</Chip>
     </div>}
-    <Stepper big={big} value={live} onChange={commit} step={cur === "usd" ? step : lbpStep}
+    <MoneyKeypad value={live} onChange={commit} decimals={decimals} t={t}
       suffix={cur === "usd" ? "$ USD" : (lang === "ar" ? "ل.ل" : "LBP")} />
     {rate > 0 && <div style={{ textAlign: "center", marginTop: 8, fontFamily: "var(--mono)",
       fontSize: 13.5, fontWeight: 600, color: C.inkSoft }}>
@@ -15748,6 +15875,22 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   box-shadow:0 1px 2px ${C.shadow},0 0 0 1px ${C.line}}
 .pass-keypad-key.mute{background:${C.paper};font-size:20px}
 .pass-keypad-key:active{transform:scale(.97)}
+.money-keypad{direction:ltr!important;unicode-bidi:isolate;max-width:320px;width:100%;margin:0 auto}
+.money-keypad-display{background:${C.field};color:#fff;border-radius:12px;padding:14px 16px;text-align:center;
+  margin-bottom:8px;box-shadow:0 4px 14px ${C.field}33}
+.money-keypad-value{display:block;font-family:var(--mono);font-weight:800;font-size:34px;line-height:1.15;
+  letter-spacing:.02em;word-break:break-all}
+.money-keypad-suffix{display:block;font-size:12px;font-weight:600;opacity:.85;margin-top:4px}
+.money-keypad-hint{text-align:center;font-size:11.5px;font-weight:600;color:${C.inkSoft};margin:0 0 10px}
+.money-keypad-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;direction:ltr}
+.money-keypad-key{height:54px;border-radius:10px;border:1px solid ${C.line};background:${C.card};color:${C.ink};
+  font-size:20px;font-weight:800;font-family:var(--mono);cursor:pointer;box-shadow:0 1px 2px ${C.shadow};
+  transition:transform .1s var(--ease),background .12s ease}
+.money-keypad-key:hover{border-color:${C.field}}
+.money-keypad-key:active{transform:scale(.96);background:${C.paper}}
+.money-keypad-key.mute{background:${C.paper};font-size:16px;font-weight:700}
+.money-keypad-key.span2{grid-column:span 2}
+.money-keypad-key.disabled,.money-keypad-key:disabled{opacity:.35;cursor:not-allowed;transform:none}
 .gate-err{color:${C.red};font-weight:700;font-size:14px;margin:10px 0 0;text-align:center}
 .gate-actions{display:grid;gap:10px}
 .gate-field{display:block;margin-bottom:4px}
