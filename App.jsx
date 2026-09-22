@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.42", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.44", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.43": {
+    ar: [
+      "متتبع المديرين: أغراض مرتبطة بالمصاريف والموردين والمبيعات، مع إيداع أخضر وسحب أحمر",
+    ],
+    en: [
+      "Manager Tracker: purposes linked to expenses, suppliers, and sales — green cash-in, red cash-out",
+    ],
+  },
   "2.9.42": {
     ar: [
       "تسجيل حركة المدير: إيداع أو سحب فقط",
@@ -949,6 +957,49 @@ const expOf = (k) => EXPENSES.find((x) => x[0] === k) || EXPENSES[EXPENSES.lengt
 const expGroupOf = (k) => expOf(k)[5] || "otherGrp";
 const groupMeta = (gk) => EXPENSE_GROUPS.find((g) => g[0] === gk) || EXPENSE_GROUPS[EXPENSE_GROUPS.length - 1];
 const expensesInGroup = (gk) => EXPENSES.filter((e) => e[5] === gk);
+
+/* Manager Tracker purposes — each row posts into a real department.
+   [key, group, moveKind, expenseCategory|null, ar, en] */
+const MGR_PURPOSE_GROUPS = [
+  ["cash", "💵", "صندوق", "Cash box"],
+  ["expenses", "💸", "مصاريف", "Expenses"],
+  ["supplies", "🤝", "موردون", "Suppliers"],
+  ["sales", "🧾", "مبيعات", "Sales"],
+  ["personal", "👤", "شخصي", "Personal"],
+];
+const MGR_PURPOSES = [
+  ["cash_in", "cash", "inject", null, "رأس مال / إيداع", "Capital / top-up"],
+  ["cash_out", "cash", "withdraw", null, "سحب نقد للمزرعة", "Cash out for farm"],
+  ["exp_feed", "expenses", "oop", "feed", "علف / تبن", "Feed / hay"],
+  ["exp_fuel", "expenses", "oop", "fuel", "وقود / مازوت", "Fuel / diesel"],
+  ["exp_vet", "expenses", "oop", "vet", "بيطرة وأدوية", "Vet & medicine"],
+  ["exp_labour", "expenses", "oop", "labour", "أجور وعمال", "Labour & wages"],
+  ["exp_transport", "expenses", "oop", "transport", "نقل", "Transport"],
+  ["exp_repairs", "expenses", "oop", "repairs", "إصلاحات وصيانة", "Repairs & service"],
+  ["exp_utilities", "expenses", "oop", "electricity", "كهرباء وماء", "Electricity & water"],
+  ["exp_other", "expenses", "oop", "other", "مصروف مزرعة آخر", "Other farm expense"],
+  ["sup_pay", "supplies", "supplier", null, "دفع لمورد", "Pay a supplier"],
+  ["sup_buy", "supplies", "oop", "supplies", "شراء مستلزمات", "Buy supplies"],
+  ["sale_collect", "sales", "retained", null, "تحصيل بقي معه", "Kept customer payment"],
+  ["sale_deliver", "sales", "oop", "transport", "توصيل مبيعات", "Sale delivery"],
+  ["sale_market", "sales", "oop", "other", "سوق / رسوم بيع", "Market / selling fees"],
+  ["sale_pack", "sales", "oop", "packaging", "تغليف للمبيعات", "Sales packaging"],
+  ["personal", "personal", "withdraw", null, "استعمال شخصي", "Personal use"],
+  ["personal_advance", "personal", "withdraw", null, "سلفة شخصية", "Personal advance"],
+];
+const mgrPurposeOf = (key) => MGR_PURPOSES.find((p) => p[0] === key) || null;
+const mgrPurposeLabel = (key, lang, fallback = "") => {
+  const row = mgrPurposeOf(key);
+  if (!row) return fallback || "";
+  return lang === "ar" ? row[4] : row[5];
+};
+const mgrPurposeGroupLabel = (gk, lang) => {
+  const g = MGR_PURPOSE_GROUPS.find((x) => x[0] === gk);
+  if (!g) return gk;
+  return lang === "ar" ? g[2] : g[3];
+};
+const mgrPurposesForKind = (kind) => MGR_PURPOSES.filter((p) => p[2] === kind);
+const mgrDefaultPurpose = (kind) => (mgrPurposesForKind(kind)[0] || MGR_PURPOSES[0])[0];
 const catMeta = (k, custom) => {
   const c = (custom || []).find((x) => x.key === k);
   if (c) return { custom: c, icon: c.icon || "📦", color: c.color || "#6C7488", group: c.group || "otherGrp" };
@@ -1015,6 +1066,22 @@ const expenseCounted = (e) => {
   if (st === "unpaid") return 0;
   if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
   return fromCents(toCents(e.amount));
+};
+
+/* Accounts-payable remainder for non-supplier expenses — NOT cash-drawer counting.
+   Manager OOP and payment offsets are already paid; they must not appear as due bills. */
+const expensePaidCents = (e) => {
+  if (!e || e.type !== "expense") return 0;
+  const billC = Math.max(0, toCents(e.amount));
+  const st = e.payStatus || "paid";
+  if (st === "unpaid") return 0;
+  if (st === "partial") return Math.min(billC, Math.max(0, toCents(e.paidAmount)));
+  return billC;
+};
+const expenseOpenDueCents = (e) => {
+  if (!e || e.type !== "expense" || e.supplierId) return 0;
+  if (isCustomerPaidExpense(e) || isDeductionReimbursement(e)) return 0;
+  return Math.max(0, toCents(e.amount) - expensePaidCents(e));
 };
 /* Full purchase cost for P&L (accrual) — owed or paid. */
 const expenseAccrued = (e) => fromCents(toCents(e.amount));
@@ -1190,6 +1257,9 @@ const T = {
     mgrRecord: "تسجيل حركة", mgrRecordHint: "ماذا حدث؟",
     mgrBackPeople: "الأشخاص", mgrOpenTracker: "فتح الحساب",
     mgrViaCash: "عبر الصندوق", mgrViaExp: "عبر المصاريف", mgrViaSupp: "عبر الموردين", mgrViaSales: "عبر المبيعات",
+    mgrPurposeStep: "الغرض — يظهر في القسم المعني",
+    mgrPickSupplier: "اختر المورد", mgrPickCustomer: "اختر الزبون",
+    mgrDetailNote: "تفصيل إضافي (اختياري)",
     cashPurpose: "الغرض / الاستخدام", cashAllocations: "توزيع المبلغ", cashAllocLabel: "البند",
     cashAllocAmount: "المبلغ", cashAddAlloc: "إضافة بند", cashRecipient: "المستلم",
     cashPersonFilter: "حسب الشخص", cashCategoryFilter: "حسب التصنيف",
@@ -1197,6 +1267,7 @@ const T = {
     cashByCategory: "الإنفاق حسب التصنيف", cashExportExcel: "Excel", cashExportPdf: "PDF",
     cashOwnerLedger: "كشف رأس المال", cashWithdrawHint: "يعيد رأس المال لشخص دون تسجيل مصروف مزرعة.",
     taskbar: "شريط المهام", taskbarPreview: "معاينة النافذة", taskbarMinimized: "مصغّرة",
+    taskbarEntity: "الحساب", taskbarRef: "المرجع", taskbarBalance: "الرصيد", taskbarStatus: "الحالة",
     ownerFund: "رأس مال المالك", ownerFundBal: "رصيد رأس المال", ownerFundInjected: "المودَع",
     ownerFundSpent: "المصروف منه", ownerFundHint: "يزيد رصيد الصندوق، ويُتتبَّع برصيد جارٍ مستقل لرأس المال.",
     ownerFundSpendHint: "الصرف من رأس المال يُسجَّل مصروف مزرعة ويظهر صرفًا في الصندوق.",
@@ -1790,6 +1861,9 @@ const T = {
     mgrRecord: "Record a move", mgrRecordHint: "What happened?",
     mgrBackPeople: "People", mgrOpenTracker: "Open",
     mgrViaCash: "via Cash box", mgrViaExp: "via Expenses", mgrViaSupp: "via Suppliers", mgrViaSales: "via Sales",
+    mgrPurposeStep: "Purpose — posts into that department",
+    mgrPickSupplier: "Pick supplier", mgrPickCustomer: "Pick customer",
+    mgrDetailNote: "Extra detail (optional)",
     cashPurpose: "Purpose / usage", cashAllocations: "Amount allocation", cashAllocLabel: "Item",
     cashAllocAmount: "Amount", cashAddAlloc: "Add line", cashRecipient: "Recipient",
     cashPersonFilter: "By person", cashCategoryFilter: "By category",
@@ -1797,6 +1871,7 @@ const T = {
     cashByCategory: "Spending by category", cashExportExcel: "Excel", cashExportPdf: "PDF",
     cashOwnerLedger: "Owner fund statement", cashWithdrawHint: "Returns capital to a person without posting a farm expense.",
     taskbar: "Taskbar", taskbarPreview: "Window preview", taskbarMinimized: "Minimized",
+    taskbarEntity: "Account", taskbarRef: "Reference", taskbarBalance: "Balance", taskbarStatus: "Status",
     ownerFund: "Owner capital", ownerFundBal: "Owner fund balance", ownerFundInjected: "Injected",
     ownerFundSpent: "Spent from fund", ownerFundHint: "Adds cash to the drawer and tracks an independent owner-fund running balance.",
     ownerFundSpendHint: "Spending from owner capital posts a farm expense and a cash-box cash out.",
@@ -7114,50 +7189,123 @@ function OwnerFundWithdrawSheet({ lang, t, S, initial, funders = [], preFunderId
   </Sheet>;
 }
 
-/** Record sheet — cash inject or withdraw against a person’s tracker. */
-function ManagerMoveSheet({ lang, t, S, managers = [], preManagerId, onSave, onClose }) {
+/** Record sheet — posts into cash box, expenses, suppliers, or sales by purpose.
+ *  Cash-in is green; cash-out is red. */
+function ManagerMoveSheet({ lang, t, S, managers = [], suppliers = [], customers = [], preManagerId, onSave, onClose }) {
   const pre = (managers || []).find((f) => f.id === preManagerId);
   const [kind, setKind] = useState("inject");
+  const [purposeKey, setPurposeKey] = useState(mgrDefaultPurpose("inject"));
   const [amount, setAmount] = useState(0);
   const [date, setDate] = useState(dayKey(Date.now()));
   const [note, setNote] = useState("");
   const [cur, setCur] = useState("usd");
   const [managerId, setManagerId] = useState(pre?.id || "");
   const [who, setWho] = useState(pre?.name || "");
-  const [purpose, setPurpose] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const active = (managers || []).filter((f) => !f.archived);
+  const activeS = (suppliers || []).filter((s) => !s.archived);
+  const activeC = (customers || []).filter((c) => !c.archived && !isWalkInCustomer(c));
+  const purposeOpts = mgrPurposesForKind(kind);
+  const purposeRow = mgrPurposeOf(purposeKey);
+  const purposeText = mgrPurposeLabel(purposeKey, lang);
+  const pickKind = (k) => {
+    setKind(k);
+    setPurposeKey(mgrDefaultPurpose(k));
+  };
+  const hint = ({
+    inject: t("mgrInjectHint"), withdraw: t("mgrWithdrawHint"),
+    oop: t("mgrOopHint"), supplier: t("mgrSupplierHint"), retained: t("mgrRetainHint"),
+  })[kind];
   const kinds = [
-    ["inject", t("mgrInject"), t("mgrViaCash")],
-    ["withdraw", t("mgrWithdraw"), t("mgrViaCash")],
+    ["inject", t("mgrInject"), t("mgrViaCash"), "in"],
+    ["withdraw", t("mgrWithdraw"), t("mgrViaCash"), "out"],
+    ["oop", t("mgrOop"), t("mgrViaExp"), "dept"],
+    ["supplier", t("mgrSupplierPay"), t("mgrViaSupp"), "dept"],
+    ["retained", t("mgrRetainSale"), t("mgrViaSales"), "dept"],
   ];
-  const hint = kind === "withdraw" ? t("mgrWithdrawHint") : t("mgrInjectHint");
-  const canSave = amount > 0 && who.trim();
+  const kindStyle = (k, tone) => {
+    const on = kind === k;
+    if (tone === "in") {
+      return {
+        border: `1.5px solid ${on ? C.green : C.line}`,
+        background: on ? `${C.green}18` : C.card,
+        color: on ? C.green : C.ink,
+      };
+    }
+    if (tone === "out") {
+      return {
+        border: `1.5px solid ${on ? C.red : C.line}`,
+        background: on ? `${C.red}14` : C.card,
+        color: on ? C.red : C.ink,
+      };
+    }
+    return {
+      border: `1.5px solid ${on ? C.field : C.line}`,
+      background: on ? `${C.field}14` : C.card,
+      color: C.ink,
+    };
+  };
+  const needParty = kind === "supplier" ? !!supplierId : kind === "retained" ? !!customerId : true;
+  const canSave = amount > 0 && who.trim() && needParty;
   const build = () => {
     const mid = managerId || null;
     const label = who.trim();
+    const purpose = purposeText || note.trim();
     const base = {
       managerId: mid, funderId: mid, contributorLabel: label,
       at: dayStamp(date), currency: cur, rateUsed: S.rate,
-      amount: fromCents(toCents(amount)), purpose: purpose.trim(), note: note.trim(),
+      amount: fromCents(toCents(amount)),
+      purpose, purposeKey, note: note.trim(),
     };
-    if (kind === "withdraw") {
-      return { ...base, type: OWNER_FUND_WITHDRAW_TYPE, recipientLabel: label };
+    if (kind === "inject") return { ...base, type: OWNER_FUND_TYPE, allocations: [] };
+    if (kind === "withdraw") return { ...base, type: OWNER_FUND_WITHDRAW_TYPE, recipientLabel: label };
+    if (kind === "oop") {
+      const cat = (purposeRow && purposeRow[3]) || "other";
+      return {
+        ...base, type: "expense", category: cat,
+        paidAmount: base.amount, payStatus: "paid", vendor: "",
+        supplierId: null, recipientLabel: label, spendPurpose: purpose,
+        group: expGroupOf(cat) || "otherGrp",
+        fundedBy: MGR_FUNDED, origin: MGR_OOP_ORIGIN,
+      };
     }
-    return { ...base, type: OWNER_FUND_TYPE, allocations: [] };
+    if (kind === "supplier") {
+      return {
+        ...base, type: "supplierPay", supplierId,
+        paidBy: MGR_FUNDED, method: "manager",
+      };
+    }
+    return {
+      ...base, type: "payment", customerId,
+      amount_cash: base.amount, amount_expense_offset: 0, total_credited: base.amount,
+      retainedBy: MGR_RETAINED, method: "manager_retain",
+    };
   };
   return <Sheet title={`📒 ${t("mgrRecord")}`} onClose={onClose}>
     <div style={{ fontSize: 12.5, color: C.inkSoft, fontWeight: 600, marginBottom: 10, lineHeight: 1.45 }}>{hint}</div>
     <Step n="1" label={t("mgrRecordHint")} />
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-      {kinds.map(([k, lb, via]) => (
-        <button key={k} type="button" onClick={() => setKind(k)}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+      {kinds.filter(([, , , tone]) => tone !== "dept").map(([k, lb, via, tone]) => (
+        <button key={k} type="button" onClick={() => pickKind(k)}
           style={{
-            textAlign: "start", padding: "12px 14px", borderRadius: 4, cursor: "pointer", font: "inherit",
-            border: `1.5px solid ${kind === k ? C.field : C.line}`,
-            background: kind === k ? `${C.field}14` : C.card, color: C.ink,
+            textAlign: "start", padding: "14px 14px", borderRadius: 4, cursor: "pointer", font: "inherit",
+            ...kindStyle(k, tone),
           }}>
-          <b style={{ display: "block" }}>{lb}</b>
-          <span style={{ fontSize: 12, color: C.inkSoft }}>{via}</span>
+          <b style={{ display: "block", fontSize: 15 }}>{lb}</b>
+          <span style={{ fontSize: 12, opacity: .9 }}>{via}</span>
+        </button>
+      ))}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+      {kinds.filter(([, , , tone]) => tone === "dept").map(([k, lb, via, tone]) => (
+        <button key={k} type="button" onClick={() => pickKind(k)}
+          style={{
+            textAlign: "start", padding: "12px", borderRadius: 4, cursor: "pointer", font: "inherit",
+            ...kindStyle(k, tone),
+          }}>
+          <b style={{ display: "block", fontSize: 13.5 }}>{lb}</b>
+          <span style={{ fontSize: 11.5, opacity: .85 }}>{via}</span>
         </button>
       ))}
     </div>
@@ -7172,17 +7320,46 @@ function ManagerMoveSheet({ lang, t, S, managers = [], preManagerId, onSave, onC
       setManagerId(matchManagerId(active, e.target.value) || "");
     }} placeholder={t("cashPersonName")} style={{ ...inp, marginBottom: 10 }} />
     <Step n="3" label={t("amount")} />
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14, marginBottom: 12 }}>
+    <div style={{
+      background: C.card, borderRadius: 4, padding: 14, marginBottom: 12,
+      border: `1px solid ${kind === "inject" ? C.green : kind === "withdraw" ? C.red : C.line}`,
+    }}>
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t}
         step={5} currency={cur} setCurrency={setCur} />
     </div>
-    <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={t("cashPurpose")}
+    <Step n="4" label={t("mgrPurposeStep")} />
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+      {purposeOpts.map(([key, , , , ar, en]) => (
+        <Chip key={key} active={purposeKey === key} onClick={() => setPurposeKey(key)}>
+          {lang === "ar" ? ar : en}
+        </Chip>
+      ))}
+    </div>
+    {kind === "supplier" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("mgrPickSupplier")}</div>
+      <SearchPick t={t} value={supplierId || ""} onChange={(id) => setSupplierId(id || "")}
+        extras={[{ id: "", label: "—" }]}
+        items={activeS.map((s) => ({ id: s.id, label: s.name, hint: s.phone || "", search: `${s.name} ${s.phone || ""}` }))} />
+      <div style={{ height: 8 }} />
+    </>}
+    {kind === "retained" && <>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("mgrPickCustomer")}</div>
+      <SearchPick t={t} value={customerId || ""} onChange={(id) => setCustomerId(id || "")}
+        extras={[{ id: "", label: "—" }]}
+        items={activeC.map((c) => ({
+          id: c.id, label: customerLabel(c, t), hint: c.phone || "",
+          search: `${customerLabel(c, t)} ${c.phone || ""}`,
+        }))} />
+      <div style={{ height: 8 }} />
+    </>}
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("mgrDetailNote")}
       style={{ ...inp, marginBottom: 10 }} />
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
-    <div style={{ height: 10 }} />
-    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
-      style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
+    <div style={{ height: 14 }} />
+    <button type="button" style={{
+      ...primaryBtn, opacity: canSave ? 1 : .45,
+      background: kind === "inject" ? C.green : kind === "withdraw" ? C.red : primaryBtn.background,
+    }}
       onClick={() => canSave && onSave(build())}>✓ {t("save")}</button>
   </Sheet>;
 }
@@ -11050,8 +11227,8 @@ function FarmApp() {
     if (!c) return;
     const winId = `cust:${id}`;
     setDeskWins((wins) => upsertWindow(wins, applySavedLayout({
-      id: winId, kind: "customer", title: customerLabel(c, t),
-      payload: { customerId: id },
+      id: winId, kind: "customer", title: `${t("sales")} · ${customerLabel(c, t)}`,
+      payload: { customerId: id, accountNo: c.accountNo || c.account || "" },
       geom: {
         x: 48 + (wins.length % 4) * 28,
         y: 72 + (wins.length % 4) * 28,
@@ -11067,7 +11244,7 @@ function FarmApp() {
     if (!s) return;
     const winId = `supp:${id}`;
     setDeskWins((wins) => upsertWindow(wins, applySavedLayout({
-      id: winId, kind: "supplier", title: s.name,
+      id: winId, kind: "supplier", title: `${t("suppliers")} · ${s.name}`,
       payload: { supplierId: id },
       geom: {
         x: 72 + (wins.length % 4) * 28,
@@ -11197,6 +11374,11 @@ function FarmApp() {
       if (isCustomerPaidExpense(e)) {
         return [{ ...e, amount: fromCents(toCents(e.amount)), paidAmount: fromCents(toCents(e.amount)),
           payStatus: "paid", sourceExpenseId: e.id, paidSource: "customerReimburse" }];
+      }
+      if (isManagerOop(e)) {
+        const paidC = expensePaidCents(e);
+        return paidC > 0 ? [{ ...e, amount: fromCents(paidC), paidAmount: fromCents(paidC), payStatus: "paid",
+          sourceExpenseId: e.id, paidSource: "expense" }] : [];
       }
       const paid = expenseCounted(e);
       return paid > 0 ? [{ ...e, amount: paid, paidAmount: paid, payStatus: "paid",
@@ -11414,9 +11596,9 @@ function FarmApp() {
 
   const billsDueList = useMemo(() => obligations.filter((o) => o.active && obligationAlert(o, lang, t)), [obligations, lang, t]);
   const directOpenExpenses = useMemo(() => entries
-    .filter((e) => e.type === "expense" && !e.supplierId && !isCustomerPaidExpense(e))
+    .filter((e) => e.type === "expense" && !e.supplierId && !isCustomerPaidExpense(e) && !isDeductionReimbursement(e))
     .map((e) => {
-      const due = fromCents(Math.max(0, toCents(e.amount) - toCents(expenseCounted(e))));
+      const due = fromCents(expenseOpenDueCents(e));
       return { ...e, due };
     })
     .filter((e) => e.due > 0.009)
@@ -14446,7 +14628,7 @@ function FarmApp() {
           }} />}
 
         {sheet?.k === "mgrMove" && <ManagerMoveSheet lang={lang} t={t} S={S}
-          managers={activeManagers}
+          managers={activeManagers} suppliers={activeSuppliers} customers={activeCustomers}
           preManagerId={sheet.funderId || sheet.managerId || mgrSel}
           onClose={() => setSheet(null)}
           onSave={(v) => {
@@ -15004,6 +15186,46 @@ function FarmApp() {
 
   </>);
 
+  const deskWinContext = (w) => {
+    if (!w) return null;
+    if (w.kind === "customer") {
+      const id = w.payload?.customerId;
+      const c = customers.find((x) => x.id === id);
+      const bal = (ledger.byCustomer && ledger.byCustomer[id]) || {};
+      const name = customerLabel(c, t);
+      const due = +(bal.due || 0);
+      return {
+        label: `${t("sales")} · ${name}`,
+        icon: "🤝", kind: t("sales"), entity: name,
+        ref: (w.payload?.accountNo || c?.accountNo || c?.account || id || "").toString().slice(-8),
+        status: due > 0.009 ? t("outstanding") : t("statusClear"),
+        balance: fmtC(due, S.rate, lang),
+      };
+    }
+    if (w.kind === "supplier") {
+      const id = w.payload?.supplierId;
+      const s = suppliers.find((x) => x.id === id);
+      const bal = (supplierLedger.bySupplier && supplierLedger.bySupplier[id]) || {};
+      const name = (s && s.name) || "—";
+      const due = +(bal.due || 0);
+      return {
+        label: `${t("suppliers")} · ${name}`,
+        icon: "🤝", kind: t("suppliers"), entity: name,
+        ref: (id || "").toString().slice(-8),
+        status: due > 0.009 ? ((bal.overdueDue || 0) > 0.009 ? t("overdue") : t("weOwe")) : t("statusClear"),
+        balance: fmtC(due, S.rate, lang),
+      };
+    }
+    if (w.kind === "module") {
+      const route = (w.payload && w.payload.route) || String(w.id || "").replace(/^mod:/, "");
+      const row = allNav.find((n) => n[0] === route);
+      const title = (row && row[2]) || w.title || route;
+      return { label: title, icon: (row && row[1]) || "▦", kind: t("workspace"), entity: title, ref: "", status: "", balance: "" };
+    }
+    return { label: w.title, icon: "⧉", kind: w.kind || "window", entity: w.title, ref: "", status: "", balance: "" };
+  };
+
+
   return (
     <div dir={dir} className={`app dk theme-${theme}`}>
       <style key={theme}>{makeCss()}</style>
@@ -15267,6 +15489,7 @@ function FarmApp() {
         }
         return null;
       })}
+
       <Taskbar
         t={t}
         modules={openMods.map((id) => {
@@ -15285,6 +15508,7 @@ function FarmApp() {
         onCloseWin={closeDeskWin}
         onTile={tileDeskWins}
         visible={viewport.width >= 900}
+        winContext={deskWinContext}
       />
       {sheets}
       <CtxMenu menu={ctx} onClose={() => setCtx(null)} />
@@ -15618,7 +15842,10 @@ body.sale-picking .dk-body{padding-bottom:76px}
   background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:10px 12px;
   box-shadow:0 16px 40px rgba(12,58,49,.28);pointer-events:none}
 .win-taskbar-preview-head{display:flex;align-items:center;gap:8px;font-weight:700}
-.win-taskbar-preview-body{margin-top:6px;font-size:12px;color:${C.inkSoft};display:flex;gap:8px;flex-wrap:wrap}
+.win-taskbar-preview-body{margin-top:6px;font-size:12px;color:${C.inkSoft};display:grid;gap:4px}
+.win-taskbar-preview-body>span{display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
+.win-taskbar-preview-body i{font-style:normal;font-weight:700;color:${C.ink};opacity:.7}
+.win-taskbar-preview-body em{font-style:normal;opacity:.75}
 .dk-body.has-taskbar{padding-bottom:76px}
 .cash-insights{display:grid;grid-template-columns:minmax(140px,.8fr) 1.2fr 1.2fr;gap:14px;padding:4px 2px}
 .cash-insight-stat{display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:${C.paper};
@@ -16517,7 +16744,7 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
 function Taskbar({
   t, modules = [], windows = [], activeModule, activeWinId,
   onSelectModule, onCloseModule, onPopOutModule,
-  onFocusWin, onRestoreWin, onCloseWin, onTile, visible,
+  onFocusWin, onRestoreWin, onCloseWin, onTile, visible, winContext,
 }) {
   const [hoverId, setHoverId] = useState(null);
   const [hoverRect, setHoverRect] = useState(null);
@@ -16564,14 +16791,19 @@ function Taskbar({
             {floats.map((w) => {
               const acc = accentOf(w.accent);
               const on = activeWinId === w.id && !w.minimized;
+              const ctx = (winContext && winContext(w)) || {};
+              const label = ctx.label || w.title;
               return (
                 <button type="button" key={w.id}
                   className={`win-taskbar-btn win${w.minimized ? " is-min" : ""}${on ? " on" : ""}`}
-                  title={w.title}
+                  title={label}
                   style={{ ["--win-accent"]: acc.color }}
                   onMouseEnter={(e) => showPreview(w.id, e.currentTarget, {
-                    title: w.title, icon: "⧉", kind: w.kind || "window",
-                    meta: w.minimized ? t("taskbarMinimized") : (w.split || (w.maximized ? "max" : "")),
+                    title: label, icon: ctx.icon || "⧉", kind: ctx.kind || w.kind || "window",
+                    entity: ctx.entity || "", ref: ctx.ref || "",
+                    status: ctx.status || (w.minimized ? t("taskbarMinimized") : ""),
+                    balance: ctx.balance || "",
+                    meta: w.split || (w.maximized ? "max" : "") || "",
                     accent: acc.color,
                   })}
                   onMouseLeave={clearPreview}
@@ -16579,8 +16811,8 @@ function Taskbar({
                     if (w.minimized) onRestoreWin(w.id);
                     onFocusWin(w.id);
                   }}>
-                  <span className="win-taskbar-ic" style={{ boxShadow: `inset 3px 0 0 ${acc.color}` }}>⧉</span>
-                  <span className="win-taskbar-lb">{w.title}</span>
+                  <span className="win-taskbar-ic" style={{ boxShadow: `inset 3px 0 0 ${acc.color}` }}>{ctx.icon || "⧉"}</span>
+                  <span className="win-taskbar-lb">{label}</span>
                   {on && <i className="win-taskbar-pip" style={{ background: acc.color }} />}
                   <span className="win-taskbar-x" onClick={(ev) => { ev.stopPropagation(); onCloseWin(w.id); }}
                     aria-label={t("closeWindow")}>✕</span>
@@ -16604,7 +16836,10 @@ function Taskbar({
             <b>{hoverRect.data.title}</b>
           </div>
           <div className="win-taskbar-preview-body">
-            <span>{hoverRect.data.kind}</span>
+            {hoverRect.data.entity ? <span><i>{t("taskbarEntity")}</i> {hoverRect.data.entity}</span> : <span>{hoverRect.data.kind}</span>}
+            {hoverRect.data.ref ? <span><i>{t("taskbarRef")}</i> {hoverRect.data.ref}</span> : null}
+            {hoverRect.data.status ? <span><i>{t("taskbarStatus")}</i> {hoverRect.data.status}</span> : null}
+            {hoverRect.data.balance ? <span><i>{t("taskbarBalance")}</i> {hoverRect.data.balance}</span> : null}
             {hoverRect.data.meta ? <em>{hoverRect.data.meta}</em> : null}
           </div>
         </div>,
