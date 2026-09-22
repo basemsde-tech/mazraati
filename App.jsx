@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.45", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.46", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.46": {
+    ar: [
+      "صندوق النقد ومتتبع المديرين تحت فئة واحدة قابلة للطي في الشريط الجانبي",
+    ],
+    en: [
+      "Cash box and Manager Tracker share one collapsible Cash desk group in the sidebar",
+    ],
+  },
   "2.9.45": {
     ar: [
       "نوافذ سطح المكتب: عنوان الشريط يتحدّث مباشرة مع رصيد العميل أو المورد",
@@ -1288,7 +1296,7 @@ const T = {
     cashResizeColumn: "غيّر عرض العمود", cashMoveEarlier: "حرّك إلى السابق", cashMoveLater: "حرّك إلى التالي",
     cashResetTable: "استعادة الترتيب الافتراضي",
     animals: "الحيوانات", entry: "الإنتاج", sales: "المبيعات", suppliers: "الموردون", reports: "التقارير", settings: "الإعدادات",
-    farmWork: "عمل المزرعة", officeWork: "عمل المكتب",
+    farmWork: "عمل المزرعة", officeWork: "عمل المكتب", cashDesk: "مكتب النقد",
     obligations: "الالتزامات", addObligation: "إضافة فاتورة دورية", obligationTypes: "نوع الالتزام",
     contract: "عقد", recurringBill: "فاتورة دورية", rent: "إيجار",
     partyName: "الطرف / الجهة", nextDue: "تاريخ الاستحقاق", frequency: "التكرار",
@@ -1892,7 +1900,7 @@ const T = {
     cashResizeColumn: "Resize column", cashMoveEarlier: "Move earlier", cashMoveLater: "Move later",
     cashResetTable: "Reset table layout",
     animals: "Animals", entry: "Production", sales: "Sales", suppliers: "Suppliers", reports: "Reports", settings: "Settings",
-    farmWork: "Farm work", officeWork: "Office work",
+    farmWork: "Farm work", officeWork: "Office work", cashDesk: "Cash desk",
     obligations: "Obligations", addObligation: "Add recurring bill", obligationTypes: "Type",
     contract: "Contract", recurringBill: "Recurring bill", rent: "Rent",
     partyName: "Party / vendor", nextDue: "Due date", frequency: "Frequency",
@@ -10592,6 +10600,7 @@ function FarmApp() {
   const [coBusy, setCoBusy] = useState(false);
   const [moneyView, setMoneyView] = useState("both");
   const [theme, setTheme] = useState("light");
+  const [navCashOpen, setNavCashOpen] = useState(true);
   const [navFarmOpen, setNavFarmOpen] = useState(true);
   const [navOfficeOpen, setNavOfficeOpen] = useState(true);
   const [setOpen, setSetOpen] = useState({ farm: true, money: true, display: false, milk: false, docs: false, weather: false, people: false, data: false, cloud: false, system: false, danger: false });
@@ -12854,10 +12863,11 @@ function FarmApp() {
       run: () => { navigate("sales"); openAccount(c.id); } })),
   ];
 
-  /* Farm = stock + production + farm costs. Office = sales + reports + settings. */
+  /* Cash desk = drawer + people balances. Farm = stock + production + farm costs. Office = sales + reports + settings. */
+  const cashNav = [["dashboard", "💵", t("cashBox")], ["managers", "📒", t("managers")]];
   const farmNav = [["animals", "🐾", t("animals")], ["entry", "🥛", t("entry")], ["expenses", "💸", t("moneyOut")], ["suppliers", "🤝", t("suppliers")]];
   const officeNav = [["sales", "🧾", t("sales")], ["reports", "▦", t("reports")], ["settings", "⚙", t("settings")]];
-  const allNav = [["dashboard", "💵", t("cashBox")], ...farmNav, ...officeNav];
+  const allNav = [...cashNav, ...farmNav, ...officeNav];
   const navLabel = (k) => (allNav.find((n) => n[0] === k) || ["", "", k])[2];
   const navBtn = (k, ic, lb, active, onClick) => (
     <button key={k} type="button" className={active ? "dk-nav on" : "dk-nav"}
@@ -15258,8 +15268,9 @@ function FarmApp() {
             <button type="button" className="dk-side-hide" title={t("hideSidebar")} onClick={toggleSidebar}>‹</button>
           </div>
           <nav style={{ padding: "6px 8px 10px", overflowY: "auto" }}>
-            {navBtn("dashboard", "💵", t("cashBox"), route === "dashboard", go("dashboard"))}
-            {navBtn("managers", "📒", t("managers"), route === "managers", go("managers"))}
+            <NavGroup title={t("cashDesk")} open={navCashOpen} onToggle={() => setNavCashOpen((o) => !o)} dir={dir}>
+              {cashNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k, go(k)))}
+            </NavGroup>
             <NavGroup title={t("farmWork")} open={navFarmOpen} onToggle={() => setNavFarmOpen((o) => !o)} dir={dir}>
               {farmNav.map(([k, ic, lb]) => navBtn(k, ic, lb, route === k, go(k)))}
             </NavGroup>
