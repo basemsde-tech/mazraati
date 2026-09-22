@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.44", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.45", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.45": {
+    ar: [
+      "نوافذ سطح المكتب: عنوان الشريط يتحدّث مباشرة مع رصيد العميل أو المورد",
+    ],
+    en: [
+      "Desktop windows: title bar stays in sync with live customer/supplier balances",
+    ],
+  },
   "2.9.43": {
     ar: [
       "متتبع المديرين: أغراض مرتبطة بالمصاريف والموردين والمبيعات، مع إيداع أخضر وسحب أحمر",
@@ -15406,6 +15414,7 @@ function FarmApp() {
           if (!cust) return null;
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              title={(deskWinContext(w) || {}).label}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
               onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
               onSnap={snapDeskWin} onAccent={accentDeskWin}
@@ -15436,6 +15445,7 @@ function FarmApp() {
           if (!sup) return null;
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              title={(deskWinContext(w) || {}).label}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
               onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
               onSnap={snapDeskWin} onAccent={accentDeskWin}
@@ -15476,6 +15486,7 @@ function FarmApp() {
             : null;
           return (
             <SubWindow key={w.id} win={w} active={activeDeskWinId === w.id} t={t}
+              title={(deskWinContext(w) || {}).label}
               onFocus={focusDeskWin} onClose={closeDeskWin} onMinimize={minimizeDeskWin}
               onMaximize={maximizeDeskWin} onForceMaximize={forceMaximizeDeskWin}
               onSnap={snapDeskWin} onAccent={accentDeskWin}
@@ -16564,7 +16575,8 @@ function WinTabStrip({ label, tabs, selected, onSelect, onClose, onPopOut, t }) 
 
 /* Floating, focusable, resizable subwindow. Sheets stay above (z ≥ 100).
    Minimized windows stay mounted (hidden) so forms/scroll survive in the tray. */
-function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, onForceMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
+function SubWindow({ win, active, t, title, onFocus, onClose, onMinimize, onMaximize, onForceMaximize, onSnap, onAccent, onMove, onResize, onTile, children }) {
+  const winTitle = title || win.title;
   const dragRef = useRef(null);
   const snapZoneRef = useRef(null);
   const [accentOpen, setAccentOpen] = useState(false);
@@ -16681,11 +16693,11 @@ function SubWindow({ win, active, t, onFocus, onClose, onMinimize, onMaximize, o
         ["--win-accent-soft"]: acc.soft,
       }}
       onPointerDown={() => !win.minimized && onFocus(win.id)}
-      role="dialog" aria-label={win.title} aria-hidden={!!win.minimized}>
+      role="dialog" aria-label={winTitle} aria-hidden={!!win.minimized}>
       <header className="subwin-head" onPointerDown={startDrag}
         style={{ background: `linear-gradient(180deg, ${acc.soft}, transparent), linear-gradient(180deg, var(--card, #fff) 0%, var(--paper, #f7f5f0) 100%)` }}>
         <span className="subwin-accent" style={{ background: acc.color }} title={t("windowAccent")} aria-hidden="true" />
-        <span className="subwin-title">{win.title}</span>
+        <span className="subwin-title">{winTitle}</span>
         <span className="subwin-actions" onPointerDown={(e) => e.stopPropagation()}>
           {onSnap && (
             <>
