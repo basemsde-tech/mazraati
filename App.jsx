@@ -62,9 +62,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.46", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.47", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.47": {
+    ar: [
+      "تسجيل دفعة بأسلوب الصندوق: طرق نقد/بطاقة/تحويل، حالة حفظ ونجاح، وصوت جرس عند التسجيل",
+    ],
+    en: [
+      "Record Payment POS-style: Cash/Card/Transfer, saving and success states, and a till chime on save",
+    ],
+  },
   "2.9.46": {
     ar: [
       "صندوق النقد ومتتبع المديرين تحت فئة واحدة قابلة للطي في الشريط الجانبي",
@@ -1522,7 +1530,8 @@ const T = {
     unitPrice: "سعر الوحدة", payStatus: "حالة الدفع", paidS: "مدفوع", unpaid: "غير مدفوع",
     partial: "متبقي", amountPaid: "المبلغ المدفوع", outstanding: "المستحقات",
     collected: "المحصّل", balance: "الرصيد", due: "المتبقي", recordPayment: "تسجيل دفعة",
-    paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", transfer: "تحويل",
+    paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", card: "بطاقة", transfer: "تحويل",
+    paymentRef: "مرجع / ملاحظة", paymentRecorded: "تم التسجيل",
     invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", purchaseInvoice: "فاتورة شراء", invoiceNo: "رقم الفاتورة",
     priceAsTotal: "إدخال الإجمالي", pricePerUnit: "سعر الوحدة", priceFull: "السعر الكامل",
     calculatedTotal: "الإجمالي المحسوب", calculatedUnit: "سعر الوحدة المحسوب",
@@ -2125,8 +2134,9 @@ const T = {
     accountReimburse: "Account reimbursement",
     unitPrice: "Unit price", payStatus: "Payment status", paidS: "Paid", unpaid: "Unpaid",
     partial: "Remainder", amountPaid: "Amount paid", outstanding: "Outstanding",
-    collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record a payment",
-    paymentAmount: "Payment amount", method: "Method", cash: "Cash", transfer: "Transfer",
+    collected: "Collected", balance: "Balance", due: "Due", recordPayment: "Record Payment",
+    paymentAmount: "Payment amount", method: "Method", cash: "Cash", card: "Card", transfer: "Transfer",
+    paymentRef: "Reference / note", paymentRecorded: "Payment recorded",
     invoice: "Invoice", receipt: "Receipt", statement: "Statement", purchaseInvoice: "Purchase invoice", invoiceNo: "Invoice no.",
     priceAsTotal: "Enter total", pricePerUnit: "Price per unit", priceFull: "Full price",
     calculatedTotal: "Calculated total", calculatedUnit: "Calculated unit price",
@@ -3405,7 +3415,7 @@ function buildCashBox(entries, { customers = [], suppliers = [], funders = [], l
         { text: " · " },
         { text: who, tone: "name" },
         cat ? { text: ` · ${cat}`, tone: "muted" } : { text: ` · ${t("supplierPays")}`, tone: "muted" },
-        e.method === "transfer" ? { text: ` · ${t("transfer")}`, tone: "muted" } : null,
+        e.method && e.method !== "cash" ? { text: ` · ${payMethodLabel(e.method, t)}`, tone: "muted" } : null,
         e.note ? { text: ` — ${e.note}`, tone: "muted" } : null,
       ].filter(Boolean);
     } else if (e.type === "med") {
@@ -4017,7 +4027,7 @@ function exportAccount({ customer, no, rows, pays, lang, t, S }) {
     ] },
     { name: t("payments"), cols: [12, 12, 14, 24], rows: [
       [t("colDate"), t("paymentAmount"), t("method"), t("colNote")],
-      ...pays.map((p) => [dmy(p.at), money(p.amount), p.method === "transfer" ? t("transfer") : t("cash"), p.note || ""]),
+      ...pays.map((p) => [dmy(p.at), money(p.amount), payMethodLabel(p.method, t), p.note || ""]),
     ] },
   ];
   return writeSheets(sheets, lang, `${customerLabel(customer, t)}-${no}`);
@@ -4513,8 +4523,8 @@ function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} />
     </div>
     {(entry.type === "payment" || entry.type === "supplierPay") && <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 12 }}>
-        {[["cash", "💵", t("cash")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 12 }}>
+        {[["cash", "💵", t("cash")], ["card", "💳", t("card")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
           const on = method === k;
           return <button type="button" key={k} onClick={() => setMethod(k)} style={{
             background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
@@ -5841,6 +5851,37 @@ function payState(amount, paid) {
     status: moneyStatus(billC, gotC),
   };
 }
+function payMethodLabel(method, t) {
+  if (method === "transfer") return t("transfer");
+  if (method === "card") return t("card");
+  return t("cash");
+}
+/* Internal till chime — Web Audio only, no external files or gateways. */
+function playRegisterChime() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = playRegisterChime._ctx || (playRegisterChime._ctx = new AC());
+    if (ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+    const ding = (freq, t0, dur, gain) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(t0);
+      o.stop(t0 + dur + 0.02);
+    };
+    ding(1320, now, 0.07, 0.11);
+    ding(1760, now + 0.065, 0.1, 0.09);
+    ding(990, now + 0.15, 0.16, 0.07);
+  } catch (_) { /* autoplay / unsupported — silent ok */ }
+}
 function PaySplit({ amount, paid, onChange, rate, lang, t, supplierLinked }) {
   const p = payState(amount, paid);
   return <div style={{ display: "grid", gap: 10, background: C.paper, border: `1px solid ${C.line}`,
@@ -5912,6 +5953,7 @@ function CashierPayPrompt({ t, lang, S, amount, err, onConfirm, busy }) {
     setSaving(true);
     try {
       await onConfirm({ paid, tender: mode === "later" ? 0 : fullTender });
+      if (mode !== "later" && paid > 0.009) playRegisterChime();
     } finally { setSaving(false); }
   };
   return <>
@@ -6007,6 +6049,7 @@ function PosTillPrompt({ t, lang, S, amount, err, onConfirm, busy, walkIn }) {
     setSaving(true);
     try {
       await onConfirm({ paid: enough ? fromCents(dueC) : paid, tender: fromCents(ch.tenderC) });
+      if (ch.paidC > 0) playRegisterChime();
     } finally { setSaving(false); }
   };
   return <>
@@ -7759,7 +7802,7 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
               borderBottom: `1px dotted ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
               onClick={() => onEditPay && onEditPay(p2)}>
               <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
+                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {payMethodLabel(p2.method, t)}
                 {p2.expenseId ? ` · ${t("invoice")}` : ""}
                 {p2.note ? ` · ${p2.note}` : ""}
                 <WhoHint e={p2} lang={lang} /></span>
@@ -8222,6 +8265,7 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   const [morePay, setMorePay] = useState(false);
   const [keepCredit, setKeepCredit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [payPhase, setPayPhase] = useState("idle"); /* idle | saving | done */
   const [err, setErr] = useState("");
   const reimbC = reimbRows.reduce((sum, r) => sum + Math.max(0, toCents(r.amount)), 0);
   const typedCashC = cashTouched ? Math.max(0, toCents(amount)) : 0;
@@ -8230,7 +8274,7 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
   const settled = settleAmounts({ grossC: dueC, deductC: reimbC, paidC: payC });
   const remainingC = settled.dueC;
   const creditC = settled.creditC;
-  const locked = !!(busy || saving);
+  const locked = !!(busy || saving || payPhase === "done");
   const updateReimb = (id, patch) => {
     setErr("");
     setReimbRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
@@ -8244,11 +8288,34 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
     return rows;
   };
   const overpay = creditC > 0;
-  const canSave = !locked && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
+  const canSave = !locked && payPhase === "idle" && (payC > 0 || reimbC > 0) && (!overpay || keepCredit);
   const payIssues = checkPaymentSplit({
     due: fromCents(dueC), cash: fromCents(payC), deduct: fromCents(reimbC),
   });
   const fmtIssueMoney = (v) => fmtC(v, S.rate, lang);
+  const payLabel = payPhase === "saving" ? t("savingPayment")
+    : payPhase === "done" ? `✓ ${t("paymentRecorded")}`
+    : `💵 ${t("recordPayment")}`;
+  const submitPay = async () => {
+    if (!canSave) return;
+    if (overpay && !keepCredit) { setErr(t("overpayWarn")); return; }
+    const rows = reimbursements();
+    setSaving(true);
+    setPayPhase("saving");
+    try {
+      const ok = await onSave({
+        amount: fromCents(payC), cashAmount: fromCents(payC), saleId, method, currency: cur, rateUsed: S.rate,
+        at: dayStamp(date), note: note.trim(), reimbursements: rows, keepCredit,
+      });
+      if (ok === false) { setPayPhase("idle"); return; }
+      playRegisterChime();
+      setPayPhase("done");
+      await new Promise((r) => setTimeout(r, 520));
+      onClose();
+    } catch (_) {
+      setPayPhase("idle");
+    } finally { setSaving(false); }
+  };
   return <Sheet title={`💵 ${t("recordPayment")}`} sub={customerLabel(customer, t)} onClose={onClose}>
     <div className="sale-sheet">
     <InlineAlert issues={payIssues} t={t} fmtMoney={fmtIssueMoney} lang={lang} />
@@ -8264,10 +8331,13 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
       <MoneyStepper big usd={fromCents(payC)} onChange={(v) => { setCashTouched(true); setAmount(fromCents(toCents(v))); }}
         rate={S.rate} lang={lang} t={t} step={10} currency={cur} setCurrency={setCur} />
     </div>
-    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      {[["cash", t("cash")], ["transfer", t("transfer")]].map(([k, lb]) => (
-        <Chip key={k} active={method === k} onClick={() => !locked && setMethod(k)}>{lb}</Chip>))}
+    <div style={{ fontSize: 13, fontWeight: 700, color: C.slate, marginBottom: 8 }}>{t("method")}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+      {[["cash", "💵", t("cash")], ["card", "💳", t("card")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => (
+        <Chip key={k} active={method === k} onClick={() => !locked && setMethod(k)}>{ic} {lb}</Chip>))}
     </div>
+    <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("paymentRef")}
+      disabled={locked} style={{ ...inp, marginBottom: 4 }} />
     <FoldPanel open={offsetOpen} onToggle={() => setOffsetOpen((v) => !v)}
       label={t("expenseOffset")}
       hint={reimbC > 0 ? fmtC(fromCents(reimbC), S.rate, lang) : null}>
@@ -8330,8 +8400,6 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
             {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
         </Scroller>
       </>}
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
-        style={{ ...inp, marginTop: 10 }} />
     </FoldPanel>
     <div className="pay-remain" style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
       background: C.paper, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px", margin: "12px 0 14px",
@@ -8347,19 +8415,8 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
     </label>}
     {(err) && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {err}</div>}
     {overpay && !keepCredit && <div style={{ color: C.rose, fontWeight: 700, marginBottom: 10 }}>⚠️ {t("overpayWarn")}</div>}
-    <button type="button" disabled={!canSave} style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
-      onClick={async () => {
-        if (!canSave) return;
-        if (overpay && !keepCredit) { setErr(t("overpayWarn")); return; }
-        const rows = reimbursements();
-        setSaving(true);
-        try {
-          await onSave({
-            amount: fromCents(payC), cashAmount: fromCents(payC), saleId, method, currency: cur, rateUsed: S.rate,
-            at: dayStamp(date), note: note.trim(), reimbursements: rows, keepCredit,
-          });
-        } finally { setSaving(false); }
-      }}>{locked ? t("savingPayment") : `✓ ${t("save")}`}</button>
+    <button type="button" className={`pos-pay-btn${payPhase === "saving" ? " is-saving" : ""}${payPhase === "done" ? " is-done" : ""}`}
+      disabled={!canSave && payPhase === "idle"} onClick={submitPay}>{payLabel}</button>
     </div>
   </Sheet>;
 }
@@ -8863,7 +8920,7 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               borderBottom: `1px solid ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
               onClick={() => onEditPay && onEditPay(p2)}>
               <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {p2.method === "transfer" ? t("transfer") : t("cash")}
+                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {payMethodLabel(p2.method, t)}
                 {p2.note ? ` · ${p2.note}` : ""}
                 <WhoHint e={p2} lang={lang} /></span>
               <span style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>+{nf(p2.amount)}</span>
@@ -10185,7 +10242,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         at: x.at, k: "b", label: [x.no, catName(x.category), expenseQtyLabel(x, t)].filter(Boolean).join(" · "),
         d: x.amount, c: 0,
       })), ...(sl.allPays || sl.pays || []).filter((p) => p.supplierId === doc.id).map((p) => ({
-        at: p.at, k: "p", label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, c: p.amount,
+        at: p.at, k: "p", label: payMethodLabel(p.method, t), d: 0, c: p.amount,
       }))].sort((a, b2) => cmpTx(a, b2, "oldest"));
       const paidTotal = rows.reduce((sum, r) => sum + r.c, 0);
       let run = 0;
@@ -10301,7 +10358,7 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         d: 0, m: e.amount, c: 0,
       })),
       ...ledger.pays.filter((p) => p.customerId === doc.id && toCents(p.amount) > 0).map((p) => ({ at: p.at, k: "p",
-      label: p.method === "transfer" ? t("transfer") : t("cash"), d: 0, m: 0, c: p.amount }))]
+      label: payMethodLabel(p.method, t), d: 0, m: 0, c: p.amount }))]
       .sort((a, b2) => cmpTx(a, b2, "oldest"));
     const totalDebit = fromCents(rows.reduce((sum, r) => sum + toCents(r.d), 0));
     const totalDeduct = fromCents(rows.reduce((sum, r) => sum + toCents(r.m), 0));
@@ -15004,11 +15061,12 @@ function FarmApp() {
               idFn: uid, groupOf: expGroupOf,
               catFromName: (name) => expenseCatFromName(name, S.categories),
             });
-            if (!built.ok) { ping(t(built.error) || t("needAmount")); return; }
+            if (!built.ok) { ping(t(built.error) || t("needAmount")); return false; }
             const savedTypes = rememberNames(S.saleReimburseTypes, (reimbursements || []).map((r) => r.name));
             const typesChanged = namesChanged(savedTypes, S.saleReimburseTypes);
             await commit(built.entries, typesChanged ? { settings: { ...S, saleReimburseTypes: savedTypes } } : null);
-            returnToAccount(cust.id); }} />}
+            return true;
+          }} />}
 
 
 
@@ -15747,6 +15805,18 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .sheet-sub{font-size:13px;color:${C.inkSoft};font-weight:500;margin-top:2px;line-height:1.4}
 .sheet-body{padding:16px 18px 18px;overflow-y:auto;flex:1;min-height:0}
 .sale-sheet{display:grid;gap:14px}
+.pos-pay-btn{background:${C.field};color:#fff;border:none;border-radius:14px;padding:16px 18px;font-size:17px;
+  font-weight:800;cursor:pointer;font-family:var(--body);width:100%;min-height:54px;letter-spacing:.01em;
+  box-shadow:0 1px 2px ${C.shadow},0 8px 20px ${C.field}33;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .12s var(--ease),box-shadow .14s var(--ease),background .18s ease,opacity .12s ease}
+.pos-pay-btn:hover:not(:disabled){filter:brightness(1.04)}
+.pos-pay-btn:active:not(:disabled){transform:scale(.97);box-shadow:0 1px 2px ${C.shadow}}
+.pos-pay-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.pos-pay-btn.is-saving{opacity:.85;cursor:wait;background:${C.slate}}
+.pos-pay-btn.is-done{background:${C.green};box-shadow:0 1px 2px ${C.shadow},0 8px 20px ${C.green}33;
+  animation:posPayPulse .45s var(--ease)}
+@keyframes posPayPulse{0%{transform:scale(.97)}60%{transform:scale(1.02)}100%{transform:scale(1)}}
 .sale-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
   font-size:12.5px;font-weight:700;color:${C.inkSoft};margin:0 0 6px}
 .sale-label-hint{font-weight:600;font-size:12px;color:${C.inkSoft};font-family:var(--mono);opacity:.85}
