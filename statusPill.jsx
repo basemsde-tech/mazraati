@@ -1,5 +1,6 @@
 import React from "react";
 import { STATUS_PILL_TOKENS, statusToneOf, statusRowClass, payStatusKind } from "./statusTone.mjs";
+import { DataList, HeavyDataList, TableScroll } from "./virtualTable.jsx";
 
 const PILL_BASE = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0";
 
@@ -16,17 +17,6 @@ export function StatusPill({ status, kind, tone, children, className = "", title
       <span className={`status-dot ${token.dot}`} aria-hidden="true" />
       <span className="status-pill-label">{children}</span>
     </span>
-  );
-}
-
-/** Stacked cards below 640px; tabular view from unfolded / tablet widths. */
-export function DataList({ cards, table, empty }) {
-  if (empty) return empty;
-  return (
-    <div className="data-display">
-      <div className="data-display-cards grid grid-cols-1 gap-4">{cards}</div>
-      <div className="data-display-table overflow-x-auto">{table}</div>
-    </div>
   );
 }
 
@@ -59,4 +49,4 @@ export function DataCard({
   );
 }
 
-export { statusToneOf, statusRowClass, payStatusKind, STATUS_PILL_TOKENS };
+export { DataList, HeavyDataList, TableScroll, statusToneOf, statusRowClass, payStatusKind, STATUS_PILL_TOKENS };

@@ -66,9 +66,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.50", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.51", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.51": {
+    ar: [
+      "جداول البيانات الثقيلة: تمرير بارتفاع ثابت وعناوين لاصقة ومجموعات شهرية قابلة للطي وعرض الصفوف المرئية فقط",
+    ],
+    en: [
+      "Heavy data tables: fixed-height scroll, sticky headers, collapsible month groups, and row virtualization",
+    ],
+  },
   "2.9.50": {
     ar: [
       "كشف الحساب يُطبع كمستند A4 كامل التفاصيل بألوان واضحة، دون لقطة شاشة من الواجهة",
@@ -1619,6 +1627,7 @@ const T = {
     stmtFooterNotes: "ملاحظات التذييل", stmtPartyName: "اسم الحساب", stmtRefNo: "رقم المرجع",
     stmtDocRef: "المستند / المرجع", stmtDesc: "الوصف", stmtRunning: "الرصيد الجاري",
     stmtHideRow: "إخفاء من الكشف", stmtPrintClean: "طباعة / PDF",
+    periodRecords: "سجل",
     deleteSelected: "حذف المحدّد", voidSalesTitle: "حذف المبيعات",
     voidPickMode: "كيف نتعامل مع المخزون؟",
     voidRestore: "إرجاع المخزون",
@@ -2234,6 +2243,7 @@ const T = {
     stmtFooterNotes: "Footer notes", stmtPartyName: "Account name", stmtRefNo: "Reference no.",
     stmtDocRef: "Doc # / Ref", stmtDesc: "Description", stmtRunning: "Running balance",
     stmtHideRow: "Hide from statement", stmtPrintClean: "Print / PDF",
+    periodRecords: "records",
     deleteSelected: "Delete selected", voidSalesTitle: "Delete sales",
     voidPickMode: "What should happen to stock?",
     voidRestore: "Restore stock",
@@ -8021,13 +8031,25 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
         {t("selectAll")}
       </label>}
       <DataList
+        items={rows}
+        lang={lang} months={MONTHS} t={t}
+        colCount={showPay || onDoc || onEditBill ? 10 : 9}
         empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
-        cards={rows.map((bill) => {
+        head={<tr>
+          <Th w={44} align="center">
+            <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+          </Th>
+          <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
+          <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
+          <Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th>
+          {showPay || onDoc || onEditBill ? <Th align="center">{t("actions")}</Th> : null}
+        </tr>}
+        renderCard={(bill) => {
           const kind = billKind(bill);
           const catTxt = bill.opening ? t("supplierOpening") : `${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`;
           const on = picked.has(bill.id);
           return (
-            <div key={bill.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+            <div className={`sale-pick-card${on ? " is-selected" : ""}`}
               onMouseDown={(e) => onRowMouseDown(bill.id, e, { plainSelect: true })}
               onMouseEnter={(e) => onRowMouseEnter(bill.id, e)}>
               <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(bill.id, v)} />
@@ -8053,60 +8075,43 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
               </DataCard>
             </div>
           );
-        })}
-        table={
-          <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>
-                <Th w={44} align="center">
-                  <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
-                </Th>
-                <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
-                <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
-                <Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th>
-                {showPay || onDoc || onEditBill ? <Th align="center">{t("actions")}</Th> : null}
-              </tr></thead>
-              <tbody>
-                {rows.map((bill) => {
-                  const kind = billKind(bill);
-                  const on = picked.has(bill.id);
-                  return (
-                    <tr key={bill.id}
-                      className={`${statusRowClass(kind)}${on ? " row-selected" : ""}`.trim()}
-                      onMouseDown={(e) => onRowMouseDown(bill.id, e, { plainSelect: true })}
-                      onMouseEnter={(e) => onRowMouseEnter(bill.id, e)}
-                      onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}>
-                      <Td align="center">
-                        <CheckCell checked={on} title={bill.no || t("selectAll")} onChange={(v) => togglePick(bill.id, v)} />
-                      </Td>
-                      <Td mono>{dmy(bill.at)}</Td>
-                      <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
-                      <Td>{bill.opening ? t("supplierOpening")
-                        : <>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
-                        {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
-                          {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
-                        {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</>}
-                      </Td>
-                      <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
-                      <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
-                      <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
-                      <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
-                      <Td align="center">{bill.opening ? "—" : <WhoHint e={bill} lang={lang} />}</Td>
-                      {showPay || onDoc || onEditBill ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                        {onEditBill && <button type="button" className="dk-pill" title={t("ctxEdit")}
-                          onClick={(ev) => { ev.stopPropagation(); onEditBill(bill.id); }}>✏️</button>}
-                        {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
-                          onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
-                        {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
-                          onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
-                      </div></Td> : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        }
+        }}
+        renderRow={(bill) => {
+          const kind = billKind(bill);
+          const on = picked.has(bill.id);
+          return (
+            <tr key={bill.id}
+              className={`${statusRowClass(kind)}${on ? " row-selected" : ""}`.trim()}
+              onMouseDown={(e) => onRowMouseDown(bill.id, e, { plainSelect: true })}
+              onMouseEnter={(e) => onRowMouseEnter(bill.id, e)}
+              onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}>
+              <Td align="center">
+                <CheckCell checked={on} title={bill.no || t("selectAll")} onChange={(v) => togglePick(bill.id, v)} />
+              </Td>
+              <Td mono>{dmy(bill.at)}</Td>
+              <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
+              <Td>{bill.opening ? t("supplierOpening")
+                : <>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                  {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
+                {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</>}
+              </Td>
+              <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
+              <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
+              <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
+              <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
+              <Td align="center">{bill.opening ? "—" : <WhoHint e={bill} lang={lang} />}</Td>
+              {showPay || onDoc || onEditBill ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                {onEditBill && <button type="button" className="dk-pill" title={t("ctxEdit")}
+                  onClick={(ev) => { ev.stopPropagation(); onEditBill(bill.id); }}>✏️</button>}
+                {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                  onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                  onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+              </div></Td> : null}
+            </tr>
+          );
+        }}
       />
     </div>
   );
@@ -9352,14 +9357,30 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
       </label>}
 
       <DataList
+        items={rows}
+        lang={lang} months={MONTHS} t={t}
+        colCount={6}
+        tableMinWidth={wide ? 0 : 560}
         empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div> : null}
-        cards={rows.map((iv) => {
+        head={<tr>
+          <Th w={44} align="center">
+            <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")}
+              onChange={toggleAll} />
+          </Th>
+          <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
+            active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th>
+          <Th>{t("invoice")}</Th>
+          <Th align="end">{t("accountTotal")}</Th>
+          <Th align="end">{t("colDue")}</Th>
+          <Th align="center">{t("actions")}</Th>
+        </tr>}
+        renderCard={(iv) => {
           const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
           const kind = payStatusKind(iv);
           const flag = kind === "paid" ? null : kind;
           const on = picked.has(iv.id);
           return (
-            <div key={iv.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+            <div className={`sale-pick-card${on ? " is-selected" : ""}`}
               onMouseDown={(e) => onRowMouseDown(iv.id, e, { plainSelect: true })}
               onMouseEnter={(e) => onRowMouseEnter(iv.id, e)}>
               <CheckCell checked={on} title={t("selectAll")}
@@ -9382,65 +9403,45 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               />
             </div>
           );
-        })}
-        table={
-      <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 8 }}>
-        {rows.length === 0
-          ? null
-          : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: wide ? 0 : 560 }}>
-            <thead><tr>
-              <Th w={44} align="center">
-                <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")}
-                  onChange={toggleAll} />
-              </Th>
-              <Th onClick={() => setFilters({ ...f, sort: sortNewest ? "oldest" : "newest" })}
-                active dirn={sortNewest ? "desc" : "asc"}>{t("colDate")}</Th>
-              <Th>{t("invoice")}</Th>
-              <Th align="end">{t("accountTotal")}</Th>
-              <Th align="end">{t("colDue")}</Th>
-              <Th align="center">{t("actions")}</Th>
-            </tr></thead>
-            <tbody>
-              {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
-                const kind = payStatusKind(iv);
-                const flag = kind === "paid" ? null : kind;
-                const on = picked.has(iv.id);
-                return <tr key={iv.id}
-                  className={`${flag ? statusRowClass(kind) : ""}${on ? " row-selected" : ""}`.trim() || undefined}
-                  onMouseDown={(e) => onRowMouseDown(iv.id, e, { plainSelect: true })}
-                  onMouseEnter={(e) => onRowMouseEnter(iv.id, e)}
-                  onContextMenu={(e) => onCtx && onCtx(e, [
-                    { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
-                    { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(iv) },
-                    onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => onDeleteTx(iv) },
-                  ].filter(Boolean))}>
-                  <Td align="center">
-                    <CheckCell checked={on} title={iv.no || t("selectAll")}
-                      onChange={(v) => togglePick(iv.id, v)} />
-                  </Td>
-                  <Td mono>{dmy(iv.at)}</Td>
-                  <Td>
-                    <div style={{ fontWeight: 700, fontFamily: "var(--mono)", fontSize: 13 }}>{iv.no}</div>
-                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
-                      {pr[1]} {lang === "ar" ? pr[2] : pr[3]} · {n1(iv.qty)} {saleQtyUnit(iv, lang, t)}
-                    </div>
-                    {flag && <div style={{ marginTop: 4 }}><StatusPill status={kind}>{statusText(kind)}</StatusPill></div>}
-                  </Td>
-                  <Td align="end" mono strong>{fmtC(iv.grossAmount, S.rate, lang)}</Td>
-                  <Td align="end" mono strong>{fmtDue(iv.due, S.rate, lang)}</Td>
-                  <Td align="center">
-                    <MoreMenu t={t} items={[
-                      { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
-                      { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
-                      onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
-                    ]} />
-                  </Td>
-                </tr>; })}
-            </tbody>
-          </table>}
-      </div>
-      }
-    />
+        }}
+        renderRow={(iv) => {
+          const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
+          const kind = payStatusKind(iv);
+          const flag = kind === "paid" ? null : kind;
+          const on = picked.has(iv.id);
+          return <tr key={iv.id}
+            className={`${flag ? statusRowClass(kind) : ""}${on ? " row-selected" : ""}`.trim() || undefined}
+            onMouseDown={(e) => onRowMouseDown(iv.id, e, { plainSelect: true })}
+            onMouseEnter={(e) => onRowMouseEnter(iv.id, e)}
+            onContextMenu={(e) => onCtx && onCtx(e, [
+              { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+              { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(iv) },
+              onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => onDeleteTx(iv) },
+            ].filter(Boolean))}>
+            <Td align="center">
+              <CheckCell checked={on} title={iv.no || t("selectAll")}
+                onChange={(v) => togglePick(iv.id, v)} />
+            </Td>
+            <Td mono>{dmy(iv.at)}</Td>
+            <Td>
+              <div style={{ fontWeight: 700, fontFamily: "var(--mono)", fontSize: 13 }}>{iv.no}</div>
+              <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                {pr[1]} {lang === "ar" ? pr[2] : pr[3]} · {n1(iv.qty)} {saleQtyUnit(iv, lang, t)}
+              </div>
+              {flag && <div style={{ marginTop: 4 }}><StatusPill status={kind}>{statusText(kind)}</StatusPill></div>}
+            </Td>
+            <Td align="end" mono strong>{fmtC(iv.grossAmount, S.rate, lang)}</Td>
+            <Td align="end" mono strong>{fmtDue(iv.due, S.rate, lang)}</Td>
+            <Td align="center">
+              <MoreMenu t={t} items={[
+                { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
+                { key: "print", icon: "🖨️", label: t("ctxPrint"), run: () => onDoc(iv) },
+                onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(iv), danger: true },
+              ]} />
+            </Td>
+          </tr>;
+        }}
+      />
       <SelectionBar t={t} n={picked.size} total={pickTotal} due={pickDue} S={S} lang={lang}
         onClear={clearPick}
         onStatement={onGenerateStatement ? () => onGenerateStatement([...picked]) : undefined}
@@ -9524,13 +9525,25 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
       </label>
     </div>
     <DataList
-      cards={posSales.map((e) => {
+      items={posSales}
+      lang={lang} months={MONTHS} t={t}
+      colCount={5}
+      tableMinWidth={420}
+      head={<tr>
+        <Th w={44} align="center">
+          <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+        </Th>
+        <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th>
+        <Th align="end">{t("colTotal")}</Th>
+        <Th align="center">{t("actions")}</Th>
+      </tr>}
+      renderCard={(e) => {
         const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
         const iv = (ledger.list || []).find((x) => x.id === e.id);
         const due = iv ? iv.due : 0;
         const owing = due > 0.009;
         const on = picked.has(e.id);
-        return <div key={e.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+        return <div className={`sale-pick-card${on ? " is-selected" : ""}`}
           onMouseDown={(ev) => onRowMouseDown(e.id, ev, { plainSelect: true })}
           onMouseEnter={(ev) => onRowMouseEnter(e.id, ev)}>
           <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(e.id, v)} />
@@ -9546,55 +9559,39 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
             ]} /> : null}
           />
         </div>;
-      })}
-      table={
-        <div className="overflow-x-auto">
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
-            <thead><tr>
-              <Th w={44} align="center">
-                <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
-              </Th>
-              <Th>{t("colDate")}</Th><Th>{t("customerName")}</Th>
-              <Th align="end">{t("colTotal")}</Th>
-              <Th align="center">{t("actions")}</Th>
-            </tr></thead>
-            <tbody>
-              {posSales.map((e) => {
-                const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
-                const iv = (ledger.list || []).find((x) => x.id === e.id);
-                const due = iv ? iv.due : 0;
-                const owing = due > 0.009;
-                const on = picked.has(e.id);
-                return <tr key={e.id}
-                  className={`${owing ? statusRowClass("owing") : ""}${on ? " row-selected" : ""}`.trim() || undefined}
-                  onMouseDown={(ev) => onRowMouseDown(e.id, ev, { plainSelect: true })}
-                  onMouseEnter={(ev) => onRowMouseEnter(e.id, ev)}
-                  onContextMenu={onCtx && onDeleteTx ? (ev) => onCtx(ev, [
-                    { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
-                  ]) : undefined}>
-                  <Td align="center">
-                    <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(e.id, v)} />
-                  </Td>
-                  <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
-                  <Td>
-                    <div style={{ fontWeight: 700 }}>{customerNameById(customers, e.customerId, t)}</div>
-                    <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
-                      {pr[1]} {lang === "ar" ? pr[2] : pr[3]}
-                      {owing ? ` · ${t("outstanding")}` : ""}
-                    </div>
-                  </Td>
-                  <Td align="end" mono strong>{fmtC(e.amount, S.rate, lang)}</Td>
-                  <Td align="center">
-                    {onDeleteTx ? <MoreMenu t={t} items={[
-                      { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
-                    ]} /> : null}
-                  </Td>
-                </tr>;
-              })}
-            </tbody>
-          </table>
-        </div>
-      }
+      }}
+      renderRow={(e) => {
+        const pr = PRODUCTS.find((x) => x[0] === e.product) || PROD_OTHER;
+        const iv = (ledger.list || []).find((x) => x.id === e.id);
+        const due = iv ? iv.due : 0;
+        const owing = due > 0.009;
+        const on = picked.has(e.id);
+        return <tr key={e.id}
+          className={`${owing ? statusRowClass("owing") : ""}${on ? " row-selected" : ""}`.trim() || undefined}
+          onMouseDown={(ev) => onRowMouseDown(e.id, ev, { plainSelect: true })}
+          onMouseEnter={(ev) => onRowMouseEnter(e.id, ev)}
+          onContextMenu={onCtx && onDeleteTx ? (ev) => onCtx(ev, [
+            { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+          ]) : undefined}>
+          <Td align="center">
+            <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(e.id, v)} />
+          </Td>
+          <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
+          <Td>
+            <div style={{ fontWeight: 700 }}>{customerNameById(customers, e.customerId, t)}</div>
+            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+              {pr[1]} {lang === "ar" ? pr[2] : pr[3]}
+              {owing ? ` · ${t("outstanding")}` : ""}
+            </div>
+          </Td>
+          <Td align="end" mono strong>{fmtC(e.amount, S.rate, lang)}</Td>
+          <Td align="center">
+            {onDeleteTx ? <MoreMenu t={t} items={[
+              { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
+            ]} /> : null}
+          </Td>
+        </tr>;
+      }}
     />
     <SelectionBar t={t} n={picked.size} total={pickTotal} due={pickDue} S={S} lang={lang}
       onClear={clearPick}
@@ -12932,7 +12929,14 @@ function FarmApp() {
             <Empty icon="💸" title={t("noPaidExpenses")} sub={t("noPaidExpensesSub")}
               cta={`＋ ${t("logExpense")}`} onCta={() => setSheet({ k: "expense" })} /></div>;
           return <DataList
-            cards={rows.map((e) => {
+            items={rows}
+            lang={lang} months={MONTHS} t={t}
+            colCount={7}
+            head={<tr>
+              <Th>{t("colDate")}</Th><Th>{t("category")}</Th><Th>{t("vendor")}</Th>
+              <Th align="end">{t("amount")}</Th><Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th><Th align="center">{t("actions")}</Th>
+            </tr>}
+            renderCard={(e) => {
               const isMed = e.type === "med";
               const cat = isMed ? "medicine" : (e.category || "other");
               const amt = isMed ? (e.cost || 0) : (e.amount || 0);
@@ -12944,7 +12948,7 @@ function FarmApp() {
                 : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
               const receiptId = e.sourceExpenseId || e.id;
               return (
-                <DataCard key={e.id} kind="paid"
+                <DataCard kind="paid"
                   status={<StatusPill status="paid">{e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) ? t("paidByCustomer") : t("paidS")}</StatusPill>}
                   title={`${catIcon(cat, S.categories)} ${catLabel(cat, lang, S.categories)}`}
                   subtitle={`${dmy(e.at)} · ${e.vendor || e.supplier || "—"}`}
@@ -12967,58 +12971,47 @@ function FarmApp() {
                   }
                 />
               );
-            })}
-            table={
-          <div className="overflow-x-auto">
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>
-                <Th>{t("colDate")}</Th><Th>{t("category")}</Th><Th>{t("vendor")}</Th>
-                <Th align="end">{t("amount")}</Th><Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th><Th align="center">{t("actions")}</Th>
-              </tr></thead>
-              <tbody>
-                {rows.map((e) => {
-                  const isMed = e.type === "med";
-                  const cat = isMed ? "medicine" : (e.category || "other");
-                  const amt = isMed ? (e.cost || 0) : (e.amount || 0);
-                  const openSource = isMed
-                    ? () => setSheet({ k: "editMoney", id: e.id })
-                    : e.supplierId
-                    ? () => {
-                      if (e.sourceExpenseId) setSheet({ k: "supplierBill", sid: e.supplierId, id: e.sourceExpenseId });
-                      else { setRoute("suppliers"); openSupplier(e.supplierId); }
-                    }
-                    : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
-                  const receiptId = e.sourceExpenseId || e.id;
-                  return <tr key={e.id} className={statusRowClass("paid")} style={{ cursor: openSource ? "pointer" : "default" }}
-                    onClick={() => openSource && openSource()}
-                    onContextMenu={(ev) => openCtx(ev, [
-                      openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
-                      e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), more: true, run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
-                      { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => setSheet({ k: "confirmDeleteEntry",
-                        id: isMed ? e.id : (e.sourceExpenseId || e.id) }) },
-                    ].filter(Boolean))}>
-                    <Td mono>{dmy(e.at)}</Td>
-                    <Td><span style={{ color: catColor(cat, S.categories) }}>{catIcon(cat, S.categories)}</span> {catLabel(cat, lang, S.categories)}
-                      {e.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
-                        {e.feedType ? `${t(e.feedType)} · ` : ""}{expenseQtyLabel(e, t)}</span> : null}
-                      {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
-                    <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
-                    <Td align="end" mono strong>{fmtC(amt, S.rate, lang)}</Td>
-                    <Td><StatusPill status="paid">{e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) ? t("paidByCustomer") : t("paidS")}</StatusPill></Td>
-                    <Td align="center"><WhoHint e={e} lang={lang} /></Td>
-                    <Td align="center">
-                      <span style={{ display: "inline-flex", gap: 5 }}>
-                        {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
-                          onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "receipt", id: receiptId, back: null }); }}>📎</button>}
-                        {openSource && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
-                          openSource(); }}>↗</button>}
-                      </span>
-                    </Td>
-                  </tr>;
-                })}
-              </tbody>
-            </table>
-          </div>}
+            }}
+            renderRow={(e) => {
+              const isMed = e.type === "med";
+              const cat = isMed ? "medicine" : (e.category || "other");
+              const amt = isMed ? (e.cost || 0) : (e.amount || 0);
+              const openSource = isMed
+                ? () => setSheet({ k: "editMoney", id: e.id })
+                : e.supplierId
+                ? () => {
+                  if (e.sourceExpenseId) setSheet({ k: "supplierBill", sid: e.supplierId, id: e.sourceExpenseId });
+                  else { setRoute("suppliers"); openSupplier(e.supplierId); }
+                }
+                : () => setSheet({ k: "editExpense", id: e.sourceExpenseId || e.id });
+              const receiptId = e.sourceExpenseId || e.id;
+              return <tr key={e.id} className={statusRowClass("paid")} style={{ cursor: openSource ? "pointer" : "default" }}
+                onClick={() => openSource && openSource()}
+                onContextMenu={(ev) => openCtx(ev, [
+                  openSource && { key: "edit", icon: "✏️", label: t("ctxOpen"), run: openSource },
+                  e.receipt && { key: "rec", icon: "📎", label: t("ctxReceipt"), more: true, run: () => setSheet({ k: "receipt", id: receiptId, back: null }) },
+                  { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => setSheet({ k: "confirmDeleteEntry",
+                    id: isMed ? e.id : (e.sourceExpenseId || e.id) }) },
+                ].filter(Boolean))}>
+                <Td mono>{dmy(e.at)}</Td>
+                <Td><span style={{ color: catColor(cat, S.categories) }}>{catIcon(cat, S.categories)}</span> {catLabel(cat, lang, S.categories)}
+                  {e.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                    {e.feedType ? `${t(e.feedType)} · ` : ""}{expenseQtyLabel(e, t)}</span> : null}
+                  {e.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{e.note}</span> : null}</Td>
+                <Td tone={C.inkSoft}>{e.vendor || e.supplier || "—"}</Td>
+                <Td align="end" mono strong>{fmtC(amt, S.rate, lang)}</Td>
+                <Td><StatusPill status="paid">{e.paidSource === "customerReimburse" || isCustomerPaidExpense(e) ? t("paidByCustomer") : t("paidS")}</StatusPill></Td>
+                <Td align="center"><WhoHint e={e} lang={lang} /></Td>
+                <Td align="center">
+                  <span style={{ display: "inline-flex", gap: 5 }}>
+                    {e.receipt && <button type="button" className="dk-pill" title={t("viewReceipt")}
+                      onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "receipt", id: receiptId, back: null }); }}>📎</button>}
+                    {openSource && <button type="button" className="dk-pill" onClick={(ev) => { ev.stopPropagation();
+                      openSource(); }}>↗</button>}
+                  </span>
+                </Td>
+              </tr>;
+            }}
           />;
         })()}
       </DeskCard>
@@ -13856,9 +13849,69 @@ function FarmApp() {
           </div>
         </div>}
         <DataList
-          empty={null}
-          cards={cashView.rows.map((r) => (
-            <DataCard key={r.id} kind={r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in"}
+          items={cashView.rows}
+          getAt={(r) => r.at || r.day}
+          lang={lang} months={MONTHS} t={t}
+          colCount={cashVisibleKeys.length}
+          tableClassName={`cash-table cash-density-${cashTable.density}`}
+          tableStyle={{ width: `max(100%, ${cashTableWidth}px)`, minWidth: cashTableWidth,
+            tableLayout: "fixed", "--cash-cell-y": cashDensityPad }}
+          tableMinWidth={cashTableWidth}
+          colgroup={<colgroup>{cashVisibleKeys.map((key) => <col key={key} style={{ width: cashTable.widths[key] }} />)}</colgroup>}
+          head={<tr>
+            {cashVisibleKeys.map((key) => {
+              const col = cashColumnMap[key];
+              return <Th key={key} w={cashTable.widths[key]} align={col.align}>
+                <div className={`cash-column-head${cashDragKey === key ? " dragging" : ""}`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    moveCashColumn(e.dataTransfer.getData("text/plain") || cashDragKey, key);
+                    setCashDragKey(null);
+                  }}>
+                  <button type="button" className="cash-drag cash-drag-head" draggable
+                    aria-label={`${t("cashDragColumn")}: ${t(col.label)}`}
+                    title={t("cashDragColumn")}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", key);
+                      setCashDragKey(key);
+                    }}
+                    onDragEnd={() => setCashDragKey(null)}>⠿</button>
+                  <span>{t(col.label)}</span>
+                  <button type="button" className="cash-col-resize"
+                    aria-label={`${t("cashResizeColumn")}: ${t(col.label)}`}
+                    title={t("cashResizeColumn")}
+                    onPointerDown={(e) => startCashResize(e, key)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                      e.preventDefault();
+                      const visualStep = e.key === "ArrowRight" ? 10 : -10;
+                      resizeCashColumn(key, cashTable.widths[key] + (dir === "rtl" ? -visualStep : visualStep));
+                    }} />
+                </div>
+              </Th>;
+            })}
+          </tr>}
+          leadRows={<>
+            {!cashView.filtered && cashBox.opening !== 0 && (
+              <tr style={{ background: C.paper }}>
+                {cashVisibleKeys.map(renderCashOpeningCell)}
+              </tr>
+            )}
+            {cashView.rows.length === 0 && (
+              <tr><td colSpan={cashVisibleKeys.length} style={{ padding: 30, textAlign: "center" }}>
+                <div style={{ fontSize: 25, marginBottom: 5 }}>⌕</div>
+                <b>{cashBox.rows.length ? t("cashNoResults") : t("cashEmpty")}</b>
+                {cashBox.rows.length > 0 && <div style={{ color: C.inkSoft, fontSize: 12.5, marginTop: 4 }}>{t("cashNoResultsSub")}</div>}
+              </td></tr>
+            )}
+          </>}
+          foot={<tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
+            {cashVisibleKeys.map(renderCashTotalCell)}
+          </tr>}
+          renderCard={(r) => (
+            <DataCard kind={r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in"}
               status={<StatusPill status={r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in"}>
                 {r.dir === "deduct" ? t("cashDeductPaid") : r.dir === "out" ? t("cashFilterOut") : t("cashFilterIn")}</StatusPill>}
               title={r.day}
@@ -13872,81 +13925,19 @@ function FarmApp() {
                   run: () => setSheet({ k: "confirmDeleteEntry", id: r.source?.id || r.id }) },
               ])}
             />
-          ))}
-          table={
-        <div className="overflow-x-auto">
-          <table className={`cash-table cash-density-${cashTable.density}`}
-            style={{ width: `max(100%, ${cashTableWidth}px)`, minWidth: cashTableWidth, borderCollapse: "collapse",
-              tableLayout: "fixed", "--cash-cell-y": cashDensityPad }}>
-            <colgroup>{cashVisibleKeys.map((key) => <col key={key} style={{ width: cashTable.widths[key] }} />)}</colgroup>
-            <thead><tr>
-              {cashVisibleKeys.map((key) => {
-                const col = cashColumnMap[key];
-                return <Th key={key} w={cashTable.widths[key]} align={col.align}>
-                  <div className={`cash-column-head${cashDragKey === key ? " dragging" : ""}`}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      moveCashColumn(e.dataTransfer.getData("text/plain") || cashDragKey, key);
-                      setCashDragKey(null);
-                    }}>
-                    <button type="button" className="cash-drag cash-drag-head" draggable
-                      aria-label={`${t("cashDragColumn")}: ${t(col.label)}`}
-                      title={t("cashDragColumn")}
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", key);
-                        setCashDragKey(key);
-                      }}
-                      onDragEnd={() => setCashDragKey(null)}>⠿</button>
-                    <span>{t(col.label)}</span>
-                    <button type="button" className="cash-col-resize"
-                      aria-label={`${t("cashResizeColumn")}: ${t(col.label)}`}
-                      title={t("cashResizeColumn")}
-                      onPointerDown={(e) => startCashResize(e, key)}
-                      onKeyDown={(e) => {
-                        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-                        e.preventDefault();
-                        const visualStep = e.key === "ArrowRight" ? 10 : -10;
-                        resizeCashColumn(key, cashTable.widths[key] + (dir === "rtl" ? -visualStep : visualStep));
-                      }} />
-                  </div>
-                </Th>;
-              })}
-            </tr></thead>
-            <tbody>
-              {!cashView.filtered && cashBox.opening !== 0 && (
-                <tr style={{ background: C.paper }}>
-                  {cashVisibleKeys.map(renderCashOpeningCell)}
-                </tr>
-              )}
-              {cashView.rows.length === 0 ? (
-                <tr><td colSpan={cashVisibleKeys.length} style={{ padding: 30, textAlign: "center" }}>
-                  <div style={{ fontSize: 25, marginBottom: 5 }}>⌕</div>
-                  <b>{cashBox.rows.length ? t("cashNoResults") : t("cashEmpty")}</b>
-                  {cashBox.rows.length > 0 && <div style={{ color: C.inkSoft, fontSize: 12.5, marginTop: 4 }}>{t("cashNoResultsSub")}</div>}
-                </td></tr>
-              ) : cashView.rows.map((r) => (
-                <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
-                  className={statusRowClass(r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in")}
-                  onContextMenu={(ev) => openCtx(ev, [
-                    { key: "open", icon: "✏️", label: t("ctxEdit"), run: () => openCashSource(r) },
-                    { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true,
-                      run: () => setSheet({ k: "confirmDeleteEntry", id: r.source?.id || r.id }) },
-                  ])}
-                  style={{ cursor: "pointer" }}>
-                  {cashVisibleKeys.map((key) => renderCashRowCell(key, r))}
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
-                {cashVisibleKeys.map(renderCashTotalCell)}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-          }
+          )}
+          renderRow={(r) => (
+            <tr key={r.id} onClick={() => openCashSource(r)} title={t("cashOpenSource")}
+              className={statusRowClass(r.dir === "deduct" ? "partial" : r.dir === "out" ? "out" : "in")}
+              onContextMenu={(ev) => openCtx(ev, [
+                { key: "open", icon: "✏️", label: t("ctxEdit"), run: () => openCashSource(r) },
+                { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true,
+                  run: () => setSheet({ k: "confirmDeleteEntry", id: r.source?.id || r.id }) },
+              ])}
+              style={{ cursor: "pointer" }}>
+              {cashVisibleKeys.map((key) => renderCashRowCell(key, r))}
+            </tr>
+          )}
         />
       </DeskCard>
 
@@ -14242,8 +14233,16 @@ function FarmApp() {
               <Empty icon="🔎" title={t("noAnimalsMatch")} sub={t("noAnimalsMatchSub")}
                 cta={t("clearFilters")} onCta={clearHerdFilters} /></div>
               : <DataList
-                  cards={herdRows.map((a) => (
-                    <AnimalCard key={a.id} a={a} lang={lang} t={t} today={todayProd(a)}
+                  items={herdRows}
+                  ungrouped
+                  lang={lang} t={t}
+                  colCount={5}
+                  head={<tr>
+                    {head("tag", t("colName"))}{head("sp", t("species"))}{head("st", t("status"))}
+                    {head("breed", t("breed"))}{head("age", t("age"))}
+                  </tr>}
+                  renderCard={(a) => (
+                    <AnimalCard a={a} lang={lang} t={t} today={todayProd(a)}
                       last={entries.find((e) => e.animalId === a.id)}
                       onClick={() => setSel(a.id)}
                       onContextMenu={(e) => openCtx(e, [
@@ -14253,16 +14252,9 @@ function FarmApp() {
                         (producesMilk(a) || producesEggs(a)) && { key: "milk", icon: "🥛", label: t("ctxMilk"), more: true,
                           run: () => setSheet({ k: "prod", id: a.id }) },
                       ])} />
-                  ))}
-                  table={
-                <div className="overflow-x-auto">
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>
-                    {head("tag", t("colName"))}{head("sp", t("species"))}{head("st", t("status"))}
-                    {head("breed", t("breed"))}{head("age", t("age"))}
-                  </tr></thead>
-                  <tbody>
-                    {herdRows.map((a) => <tr key={a.id} onClick={() => setSel(a.id)}
+                  )}
+                  renderRow={(a) => (
+                    <tr key={a.id} onClick={() => setSel(a.id)}
                       className={statusRowClass(a.status)}
                       onContextMenu={(e) => openCtx(e, [
                         { key: "open", icon: "👁", label: t("ctxOpen"), run: () => setSel(a.id) },
@@ -14277,10 +14269,8 @@ function FarmApp() {
                       <Td><Stamp status={a.status} lang={lang} /></Td>
                       <Td tone={C.inkSoft}>{breedLabel(a, lang)}</Td>
                       <Td tone={C.inkSoft}>{isFlock(a) ? `${nf(a.birds)} ${t("birds")}` : ageText(a, lang)}</Td>
-                    </tr>)}
-                  </tbody>
-                </table>
-              </div>}
+                    </tr>
+                  )}
                 />
               }
         </DeskCard>
@@ -14495,9 +14485,31 @@ function FarmApp() {
         </div>
 
         <DataList
+          items={milkLogView.rows}
+          getAt={(r) => r.day || r.at}
+          lang={lang} months={MONTHS} t={t}
+          colCount={7}
+          tableMinWidth={640}
           empty={milkLogView.rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("milkLogEmpty")}</div> : null}
-          cards={milkLogView.rows.map((r) => (
-            <DataCard key={r.key || r.day} kind="day"
+          head={<tr>
+            <Th>{t("colDate")}</Th>
+            <Th>{t("colTime")}</Th>
+            <Th align="end">{t("morningMilk")}</Th>
+            <Th align="end">{t("eveningMilk")}</Th>
+            <Th align="end">{t("dayMilkTotal")}</Th>
+            <Th>{t("milkUnit")}</Th>
+            <Th>{t("colUser")}</Th>
+          </tr>}
+          foot={<tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
+            <Td colSpan={2} strong>{t("milkLogPreview")}</Td>
+            <Td align="end" mono><MilkKg liters={milkLogView.amQty} t={t}>{n1(milkFromLiters(milkLogView.amQty, milkUnit))}</MilkKg></Td>
+            <Td align="end" mono><MilkKg liters={milkLogView.pmQty} t={t}>{n1(milkFromLiters(milkLogView.pmQty, milkUnit))}</MilkKg></Td>
+            <Td align="end" mono strong tone={C.field}><MilkKg liters={milkLogView.totalQty} t={t}>{n1(milkFromLiters(milkLogView.totalQty, milkUnit))}</MilkKg></Td>
+            <Td tone={C.inkSoft}>{milkU}</Td>
+            <Td />
+          </tr>}
+          renderCard={(r) => (
+            <DataCard kind="day"
               status={<StatusPill status="day">{t("dayMilkTotal")}</StatusPill>}
               title={dmy(r.day)}
               subtitle={hhmm(new Date(r.loggedAt || r.at))}
@@ -14505,97 +14517,60 @@ function FarmApp() {
               meta={<MilkKg liters={r.total} t={t}>{`🌅 ${n1(milkFromLiters(r.am || 0, milkUnit))} · 🌙 ${n1(milkFromLiters(r.pm || 0, milkUnit))} · ${n1(milkFromLiters(r.total || 0, milkUnit))} ${milkU}`}</MilkKg>}
               onClick={() => { setEntryDate(r.day); setBatch({}); }}
             />
-          ))}
-          table={
-        <div className="overflow-x-auto">
-          {milkLogView.rows.length === 0
-            ? null
-            : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-              <thead><tr>
-                <Th>{t("colDate")}</Th>
-                <Th>{t("colTime")}</Th>
-                <Th align="end">{t("morningMilk")}</Th>
-                <Th align="end">{t("eveningMilk")}</Th>
-                <Th align="end">{t("dayMilkTotal")}</Th>
-                <Th>{t("milkUnit")}</Th>
-                <Th>{t("colUser")}</Th>
-              </tr></thead>
-              <tbody>
-                {milkLogView.rows.map((r) => (
-                  <tr key={r.key || r.day} className={statusRowClass("day")} style={{ cursor: "pointer" }}
-                    onClick={() => { setEntryDate(r.day); setBatch({}); }}>
-                    <Td mono>{dmy(r.day)}</Td>
-                    <Td mono tone={C.inkSoft}>{hhmm(new Date(r.loggedAt || r.at))}</Td>
-                    <Td align="end" mono><MilkKg liters={r.am} t={t}>{n1(milkFromLiters(r.am || 0, milkUnit))}</MilkKg></Td>
-                    <Td align="end" mono><MilkKg liters={r.pm} t={t}>{n1(milkFromLiters(r.pm || 0, milkUnit))}</MilkKg></Td>
-                    <Td align="end" mono strong><MilkKg liters={r.total} t={t}>{n1(milkFromLiters(r.total || 0, milkUnit))}</MilkKg></Td>
-                    <Td tone={C.inkSoft}>{milkU}</Td>
-                    <Td align="center"><WhoHint e={r} lang={lang} /></Td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
-                  <Td colSpan={2} strong>{t("milkLogPreview")}</Td>
-                  <Td align="end" mono><MilkKg liters={milkLogView.amQty} t={t}>{n1(milkFromLiters(milkLogView.amQty, milkUnit))}</MilkKg></Td>
-                  <Td align="end" mono><MilkKg liters={milkLogView.pmQty} t={t}>{n1(milkFromLiters(milkLogView.pmQty, milkUnit))}</MilkKg></Td>
-                  <Td align="end" mono strong tone={C.field}><MilkKg liters={milkLogView.totalQty} t={t}>{n1(milkFromLiters(milkLogView.totalQty, milkUnit))}</MilkKg></Td>
-                  <Td tone={C.inkSoft}>{milkU}</Td>
-                  <Td />
-                </tr>
-              </tfoot>
-            </table>}
-        </div>
-          }
+          )}
+          renderRow={(r) => (
+            <tr key={r.key || r.day} className={statusRowClass("day")} style={{ cursor: "pointer" }}
+              onClick={() => { setEntryDate(r.day); setBatch({}); }}>
+              <Td mono>{dmy(r.day)}</Td>
+              <Td mono tone={C.inkSoft}>{hhmm(new Date(r.loggedAt || r.at))}</Td>
+              <Td align="end" mono><MilkKg liters={r.am} t={t}>{n1(milkFromLiters(r.am || 0, milkUnit))}</MilkKg></Td>
+              <Td align="end" mono><MilkKg liters={r.pm} t={t}>{n1(milkFromLiters(r.pm || 0, milkUnit))}</MilkKg></Td>
+              <Td align="end" mono strong><MilkKg liters={r.total} t={t}>{n1(milkFromLiters(r.total || 0, milkUnit))}</MilkKg></Td>
+              <Td tone={C.inkSoft}>{milkU}</Td>
+              <Td align="center"><WhoHint e={r} lang={lang} /></Td>
+            </tr>
+          )}
         />
       </DeskCard>
 
       <DeskCard pad={0} title={`🥛 ${t("milkUseHistory")} · ${milkUseLog.rows.length}`}
         right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "milkUse" })}>− {t("milkUse")}</button>}>
         <DataList
+          items={milkUseLog.rows}
+          lang={lang} months={MONTHS} t={t}
+          colCount={5}
+          tableMinWidth={520}
           empty={milkUseLog.rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("milkUseEmpty")}</div> : null}
-          cards={milkUseLog.rows.map((e) => (
-            <DataCard key={e.id} kind="day"
+          head={<tr>
+            <Th>{t("colDate")}</Th>
+            <Th>{t("colTime")}</Th>
+            <Th>{t("lossReason")}</Th>
+            <Th align="end">{t("qty")}</Th>
+            <Th>{t("colUser")}</Th>
+          </tr>}
+          foot={<tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
+            <Td colSpan={3} strong>{t("milkUsed")}</Td>
+            <Td align="end" mono strong tone={C.field}><MilkKg liters={milkUseLog.totalQty} t={t}>{n1(milkFromLiters(milkUseLog.totalQty, "kg"))} {t("kg")}</MilkKg></Td>
+            <Td />
+          </tr>}
+          renderCard={(e) => (
+            <DataCard kind="day"
               status={<StatusPill status="day">{t("milkUse")}</StatusPill>}
               title={milkUseLabel(e, t)}
               subtitle={`${dmy(e.at)} · ${hhmm(e.loggedAt || e.at)}`}
               who={<WhoHint e={e} lang={lang} />}
               meta={milkKgLine(e, t)}
             />
-          ))}
-          table={
-        <div className="overflow-x-auto">
-          {milkUseLog.rows.length === 0
-            ? null
-            : <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
-              <thead><tr>
-                <Th>{t("colDate")}</Th>
-                <Th>{t("colTime")}</Th>
-                <Th>{t("lossReason")}</Th>
-                <Th align="end">{t("qty")}</Th>
-                <Th>{t("colUser")}</Th>
-              </tr></thead>
-              <tbody>
-                {milkUseLog.rows.map((e) => (
-                  <tr key={e.id} className={statusRowClass("day")}>
-                    <Td mono>{dmy(e.at)}</Td>
-                    <Td mono tone={C.inkSoft}>{hhmm(e.loggedAt || e.at)}</Td>
-                    <Td>{milkUseLabel(e, t)}</Td>
-                    <Td align="end" mono strong>{milkKgLine(e, t)}</Td>
-                    <Td align="center"><WhoHint e={e} lang={lang} /></Td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: C.paper, borderTop: `2px solid ${C.rule}` }}>
-                  <Td colSpan={3} strong>{t("milkUsed")}</Td>
-                  <Td align="end" mono strong tone={C.field}><MilkKg liters={milkUseLog.totalQty} t={t}>{n1(milkFromLiters(milkUseLog.totalQty, "kg"))} {t("kg")}</MilkKg></Td>
-                  <Td />
-                </tr>
-              </tfoot>
-            </table>}
-        </div>
-          }
+          )}
+          renderRow={(e) => (
+            <tr key={e.id} className={statusRowClass("day")}>
+              <Td mono>{dmy(e.at)}</Td>
+              <Td mono tone={C.inkSoft}>{hhmm(e.loggedAt || e.at)}</Td>
+              <Td>{milkUseLabel(e, t)}</Td>
+              <Td align="end" mono strong>{milkKgLine(e, t)}</Td>
+              <Td align="center"><WhoHint e={e} lang={lang} /></Td>
+            </tr>
+          )}
         />
       </DeskCard>
     </div>
@@ -14710,7 +14685,16 @@ function FarmApp() {
                   </SearchFilterBar>
                 </div>
                 <DataList
-                  cards={sortedCustomers.map((c) => {
+                  items={sortedCustomers}
+                  ungrouped
+                  lang={lang} t={t}
+                  colCount={3}
+                  head={<tr>
+                    <Th>{t("customerName")}</Th>
+                    <Th w={140} align="end">{t("due")}</Th>
+                    <Th w={160} align="center">{t("actions")}</Th>
+                  </tr>}
+                  renderCard={(c) => {
                     const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
                     const due = (ledger.byCustomer[c.id] || {}).due || 0;
                     const owing = due > 0.009;
@@ -14728,7 +14712,7 @@ function FarmApp() {
                       { key: "manage", icon: "⚙️", label: t("ctxManage"), more: true, run: () => setSheet({ k: "customerManage", cid: c.id }) },
                     ]);
                     return (
-                      <DataCard key={c.id} kind={owing ? "owing" : "neutral"}
+                      <DataCard kind={owing ? "owing" : "neutral"}
                         status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
                         title={customerLabel(c, t)}
                         subtitle={`${accNo(customers, c.id)}${c.phone ? ` · ${c.phone}` : ""} · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
@@ -14743,60 +14727,48 @@ function FarmApp() {
                         </>}
                       />
                     );
-                  })}
-                  table={
-                <div className="overflow-x-auto">
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>
-                      <Th>{t("customerName")}</Th>
-                      <Th w={140} align="end">{t("due")}</Th>
-                      <Th w={160} align="center">{t("actions")}</Th>
-                    </tr></thead>
-                    <tbody>
-                      {sortedCustomers.map((c) => {
-                        const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
-                        const due = (ledger.byCustomer[c.id] || {}).due || 0;
-                        const owing = due > 0.009;
-                        return <tr key={c.id} onClick={() => openAccount(c.id)}
-                          className={owing ? statusRowClass("owing") : undefined}
-                          onContextMenu={(e) => openCtx(e, [
-                            { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
-                            { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
-                            { key: "pay", icon: "💵", label: t("ctxPay"), run: () => { openAccount(c.id); setSheet({ k: "payment", cid: c.id }); } },
-                            { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
-                            { key: "manage", icon: "⚙️", label: t("ctxManage"), more: true, run: () => setSheet({ k: "customerManage", cid: c.id }) },
-                          ])}
-                          style={{ cursor: "pointer" }}>
-                          <Td>
-                            <div style={{ fontWeight: 800 }}>{customerLabel(c, t)}</div>
-                            <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
-                              {accNo(customers, c.id)}
-                              {c.phone ? ` · ${c.phone}` : ""}
-                              {` · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
-                            </div>
-                          </Td>
-                          <Td align="end" mono strong tone={owing ? C.rose : C.inkSoft}>
-                            {owing ? fmtC(due, S.rate, lang) : "—"}
-                          </Td>
-                          <Td align="center">
-                            <span style={{ display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center" }}
-                              onClick={(ev) => ev.stopPropagation()}>
-                              {owing && <button type="button" className="dk-pill" onClick={() => {
-                                openAccount(c.id); setSheet({ k: "payment", cid: c.id });
-                              }}>💵 {t("recordPayment")}</button>}
-                              <MoreMenu t={t} items={[
-                                { key: "open", icon: "👁", label: t("openAccount"), run: () => openAccount(c.id) },
-                                { key: "sale", icon: "🧾", label: t("newSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
-                                { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
-                                { key: "manage", icon: "⚙️", label: t("manageAccount"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
-                              ]} />
-                            </span>
-                          </Td>
-                        </tr>;
-                      })}
-                    </tbody>
-                  </table>
-                </div>}
+                  }}
+                  renderRow={(c) => {
+                    const pr = PRODUCTS.find((x) => x[0] === (c.product || "milk")) || PROD_MILK;
+                    const due = (ledger.byCustomer[c.id] || {}).due || 0;
+                    const owing = due > 0.009;
+                    return <tr key={c.id} onClick={() => openAccount(c.id)}
+                      className={owing ? statusRowClass("owing") : undefined}
+                      onContextMenu={(e) => openCtx(e, [
+                        { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openAccount(c.id) },
+                        { key: "sale", icon: "🧾", label: t("ctxSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
+                        { key: "pay", icon: "💵", label: t("ctxPay"), run: () => { openAccount(c.id); setSheet({ k: "payment", cid: c.id }); } },
+                        { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                        { key: "manage", icon: "⚙️", label: t("ctxManage"), more: true, run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                      ])}
+                      style={{ cursor: "pointer" }}>
+                      <Td>
+                        <div style={{ fontWeight: 800 }}>{customerLabel(c, t)}</div>
+                        <div style={{ fontSize: 12, color: C.inkSoft, fontWeight: 600 }}>
+                          {accNo(customers, c.id)}
+                          {c.phone ? ` · ${c.phone}` : ""}
+                          {` · ${pr[1]} ${lang === "ar" ? pr[2] : pr[3]}`}
+                        </div>
+                      </Td>
+                      <Td align="end" mono strong tone={owing ? C.rose : C.inkSoft}>
+                        {owing ? fmtC(due, S.rate, lang) : "—"}
+                      </Td>
+                      <Td align="center">
+                        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center" }}
+                          onClick={(ev) => ev.stopPropagation()}>
+                          {owing && <button type="button" className="dk-pill" onClick={() => {
+                            openAccount(c.id); setSheet({ k: "payment", cid: c.id });
+                          }}>💵 {t("recordPayment")}</button>}
+                          <MoreMenu t={t} items={[
+                            { key: "open", icon: "👁", label: t("openAccount"), run: () => openAccount(c.id) },
+                            { key: "sale", icon: "🧾", label: t("newSale"), run: () => { openAccount(c.id); setSheet({ k: "newSale", cid: c.id }); } },
+                            { key: "stmt", icon: "🖨️", label: t("statement"), run: () => setSheet({ k: "docgen", id: c.id, cid: c.id, kinds: ["statement"] }) },
+                            { key: "manage", icon: "⚙️", label: t("manageAccount"), run: () => setSheet({ k: "customerManage", cid: c.id }) },
+                          ]} />
+                        </span>
+                      </Td>
+                    </tr>;
+                  }}
                 />
               </>}
           </DeskCard>}
@@ -14911,12 +14883,25 @@ function FarmApp() {
                   </SearchFilterBar>
                 </div>
                 <DataList
-                  cards={filteredSuppliers.map((s) => {
+                  items={filteredSuppliers}
+                  ungrouped
+                  lang={lang} t={t}
+                  colCount={7}
+                  head={<tr>
+                    <Th w={90}>{t("accountNo")}</Th>
+                    <Th>{t("supplierName")}</Th>
+                    <Th w={100}>{t("colStatus")}</Th>
+                    <Th w={120} align="end">{t("weOwe")}</Th>
+                    <Th w={110} align="end">{t("paidToSupplier")}</Th>
+                    <Th w={120}>{t("lastActivity")}</Th>
+                    <Th w={100} align="center">{t("actions")}</Th>
+                  </tr>}
+                  renderCard={(s) => {
                     const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
                     const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
                     const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
                     return (
-                      <DataCard key={s.id} kind={st}
+                      <DataCard kind={st}
                         status={<StatusPill status={st}>{stLb}</StatusPill>}
                         title={s.name}
                         subtitle={`${supplierNo(suppliers, s.id)}${s.phone ? ` · ${s.phone}` : ""}`}
@@ -14932,51 +14917,35 @@ function FarmApp() {
                           {t("openSupplier")} ›</button>}
                       />
                     );
-                  })}
-                  table={
-                <div className="overflow-x-auto">
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>
-                      <Th w={90}>{t("accountNo")}</Th>
-                      <Th>{t("supplierName")}</Th>
-                      <Th w={100}>{t("colStatus")}</Th>
-                      <Th w={120} align="end">{t("weOwe")}</Th>
-                      <Th w={110} align="end">{t("paidToSupplier")}</Th>
-                      <Th w={120}>{t("lastActivity")}</Th>
-                      <Th w={100} align="center">{t("actions")}</Th>
-                    </tr></thead>
-                    <tbody>
-                      {filteredSuppliers.map((s) => {
-                        const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
-                        const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
-                        const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
-                        return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}
-                          onContextMenu={(e) => openCtx(e, [
-                            { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openSupplier(s.id) },
-                            { key: "bill", icon: "🧾", label: t("logSupplierBill"), run: () => { openSupplier(s.id); setSheet({ k: "supplierBill", sid: s.id }); } },
-                            bal.due > 0.009 && { key: "pay", icon: "💵", label: t("paySupplier"), run: () => { openSupplier(s.id); setSheet({ k: "paySupplier", sid: s.id }); } },
-                            { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", scope: "supplier", sid: s.id, id: s.id, kinds: ["statement"] }) },
-                          ])}>
-                          <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
-                          <Td strong>{s.name}
-                            {s.phone ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft, fontWeight: 500 }}>{s.phone}</span> : null}
-                          </Td>
-                          <Td><StatusPill status={st}>{stLb}</StatusPill></Td>
-                          <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
-                          <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
-                          <Td mono tone={C.inkSoft}>{bal.lastAt ? dmy(bal.lastAt) : "—"}</Td>
-                          <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                            <button type="button" className="dk-pill" title={t("statement")}
-                              onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "docgen", scope: "supplier",
-                                sid: s.id, id: s.id, kinds: ["statement"] }); }}>🖨️</button>
-                            <button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
-                              className="dk-pill">{t("openSupplier")} ›</button>
-                          </div></Td>
-                        </tr>;
-                      })}
-                    </tbody>
-                  </table>
-                </div>}
+                  }}
+                  renderRow={(s) => {
+                    const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
+                    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+                    const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
+                    return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}
+                      onContextMenu={(e) => openCtx(e, [
+                        { key: "open", icon: "👁", label: t("ctxOpen"), run: () => openSupplier(s.id) },
+                        { key: "bill", icon: "🧾", label: t("logSupplierBill"), run: () => { openSupplier(s.id); setSheet({ k: "supplierBill", sid: s.id }); } },
+                        bal.due > 0.009 && { key: "pay", icon: "💵", label: t("paySupplier"), run: () => { openSupplier(s.id); setSheet({ k: "paySupplier", sid: s.id }); } },
+                        { key: "stmt", icon: "🖨️", label: t("statement"), more: true, run: () => setSheet({ k: "docgen", scope: "supplier", sid: s.id, id: s.id, kinds: ["statement"] }) },
+                      ])}>
+                      <Td mono tone={C.inkSoft}>{supplierNo(suppliers, s.id)}</Td>
+                      <Td strong>{s.name}
+                        {s.phone ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft, fontWeight: 500 }}>{s.phone}</span> : null}
+                      </Td>
+                      <Td><StatusPill status={st}>{stLb}</StatusPill></Td>
+                      <Td align="end" mono strong tone={moneyColor("due", bal.due)}>{fmtC(bal.due, S.rate, lang)}</Td>
+                      <Td align="end" mono tone={C.green}>{fmtC(bal.paid, S.rate, lang)}</Td>
+                      <Td mono tone={C.inkSoft}>{bal.lastAt ? dmy(bal.lastAt) : "—"}</Td>
+                      <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                        <button type="button" className="dk-pill" title={t("statement")}
+                          onClick={(ev) => { ev.stopPropagation(); setSheet({ k: "docgen", scope: "supplier",
+                            sid: s.id, id: s.id, kinds: ["statement"] }); }}>🖨️</button>
+                        <button type="button" onClick={(ev) => { ev.stopPropagation(); openSupplier(s.id); }}
+                          className="dk-pill">{t("openSupplier")} ›</button>
+                      </div></Td>
+                    </tr>;
+                  }}
                 />
               </>}
           </DeskCard>}
@@ -17258,6 +17227,22 @@ button.cash-overview-stat:hover{background:${C.paper}}
 .border{border-width:1px;border-style:solid}
 .shrink-0{flex-shrink:0}
 .overflow-x-auto{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-scroll{max-height:min(56vh,520px);overflow:auto;-webkit-overflow-scrolling:touch;
+  background:${C.card};border:1px solid ${C.line};border-radius:8px;position:relative}
+.table-scroll > .overflow-x-auto{overflow:visible!important;max-height:none!important;border:none!important;background:transparent!important}
+.table-scroll thead th,.table-scroll .heavy-table thead th{
+  position:sticky;top:0;z-index:3;background:${C.paper}!important;box-shadow:0 1px 0 ${C.line}}
+.table-scroll tfoot td,.table-scroll .heavy-table tfoot td{
+  position:sticky;bottom:0;z-index:3;background:${C.paper}!important;box-shadow:0 -1px 0 ${C.line}}
+.period-group-row td{padding:0!important;background:${C.paper}!important;border-bottom:1px solid ${C.line}}
+.period-group-btn,.period-group-card{width:100%;display:flex;align-items:center;gap:8px;border:none;cursor:pointer;
+  background:${C.paper};color:${C.ink};font-family:var(--body);font-weight:800;font-size:13px;
+  padding:10px 12px;text-align:start;min-height:40px}
+.period-group-btn:hover,.period-group-card:hover{filter:brightness(.98)}
+.period-group-card{border:1px solid ${C.line};border-radius:8px;margin-bottom:2px}
+.heavy-card-slot{min-height:1px}
+.virt-pad td{line-height:0;font-size:0}
+.cards-scroll{padding:2px;border-radius:8px}
 .border-l-4{border-inline-start-width:4px;border-inline-start-style:solid}
 .grid{display:grid}
 .grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
