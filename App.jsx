@@ -66,9 +66,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.49", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.50", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.50": {
+    ar: [
+      "كشف الحساب يُطبع كمستند A4 كامل التفاصيل بألوان واضحة، دون لقطة شاشة من الواجهة",
+    ],
+    en: [
+      "Statements print as a full A4 document with clear ink — not an app-screen capture",
+    ],
+  },
   "2.9.49": {
     ar: [
       "تحديد صفوف بنمط Excel مع ملخص عائم، وكشف حساب قابل للتحرير مع فترة وتوازن افتتاحي/ختامي",
@@ -10589,22 +10597,31 @@ function ReportBody({ kind, lang, t, sums, prevSums, S, days, scoped, animals, w
 }
 
 /* ---------------------------- printed documents ---------------------------- */
-const docTd = { border: "1px solid #D9D5CA", padding: "8px 10px", verticalAlign: "middle", fontSize: 11.5 };
-const docTh = { ...docTd, background: C.field, color: "#fff", fontWeight: 700, fontSize: 11, letterSpacing: ".03em" };
-const docThSum = { ...docTd, background: "#EDEAE2", fontWeight: 800, fontSize: 11.5 };
+/* Always light paper + dark ink — UI dark theme must never bleach print docs. */
+const PRINT = {
+  ink: "#1B2033", inkSoft: "#555555", muted: "#666666",
+  paper: "#FFFFFF", soft: "#FAFAF8", softAlt: "#F3F5FA", sum: "#EDEAE2",
+  line: "#D9D5CA", field: "#1B6B5A", fieldDeep: "#0C3A31", tag: "#C9A227",
+  green: "#1F8F72", red: "#B53A4A",
+};
+const docTd = { border: `1px solid ${PRINT.line}`, padding: "8px 10px", verticalAlign: "middle",
+  fontSize: 11.5, color: PRINT.ink, background: PRINT.paper };
+const docTh = { ...docTd, background: PRINT.field, color: "#FFFFFF", fontWeight: 700, fontSize: 11, letterSpacing: ".03em" };
+const docThSum = { ...docTd, background: PRINT.sum, color: PRINT.ink, fontWeight: 800, fontSize: 11.5 };
 const td = docTd;
-const tdh = { ...docTd, background: "#EDEAE2", fontWeight: 700, fontFamily: "var(--body)", letterSpacing: ".02em" };
-const docWrap = { fontFamily: "var(--body)", color: "#1B2033", padding: "12mm", maxWidth: "210mm", margin: "0 auto", background: C.card };
+const tdh = { ...docTd, background: PRINT.sum, fontWeight: 700, fontFamily: "var(--body)", letterSpacing: ".02em" };
+const docWrap = { fontFamily: "var(--body)", color: PRINT.ink, padding: "12mm", maxWidth: "210mm",
+  margin: "0 auto", background: PRINT.paper };
 
 function docL2(both, lang, ar, en) { return both ? `${ar} / ${en}` : lang === "ar" ? ar : en; }
 
 function DocFarmLines({ name, phone, address, L2, size = "md" }) {
   const title = size === "lg" ? 20 : 13.5;
   return <div>
-    <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: title, color: C.field, lineHeight: 1.25 }}>
+    <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: title, color: PRINT.field, lineHeight: 1.25 }}>
       {name || L2("مزرعتي", "Mazraati Farm")}</div>
-    {address && <div style={{ fontSize: 11, color: "#555", marginTop: 4, lineHeight: 1.45 }}>{address}</div>}
-    {phone && <div style={{ fontSize: 11, color: "#555", fontFamily: "var(--mono)", marginTop: 2, direction: "ltr", textAlign: "inherit" }}>{phone}</div>}
+    {address && <div style={{ fontSize: 11, color: PRINT.inkSoft, marginTop: 4, lineHeight: 1.45 }}>{address}</div>}
+    {phone && <div style={{ fontSize: 11, color: PRINT.inkSoft, fontFamily: "var(--mono)", marginTop: 2, direction: "ltr", textAlign: "inherit" }}>{phone}</div>}
   </div>;
 }
 
@@ -10612,42 +10629,42 @@ function DocHead({ lang, title, docNo, meta, both, logo, farmName, farmPhone, fa
   party, partyLabel, showParty = true }) {
   const L2 = (ar, en) => docL2(both, lang, ar, en);
   const farm = { name: (farmName || "").trim(), phone: (farmPhone || "").trim(), address: (farmAddress || "").trim() };
-  return <div style={{ marginBottom: 18 }}>
-    <div style={{ display: "flex", alignItems: "stretch", gap: 16, paddingBottom: 14, borderBottom: `3px solid ${C.field}` }}>
+  return <div style={{ marginBottom: 18, color: PRINT.ink }}>
+    <div style={{ display: "flex", alignItems: "stretch", gap: 16, paddingBottom: 14, borderBottom: `3px solid ${PRINT.field}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
         {logo
-          ? <div style={{ width: 76, height: 76, border: `1px solid ${C.line}`, borderRadius: 4, padding: 5,
-              background: C.card, flexShrink: 0, display: "grid", placeItems: "center" }}>
+          ? <div style={{ width: 76, height: 76, border: `1px solid ${PRINT.line}`, borderRadius: 4, padding: 5,
+              background: PRINT.paper, flexShrink: 0, display: "grid", placeItems: "center" }}>
               <img src={logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /></div>
-          : <div style={{ width: 76, height: 76, borderRadius: 4, background: C.field, color: "#fff",
+          : <div style={{ width: 76, height: 76, borderRadius: 4, background: PRINT.field, color: "#fff",
               display: "grid", placeItems: "center", fontSize: 34, flexShrink: 0 }}>🐄</div>}
         <DocFarmLines name={farm.name} phone={farm.phone} address={farm.address} L2={L2} size="lg" />
       </div>
       <div style={{ textAlign: "end", flexShrink: 0, alignSelf: "center" }}>
-        <div style={{ display: "inline-block", background: C.field, color: "#fff", padding: "11px 18px", borderRadius: 4, minWidth: 130 }}>
+        <div style={{ display: "inline-block", background: PRINT.field, color: "#fff", padding: "11px 18px", borderRadius: 4, minWidth: 130 }}>
           <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{title}</div>
           {docNo && <div style={{ fontFamily: "var(--mono)", fontSize: 12, opacity: .92, marginTop: 5 }}>{docNo}</div>}
         </div>
       </div>
     </div>
     {showParty && party && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px", background: "#FAFAF8" }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: C.inkSoft, letterSpacing: ".08em", marginBottom: 7 }}>
+      <div style={{ border: `1px solid ${PRINT.line}`, borderRadius: 4, padding: "10px 12px", background: PRINT.soft }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: PRINT.muted, letterSpacing: ".08em", marginBottom: 7 }}>
           {L2(T.ar.issuedBy, T.en.issuedBy)}</div>
         <DocFarmLines name={farm.name} phone={farm.phone} address={farm.address} L2={L2} />
       </div>
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 4, padding: "10px 12px", background: "#F3F5FA",
-        borderInlineStart: `3px solid ${C.field}` }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: C.inkSoft, letterSpacing: ".08em", marginBottom: 7 }}>
+      <div style={{ border: `1px solid ${PRINT.line}`, borderRadius: 4, padding: "10px 12px", background: PRINT.softAlt,
+        borderInlineStart: `3px solid ${PRINT.field}` }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: PRINT.muted, letterSpacing: ".08em", marginBottom: 7 }}>
           {partyLabel || L2(T.ar.issuedTo, T.en.issuedTo)}</div>
-        <div style={{ fontWeight: 700, fontSize: 14.5, color: C.ink }}>{party.name}</div>
-        {party.acc && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#555", marginTop: 4 }}>{party.acc}</div>}
-        {party.phone && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#555", marginTop: 2, direction: "ltr" }}>{party.phone}</div>}
+        <div style={{ fontWeight: 700, fontSize: 14.5, color: PRINT.ink }}>{party.name}</div>
+        {party.acc && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: PRINT.inkSoft, marginTop: 4 }}>{party.acc}</div>}
+        {party.phone && <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: PRINT.inkSoft, marginTop: 2, direction: "ltr" }}>{party.phone}</div>}
       </div>
     </div>}
     {meta && meta.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-      {meta.map(([k, v], i) => <span key={`${k}-${i}`} style={{ fontSize: 10.5, background: "#EDEAE2", borderRadius: 3,
-        padding: "5px 10px", color: "#333" }}><span style={{ fontWeight: 700 }}>{k}: </span>{v}</span>)}
+      {meta.map(([k, v], i) => <span key={`${k}-${i}`} style={{ fontSize: 10.5, background: PRINT.sum, borderRadius: 3,
+        padding: "5px 10px", color: PRINT.ink }}><span style={{ fontWeight: 700 }}>{k}: </span>{v}</span>)}
     </div>}
   </div>;
 }
@@ -10655,12 +10672,12 @@ function DocHead({ lang, title, docNo, meta, both, logo, farmName, farmPhone, fa
 function DocFoot({ thanks, footer, note, signLeft, signRight, showSigns = true }) {
   return <>
     {thanks && <div style={{ marginTop: 18, padding: "12px 14px", background: "#F7F6F2", borderRadius: 4,
-      borderInlineStart: `4px solid ${C.tag}`, fontSize: 12.5, fontWeight: 600, color: C.field }}>{thanks}</div>}
-    {note && <div style={{ marginTop: 8, fontSize: 11, color: "#555", textAlign: "center", fontWeight: 500 }}>{note}</div>}
-    {footer && <div style={{ marginTop: 8, fontSize: 9, color: "#888", fontFamily: "var(--mono)", textAlign: "center" }}>{footer}</div>}
-    {showSigns && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, marginTop: 40, fontSize: 11, color: "#333" }}>
-      <div style={{ borderTop: "1px solid #333", paddingTop: 7, textAlign: "center" }}>{signLeft}</div>
-      <div style={{ borderTop: "1px solid #333", paddingTop: 7, textAlign: "center" }}>{signRight}</div>
+      borderInlineStart: `4px solid ${PRINT.tag}`, fontSize: 12.5, fontWeight: 600, color: PRINT.field }}>{thanks}</div>}
+    {note && <div style={{ marginTop: 8, fontSize: 11, color: PRINT.inkSoft, textAlign: "center", fontWeight: 500 }}>{note}</div>}
+    {footer && <div style={{ marginTop: 8, fontSize: 9, color: PRINT.muted, fontFamily: "var(--mono)", textAlign: "center" }}>{footer}</div>}
+    {showSigns && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, marginTop: 40, fontSize: 11, color: PRINT.ink }}>
+      <div style={{ borderTop: `1px solid ${PRINT.ink}`, paddingTop: 7, textAlign: "center" }}>{signLeft}</div>
+      <div style={{ borderTop: `1px solid ${PRINT.ink}`, paddingTop: 7, textAlign: "center" }}>{signRight}</div>
     </div>}
   </>;
 }
@@ -10730,50 +10747,113 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     DATE_LANG.lang = dlang === "ar" ? "ar" : "en";
     const t = (k) => T[dlang][k] || tApp(k);
     const draft = doc.draft;
-    const money = (c) => fmtC(fromCents(c || 0), S.rate, dlang);
+    const tpl = docTplOf(S);
+    const mView = printMoneyView(tpl);
+    const showLbp = S.rate > 0 && mView !== "usd";
+    const showUsd = mView !== "lbp";
+    const money = (c) => {
+      const usd = fromCents(c || 0);
+      const u = `$${nm(usd)}`;
+      const l = `${nf(usd * S.rate)} ${dlang === "ar" ? "ل.ل" : "LBP"}`;
+      if (!showLbp) return u;
+      if (!showUsd) return l;
+      return `${u}  ·  ${l}`;
+    };
+    const cellAmt = (c) => {
+      const usd = fromCents(c || 0);
+      if (!showUsd && showLbp) return nf(usd * S.rate);
+      return nm(usd);
+    };
+    const partyRec = doc.scope === "supplier"
+      ? (suppliers || []).find((x) => x.id === doc.id)
+      : (customers || []).find((x) => x.id === doc.id);
+    const partyLabel = doc.scope === "supplier"
+      ? t("supplierName")
+      : (T[dlang].issuedTo || t("issuedTo"));
+    const now = `${dmy(Date.now(), dlang)} ${hhmm(Date.now())}`;
+    const periodTxt = `${draft.from ? dmy(draft.from, dlang) : "…"} → ${draft.to ? dmy(draft.to, dlang) : "…"}`;
+    const totals = draft.totals || { openingC: draft.openingC || 0, chargesC: 0, creditsC: 0, closingC: draft.openingC || 0 };
+    const closing = totals.closingC || 0;
     const farm = { logo: S.logo, farmName: S.farmName, farmPhone: S.farmPhone, farmAddress: S.farmAddress, showParty: true };
-    return <div dir={T[dlang].dir} style={docWrap} className="stmt-print">
+    const foot = `${(S.farmName || "").trim() ? `${S.farmName.trim()} · ` : ""}${t("poweredBy")} · v${VERSION.code}`;
+    return <div dir={T[dlang].dir} style={docWrap} className="stmt-print print-doc">
       <DocHead lang={dlang} both={false} {...farm} title={t("statement")} docNo={draft.refNo || ""}
-        party={{ name: draft.partyName || "—", phone: "", acc: draft.refNo || "" }}
+        party={{
+          name: draft.partyName || (partyRec && (doc.scope === "supplier" ? partyRec.name : customerLabel(partyRec, t))) || "—",
+          phone: (partyRec && partyRec.phone) || "",
+          acc: draft.refNo || "",
+        }}
+        partyLabel={partyLabel}
         meta={[
-          [t("stmtPeriod"), `${draft.from ? dmy(draft.from, dlang) : "…"} → ${draft.to ? dmy(draft.to, dlang) : "…"}`],
-          [t("preparedBy"), me?.name || ""],
+          [t("stmtPeriod"), periodTxt],
+          [t("generated"), now],
+          [t("preparedBy"), me?.name || "—"],
+          ...(tpl.showRate !== false && S.rate > 0
+            ? [[t("rate"), `1 USD = ${nf(S.rate)} ${dlang === "ar" ? "ل.ل" : "LBP"}`]] : []),
         ]} />
       <div className="stmt-print-cards">
-        {[[t("stmtOpening"), draft.openingC], [t("stmtCharges"), draft.totals?.chargesC],
-          [t("stmtCredits"), draft.totals?.creditsC], [t("stmtClosingDue"), draft.totals?.closingC]].map(([lb, c], i) => (
+        {[[t("stmtOpening"), totals.openingC ?? draft.openingC],
+          [t("stmtCharges"), totals.chargesC],
+          [t("stmtCredits"), totals.creditsC],
+          [t("stmtClosingDue"), closing]].map(([lb, c], i) => (
           <div key={lb} className={`stmt-print-card${i === 3 ? " due" : ""}`}>
             <span>{lb}</span><b>{money(c)}</b>
           </div>
         ))}
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 14 }}>
         <thead>
           <tr>
             <td style={docTh}>{t("colDate")}</td>
             <td style={docTh}>{t("stmtDocRef")}</td>
             <td style={docTh}>{t("stmtDesc")}</td>
-            <td style={{ ...docTh, textAlign: "end" }}>{t("stmtCharges")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("stmtCharges")}{showUsd && showLbp ? "" : showLbp ? ` (${dlang === "ar" ? "ل.ل" : "LBP"})` : " (USD)"}</td>
             <td style={{ ...docTh, textAlign: "end" }}>{t("stmtCredits")}</td>
             <td style={{ ...docTh, textAlign: "end" }}>{t("stmtRunning")}</td>
           </tr>
         </thead>
         <tbody>
+          <tr style={{ background: PRINT.softAlt }}>
+            <td style={docTd}>{draft.from ? dmy(draft.from, dlang) : "—"}</td>
+            <td style={docTd}>—</td>
+            <td style={{ ...docTd, fontWeight: 700 }}>{t("stmtOpening")}</td>
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }} />
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }} />
+            <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 800 }}>{cellAmt(totals.openingC ?? draft.openingC)}</td>
+          </tr>
           {(draft.rows || []).map((r, i) => (
-            <tr key={r.id || i} style={{ background: i % 2 ? "#FAFAF8" : "#fff" }}>
+            <tr key={r.id || i} style={{ background: i % 2 ? PRINT.soft : PRINT.paper }}>
               <td style={docTd}>{dmy(r.day || r.at, dlang)}</td>
-              <td style={docTd}>{r.ref || ""}</td>
+              <td style={{ ...docTd, fontFamily: "var(--mono)" }}>{r.ref || ""}</td>
               <td style={docTd}>{r.desc || ""}</td>
-              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.chargeC ? money(r.chargeC) : ""}</td>
-              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.creditC ? money(r.creditC) : ""}</td>
-              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{money(r.balanceC)}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.chargeC ? cellAmt(r.chargeC) : ""}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.creditC ? cellAmt(r.creditC) : ""}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{cellAmt(r.balanceC)}</td>
             </tr>
           ))}
+          <tr>
+            <td style={docThSum} colSpan={3}>{t("balance")}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totals.chargesC)}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{cellAmt(totals.creditsC)}</td>
+            <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)",
+              color: closing > 0 ? PRINT.red : PRINT.green }}>{cellAmt(closing)}</td>
+          </tr>
         </tbody>
       </table>
-      {draft.footerNote ? <div style={{ marginTop: 16, fontSize: 12, color: "#444", whiteSpace: "pre-wrap" }}>{draft.footerNote}</div> : null}
-      <DocFoot thanks={(docTplOf(S).thanks || "").trim() || t("thanks")} note="" footer={`${(S.farmName || "").trim()} · ${t("poweredBy")}`}
-        showSigns={docTplOf(S).showSigns !== false}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+        <div style={{ minWidth: 240, textAlign: "end", border: `1px solid ${PRINT.line}`, borderRadius: 6,
+          padding: "12px 14px", background: PRINT.soft }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: PRINT.muted, letterSpacing: ".04em" }}>
+            {closing > 0 ? t("due") : closing < 0 ? t("credit") : t("paidS")}</div>
+          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 22, marginTop: 4,
+            color: closing > 0 ? PRINT.red : closing < 0 ? PRINT.green : PRINT.ink }}>
+            {closing === 0 ? "—" : money(Math.abs(closing))}</div>
+          <div style={{ fontSize: 10.5, color: PRINT.inkSoft, marginTop: 4 }}>{t("stmtClosingDue")}</div>
+        </div>
+      </div>
+      {draft.footerNote ? <div style={{ marginTop: 16, fontSize: 12, color: PRINT.inkSoft, whiteSpace: "pre-wrap" }}>{draft.footerNote}</div> : null}
+      <DocFoot thanks={(tpl.thanks || "").trim() || t("thanks")} note="" footer={foot}
+        showSigns={tpl.showSigns !== false}
         signLeft={t("signOwner")} signRight={doc.scope === "supplier" ? t("signSupplier") : t("signCustomer")} />
     </div>;
   }
@@ -12332,13 +12412,23 @@ function FarmApp() {
   const rateStale = S.rate > 0 && (rateAgeDays === null || rateAgeDays >= 3);
   const doPrint = (d = null) => { setDoc(d); setPrinting(true); };
   useEffect(() => {
-    if (!printing) return;
+    if (!printing) return undefined;
+    document.body.classList.add("is-printing");
     let alive = true;
     const timer = setTimeout(() => {
       if (alive) window.print();
-      setTimeout(() => { if (alive) { setPrinting(false); setDoc(null); } }, 700);
+      setTimeout(() => {
+        if (!alive) return;
+        setPrinting(false);
+        setDoc(null);
+        document.body.classList.remove("is-printing");
+      }, 700);
     }, 320);
-    return () => { alive = false; clearTimeout(timer); };
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      document.body.classList.remove("is-printing");
+    };
   }, [printing, doc]);
   const exportArgs = () => ({ lang, t, sums, S, days, period: periodLabel, me, animals, workers, customers,
     scoped: financialScoped, scopedSales, ledger, outstanding, summaryLines });
@@ -16492,11 +16582,17 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .stmt-edit-table .bal{font-weight:800;white-space:nowrap}
 .stmt-hide{border:none;background:transparent;color:${C.inkSoft};cursor:pointer;font-size:18px;line-height:1;padding:2px 6px}
 .stmt-hide:hover{color:${C.red}}
+.stmt-print{color:#1B2033;background:#fff}
 .stmt-print-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-.stmt-print-card{border:1px solid #ddd;border-radius:6px;padding:8px 10px}
-.stmt-print-card span{display:block;font-size:11px;color:#666;font-weight:700}
-.stmt-print-card b{font-family:var(--mono);font-size:14px}
+.stmt-print-card{border:1px solid #D9D5CA;border-radius:6px;padding:10px 12px;background:#fff;color:#1B2033}
+.stmt-print-card span{display:block;font-size:11px;color:#555;font-weight:700}
+.stmt-print-card b{display:block;font-family:var(--mono);font-size:14px;font-weight:800;color:#1B2033;margin-top:4px}
 .stmt-print-card.due{border-color:#0C3A31;background:#F7F3EE}
+.stmt-print-card.due b{color:#0C3A31}
+.stmt-editor,.stmt-editor input,.stmt-editor textarea,.stmt-sum-card b,.stmt-edit-table,.stmt-edit-table td,.stmt-edit-table .bal{
+  color:#1B2033!important}
+.stmt-sum-card,.stmt-table-wrap{background:#fff!important}
+.stmt-sum-input{color:#1B2033!important;background:#fff!important}
 .sheet-icon-btn{width:40px;height:40px;border-radius:10px;border:1px solid ${C.line};background:${C.paper};
   font-size:18px;cursor:pointer;flex-shrink:0;color:${C.ink};line-height:1;display:inline-grid;place-items:center;padding:0}
 .sheet-icon-btn:hover{border-color:${C.field};background:${C.card}}
@@ -17114,15 +17210,33 @@ button.cash-overview-stat:hover{background:${C.paper}}
   max-height:min(68vh,760px);box-shadow:inset 0 0 0 1px rgba(27,32,51,.04)}
 .doc-preview > div{margin:0 auto}
 @media print{
-  .gate,.toast,.pal-back{display:none!important}
+  .gate,.toast,.pal-back,.sel-bar{display:none!important}
+  body{background:#fff!important;margin:0;color:#1B2033!important;color-scheme:light}
+  /* Document print: hide the live app chrome so PDF is a real page, not a UI screenshot. */
+  body.is-printing .app > :not(.print-sheet){display:none!important}
+  body.is-printing .print-sheet.show{
+    display:block!important;position:static!important;width:100%;background:#fff;color:#1B2033;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.is-printing .print-sheet.show .stmt-print,
+  body.is-printing .print-sheet.show .print-doc,
+  body.is-printing .print-sheet.show .stmt-print-card,
+  body.is-printing .print-sheet.show .stmt-print-card b{
+    color:#1B2033!important;background:#fff; -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.is-printing .print-sheet.show .stmt-print-card.due{background:#F7F3EE!important}
+  body.is-printing .print-sheet.show .stmt-print-card.due b{color:#0C3A31!important}
+  body.is-printing .print-sheet.show td,body.is-printing .print-sheet.show th,
+  body.is-printing .print-sheet.show b,body.is-printing .print-sheet.show span{
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-sheet{display:none!important}
   .print-sheet.show{display:block!important;position:static!important;width:100%}
   .sheet-wrap.keep-print{display:block!important;position:static;inset:auto;background:#fff;padding:0;animation:none}
   .sheet-wrap.keep-print .sheet{max-height:none;box-shadow:none;border:none;border-radius:0;padding:12px;margin:0;width:100%}
   .sheet-wrap.keep-print .grabber,.sheet-wrap.keep-print button,.no-print{display:none!important}
-  body{background:#fff!important;margin:0}
-  .app.dk .dk-side,.app.dk .dk-top,.app.dk .banner,.app.dk .dk-quick,.no-print{display:none!important}
-  .app.dk .dk-wrap,.app.dk .dk-main,.app.dk .dk-body,.cash-box,.desk-card{display:block!important;width:100%!important;max-width:none!important}
+  body:not(.is-printing) .app.dk .dk-side,body:not(.is-printing) .app.dk .dk-top,
+  body:not(.is-printing) .app.dk .banner,body:not(.is-printing) .app.dk .dk-quick,.no-print{display:none!important}
+  body:not(.is-printing) .app.dk .dk-wrap,body:not(.is-printing) .app.dk .dk-main,
+  body:not(.is-printing) .app.dk .dk-body,body:not(.is-printing) .cash-box,
+  body:not(.is-printing) .desk-card{display:block!important;width:100%!important;max-width:none!important}
   .cash-box button,.cash-box .chip{display:none!important}
   .print-sheet.show,.print-sheet.show *,.sheet-wrap.keep-print,.sheet-wrap.keep-print *,.cash-box, .cash-box *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   table,tr,td,th{page-break-inside:avoid}
