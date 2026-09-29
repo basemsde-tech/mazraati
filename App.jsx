@@ -39,8 +39,12 @@ import {
 } from "./managerLedger.mjs";
 import { openingBillsFor, isOpeningBillId } from "./supplierOpen.mjs";
 import {
+  stmtBuildDraft, stmtWithRunning, stmtTotals, stmtPresetBounds,
+  customerStatementRawLines, supplierStatementRawLines,
+} from "./statementLedger.mjs";
+import {
   checkLineMath, checkStockCover, checkDiscount, checkPaymentSplit,
-  checkExpenseAmounts, checkTender, checkCashTrail, hasBlockingIssues,
+  checkExpenseAmounts, checkTender, hasBlockingIssues,
   formatIssues, worstSeverity,
 } from "./validate.mjs";
 import {
@@ -62,9 +66,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.48", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.49", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.49": {
+    ar: [
+      "تحديد صفوف بنمط Excel مع ملخص عائم، وكشف حساب قابل للتحرير مع فترة وتوازن افتتاحي/ختامي",
+      "إخفاء تنبيهات صندوق النقد المزعجة عن صفوف المدين/الدائن",
+    ],
+    en: [
+      "Excel-style row selection with a floating summary, and an editable Statement with period opening/closing math",
+      "Hide noisy Cash box debit/credit trail alerts",
+    ],
+  },
   "2.9.48": {
     ar: [
       "إدخال المبالغ بلوحة أرقام للصندوق: بالماوس أو لوحة المفاتيح بدل أزرار زائد وناقص",
@@ -1588,6 +1602,15 @@ const T = {
     deleteMedWarn: "سيُحذف علاج الدواء من المصاريف وصندوق النقد.",
     deleteLinkedWarn: "سيُحذف هذا القيد مع أي حركات مرتبطة تظهر في تبويبات أخرى.",
     selectAll: "تحديد الكل", selectedCount: "محدّد", clearSelection: "إلغاء التحديد",
+    selectedTotal: "إجمالي المحدّد", selectedDue: "مستحق المحدّد",
+    stmtGenerate: "كشف من التحديد", stmtEditor: "تحرير الكشف",
+    stmtPeriod: "فترة الكشف", stmtThisMonth: "هذا الشهر", stmtLast30: "آخر 30 يومًا",
+    stmtAllTime: "كل الوقت", stmtCustomRange: "مخصص",
+    stmtOpening: "الرصيد الافتتاحي", stmtCharges: "المدين (+)", stmtCredits: "الدائن (−)",
+    stmtClosingDue: "الرصيد المستحق", stmtAddLine: "سطر مخصص", stmtReset: "إعادة للأصل",
+    stmtFooterNotes: "ملاحظات التذييل", stmtPartyName: "اسم الحساب", stmtRefNo: "رقم المرجع",
+    stmtDocRef: "المستند / المرجع", stmtDesc: "الوصف", stmtRunning: "الرصيد الجاري",
+    stmtHideRow: "إخفاء من الكشف", stmtPrintClean: "طباعة / PDF",
     deleteSelected: "حذف المحدّد", voidSalesTitle: "حذف المبيعات",
     voidPickMode: "كيف نتعامل مع المخزون؟",
     voidRestore: "إرجاع المخزون",
@@ -2194,6 +2217,15 @@ const T = {
     deleteMedWarn: "This medicine cost will be removed from Expenses and Cash Box.",
     deleteLinkedWarn: "This entry and any linked records that appear in other tabs will be removed.",
     selectAll: "Select all", selectedCount: "selected", clearSelection: "Clear selection",
+    selectedTotal: "Selected total", selectedDue: "Selected due",
+    stmtGenerate: "Statement from selection", stmtEditor: "Edit statement",
+    stmtPeriod: "Statement period", stmtThisMonth: "This month", stmtLast30: "Last 30 days",
+    stmtAllTime: "All time", stmtCustomRange: "Custom",
+    stmtOpening: "Opening balance", stmtCharges: "Charges (+)", stmtCredits: "Credits (−)",
+    stmtClosingDue: "Balance due", stmtAddLine: "Add custom line", stmtReset: "Reset to original",
+    stmtFooterNotes: "Footer notes", stmtPartyName: "Account name", stmtRefNo: "Reference no.",
+    stmtDocRef: "Doc # / Ref", stmtDesc: "Description", stmtRunning: "Running balance",
+    stmtHideRow: "Hide from statement", stmtPrintClean: "Print / PDF",
     deleteSelected: "Delete selected", voidSalesTitle: "Delete sales",
     voidPickMode: "What should happen to stock?",
     voidRestore: "Restore stock",
@@ -4578,18 +4610,137 @@ function CheckCell({ checked, onChange, title, indeterminate }) {
     onClick={(e) => e.stopPropagation()}
     onChange={(e) => { e.stopPropagation(); onChange(!!e.target.checked); }} />;
 }
-function SelectionBar({ t, n, onClear, onDelete }) {
+
+/** Excel-style multi-select: Shift=range, Ctrl/Cmd=toggle. Returns next Set + new anchor id. */
+function excelSelectNext(orderedIds, picked, id, { shift = false, meta = false, anchor = null } = {}) {
+  const ids = orderedIds || [];
+  const idx = ids.indexOf(id);
+  if (idx < 0) return { next: new Set(picked), anchor };
+  if (shift && anchor != null) {
+    const a = ids.indexOf(anchor);
+    if (a >= 0) {
+      const lo = Math.min(a, idx);
+      const hi = Math.max(a, idx);
+      const next = meta ? new Set(picked) : new Set();
+      for (let i = lo; i <= hi; i++) next.add(ids[i]);
+      return { next, anchor };
+    }
+  }
+  if (meta) {
+    const next = new Set(picked);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return { next, anchor: id };
+  }
+  return { next: new Set([id]), anchor: id };
+}
+
+function useRowSelection(orderedIds, resetKey) {
+  const [picked, setPicked] = useState(() => new Set());
+  const anchorRef = useRef(null);
+  const dragRef = useRef(false);
+  const ids = orderedIds || [];
+  const idsKey = ids.join("|");
+  useEffect(() => {
+    setPicked((prev) => {
+      const live = new Set(ids);
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [idsKey]);
+  useEffect(() => {
+    setPicked(new Set());
+    anchorRef.current = null;
+  }, [resetKey]);
+  useEffect(() => {
+    const up = () => { dragRef.current = false; };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+  const allOn = ids.length > 0 && ids.every((id) => picked.has(id));
+  const someOn = ids.some((id) => picked.has(id));
+  const clear = useCallback(() => {
+    setPicked(new Set());
+    anchorRef.current = null;
+  }, []);
+  const toggleAll = useCallback((on) => {
+    setPicked(on ? new Set(ids) : new Set());
+    anchorRef.current = on && ids[0] ? ids[0] : null;
+  }, [idsKey]);
+  const togglePick = useCallback((id, on) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    anchorRef.current = id;
+  }, []);
+  const applyExcel = useCallback((id, e, { plainSelect = true } = {}) => {
+    const shift = !!(e && e.shiftKey);
+    const meta = !!(e && (e.ctrlKey || e.metaKey));
+    if (!plainSelect && !shift && !meta) return false;
+    setPicked((prev) => {
+      const { next, anchor } = excelSelectNext(ids, prev, id, { shift, meta, anchor: anchorRef.current });
+      anchorRef.current = anchor;
+      return next;
+    });
+    return true;
+  }, [idsKey]);
+  const onRowMouseDown = useCallback((id, e, opts) => {
+    if (e.button != null && e.button !== 0) return;
+    const t = e.target;
+    if (t && t.closest && t.closest("button, a, input, label, .more-menu, .more-menu-btn, .dk-pill")) return;
+    const shift = !!e.shiftKey;
+    const meta = !!(e.ctrlKey || e.metaKey);
+    const plainSelect = !!(opts && opts.plainSelect);
+    if (!plainSelect && !shift && !meta) return;
+    e.preventDefault();
+    e.stopPropagation();
+    applyExcel(id, e, { plainSelect: true });
+    dragRef.current = true;
+  }, [applyExcel]);
+  const onRowMouseEnter = useCallback((id, e) => {
+    if (!dragRef.current) return;
+    if (e && e.buttons !== 1) { dragRef.current = false; return; }
+    setPicked((prev) => {
+      const { next, anchor } = excelSelectNext(ids, prev, id, {
+        shift: true, meta: true, anchor: anchorRef.current,
+      });
+      anchorRef.current = anchor;
+      return next;
+    });
+  }, [idsKey]);
+  return { picked, setPicked, allOn, someOn, clear, toggleAll, togglePick, applyExcel, onRowMouseDown, onRowMouseEnter, anchorRef };
+}
+
+function SelectionBar({ t, n, total, due, rate, lang, onClear, onDelete, onStatement, S }) {
   useEffect(() => {
     if (!n) return undefined;
     document.body.classList.add("sale-picking");
     return () => document.body.classList.remove("sale-picking");
   }, [n]);
+  useEffect(() => {
+    if (!n || !onClear) return undefined;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (isEditableCtxTarget(e.target)) return;
+      e.preventDefault();
+      onClear();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [n, onClear]);
   if (!n || typeof document === "undefined") return null;
+  const fx = rate != null ? rate : (S && S.rate) || 0;
   return createPortal(
-    <div className="sel-bar" role="toolbar" aria-label={t("deleteSelected")}>
-      <span>{n} {t("selectedCount")}</span>
+    <div className="sel-bar" role="status" aria-live="polite">
+      <span className="sel-bar-count">{n} {t("selectedCount")}</span>
+      {total != null && <span className="sel-bar-metric"><em>{t("selectedTotal")}</em> {fmtC(total, fx, lang)}</span>}
+      {due != null && <span className="sel-bar-metric"><em>{t("selectedDue")}</em> {fmtC(due, fx, lang)}</span>}
       <button type="button" className="sel-bar-ghost" onClick={onClear}>{t("clearSelection")}</button>
-      <button type="button" className="sel-bar-del" onClick={onDelete}>🗑️ {t("deleteSelected")}</button>
+      {onStatement ? <button type="button" className="sel-bar-stmt" onClick={onStatement}>📑 {t("stmtGenerate")}</button> : null}
+      {onDelete ? <button type="button" className="sel-bar-del" onClick={onDelete}>🗑️ {t("deleteSelected")}</button> : null}
     </div>, document.body);
 }
 function VoidSalesSheet({ sales = [], lang, t, S, busy, onConfirm, onClose, onBack, backLabel }) {
@@ -7829,7 +7980,7 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
 }
 
 function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, onBill, onPay,
-  onDoc, onManage, onEditBill, onEditPay, no, onCtx }) {
+  onDoc, onManage, onEditBill, onEditPay, onGenerateStatement, no, onCtx }) {
   const b = ledger.bySupplier[supplier.id] || { bought: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0, openCount: 0, overdueDue: 0 };
   const [sort, setSort] = useState("newest");
   const newest = sort !== "oldest";
@@ -7841,6 +7992,14 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
   const tagLb = (k) => { const row = SUPPLIER_TAGS.find((x) => x[0] === k); return row ? `${row[1]} ${t(row[2])}` : k; };
   const activeTab = ["open", "payments", "all"].includes(tab) ? tab : (tab === "activity" ? "all" : "open");
+  const visibleBills = activeTab === "all" ? allBills : activeTab === "open" ? openBills : [];
+  const billIds = visibleBills.map((x) => x.id);
+  const {
+    picked, allOn, someOn, clear: clearPick, toggleAll, togglePick,
+    onRowMouseDown, onRowMouseEnter,
+  } = useRowSelection(billIds, `${supplier.id}:${activeTab}`);
+  const pickTotal = fromCents(visibleBills.reduce((sum, x) => picked.has(x.id) ? sum + toCents(x.amount) : sum, 0));
+  const pickDue = fromCents(visibleBills.reduce((sum, x) => picked.has(x.id) ? sum + toCents(x.due) : sum, 0));
   const billKind = (bill) => payStatusKind(bill);
   const billCtx = (bill, { showPay } = {}) => [
     onEditBill && { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEditBill(bill.id) },
@@ -7848,76 +8007,100 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
     onDoc && !bill.opening && { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(bill) },
   ];
   const billTable = (rows, emptyMsg, { showPay } = {}) => (
-    <DataList
-      empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
-      cards={rows.map((bill) => {
-        const kind = billKind(bill);
-        const catTxt = bill.opening ? t("supplierOpening") : `${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`;
-        return (
-          <DataCard key={bill.id} kind={kind}
-            status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
-            title={bill.opening ? t("supplierOpeningBill") : bill.no}
-            subtitle={`${dmy(bill.at)} · ${catTxt}`}
-            who={bill.opening ? null : <WhoHint e={bill} lang={lang} />}
-            meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
-            onClick={onEditBill ? () => onEditBill(bill.id) : undefined}
-            onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}
-            actions={(showPay && bill.due > 0.009) || (onDoc && !bill.opening) ? (
-              <>
-                {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
-                  onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
-                {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
-                  onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
-              </>
-            ) : null}
-          >
-            {bill.note ? <div className="data-card-sub">{bill.note}</div> : null}
-          </DataCard>
-        );
-      })}
-      table={
-        <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr>
-              <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
-              <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
-              <Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th>
-              {showPay || onDoc ? <Th align="center">{t("actions")}</Th> : null}
-            </tr></thead>
-            <tbody>
-              {rows.map((bill) => {
-                const kind = billKind(bill);
-                return (
-                  <tr key={bill.id} className={statusRowClass(kind)} style={{ cursor: onEditBill ? "pointer" : "default" }}
-                    onClick={() => onEditBill && onEditBill(bill.id)}
-                    onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}>
-                    <Td mono>{dmy(bill.at)}</Td>
-                    <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
-                    <Td>{bill.opening ? t("supplierOpening")
-                      : <>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
-                      {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
-                        {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
-                      {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</>}
-                    </Td>
-                    <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
-                    <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
-                    <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
-                    <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
-                    <Td align="center">{bill.opening ? "—" : <WhoHint e={bill} lang={lang} />}</Td>
-                    {showPay || onDoc ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                      {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
-                        onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
-                      {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
-                        onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
-                    </div></Td> : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      }
-    />
+    <div style={{ display: "grid", gap: 10 }}>
+      {rows.length > 0 && <label className="sale-pick-all">
+        <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+        {t("selectAll")}
+      </label>}
+      <DataList
+        empty={rows.length === 0 ? <div style={{ padding: 22, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{emptyMsg}</div> : null}
+        cards={rows.map((bill) => {
+          const kind = billKind(bill);
+          const catTxt = bill.opening ? t("supplierOpening") : `${catIcon(bill.category, S.categories)} ${catLabel(bill.category, lang, S.categories)}`;
+          const on = picked.has(bill.id);
+          return (
+            <div key={bill.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+              onMouseDown={(e) => onRowMouseDown(bill.id, e, { plainSelect: true })}
+              onMouseEnter={(e) => onRowMouseEnter(bill.id, e)}>
+              <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(bill.id, v)} />
+              <DataCard kind={kind}
+                status={<StatusPill status={kind}>{statusText(kind)}</StatusPill>}
+                title={bill.opening ? t("supplierOpeningBill") : bill.no}
+                subtitle={`${dmy(bill.at)} · ${catTxt}`}
+                who={bill.opening ? null : <WhoHint e={bill} lang={lang} />}
+                meta={`${t("amount")} ${fmtC(bill.amount, S.rate, lang)} · ${t("colPaid")} ${bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"} · ${t("weOwe")} ${bill.due ? fmtC(bill.due, S.rate, lang) : "—"}`}
+                onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}
+                actions={(showPay && bill.due > 0.009) || (onDoc && !bill.opening) || onEditBill ? (
+                  <>
+                    {onEditBill && <button type="button" className="dk-pill" title={t("ctxEdit")}
+                      onClick={(ev) => { ev.stopPropagation(); onEditBill(bill.id); }}>✏️</button>}
+                    {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                      onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                    {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                      onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+                  </>
+                ) : null}
+              >
+                {bill.note ? <div className="data-card-sub">{bill.note}</div> : null}
+              </DataCard>
+            </div>
+          );
+        })}
+        table={
+          <div className="overflow-x-auto" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>
+                <Th w={44} align="center">
+                  <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
+                </Th>
+                <Th>{t("colDate")}</Th><Th>{t("invoiceNo")}</Th><Th>{t("category")}</Th>
+                <Th align="end">{t("amount")}</Th><Th align="end">{t("colPaid")}</Th><Th align="end">{t("weOwe")}</Th>
+                <Th>{t("colStatus")}</Th><Th>{t("colUser")}</Th>
+                {showPay || onDoc || onEditBill ? <Th align="center">{t("actions")}</Th> : null}
+              </tr></thead>
+              <tbody>
+                {rows.map((bill) => {
+                  const kind = billKind(bill);
+                  const on = picked.has(bill.id);
+                  return (
+                    <tr key={bill.id}
+                      className={`${statusRowClass(kind)}${on ? " row-selected" : ""}`.trim()}
+                      onMouseDown={(e) => onRowMouseDown(bill.id, e, { plainSelect: true })}
+                      onMouseEnter={(e) => onRowMouseEnter(bill.id, e)}
+                      onContextMenu={onCtx ? (e) => onCtx(e, billCtx(bill, { showPay })) : undefined}>
+                      <Td align="center">
+                        <CheckCell checked={on} title={bill.no || t("selectAll")} onChange={(v) => togglePick(bill.id, v)} />
+                      </Td>
+                      <Td mono>{dmy(bill.at)}</Td>
+                      <Td mono tone={C.field}>{bill.opening ? t("supplierOpeningBill") : bill.no}</Td>
+                      <Td>{bill.opening ? t("supplierOpening")
+                        : <>{catIcon(bill.category, S.categories)} {catLabel(bill.category, lang, S.categories)}
+                        {bill.qty > 0 ? <span style={{ display: "block", fontSize: 12, color: C.field, fontWeight: 700 }}>
+                          {bill.feedType ? `${t(bill.feedType)} · ` : ""}{expenseQtyLabel(bill, t)}</span> : null}
+                        {bill.note ? <span style={{ display: "block", fontSize: 12, color: C.inkSoft }}>{bill.note}</span> : null}</>}
+                      </Td>
+                      <Td align="end" mono strong>{fmtC(bill.amount, S.rate, lang)}</Td>
+                      <Td align="end" mono>{bill.paidAmount ? fmtC(bill.paidAmount, S.rate, lang) : "—"}</Td>
+                      <Td align="end" mono strong>{bill.due ? fmtC(bill.due, S.rate, lang) : "—"}</Td>
+                      <Td><StatusPill status={kind}>{statusText(kind)}</StatusPill></Td>
+                      <Td align="center">{bill.opening ? "—" : <WhoHint e={bill} lang={lang} />}</Td>
+                      {showPay || onDoc || onEditBill ? <Td align="center"><div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                        {onEditBill && <button type="button" className="dk-pill" title={t("ctxEdit")}
+                          onClick={(ev) => { ev.stopPropagation(); onEditBill(bill.id); }}>✏️</button>}
+                        {onDoc && !bill.opening && <button type="button" className="dk-pill" title={t("purchaseInvoice")}
+                          onClick={(ev) => { ev.stopPropagation(); onDoc(bill); }}>🖨️</button>}
+                        {showPay && bill.due > 0.009 ? <button type="button" className="dk-pill"
+                          onClick={(ev) => { ev.stopPropagation(); onPay(bill.id); }}>{t("supplierPayThis")}</button> : null}
+                      </div></Td> : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        }
+      />
+    </div>
   );
   const Pays = (
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
@@ -8010,8 +8193,14 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
     {activeTab === "payments" ? Pays
       : activeTab === "all" ? Activity
         : billTable(openBills, t("supplierNoOpen"), { showPay: true })}
+    {activeTab !== "payments" && (
+      <SelectionBar t={t} n={picked.size} total={pickTotal} due={pickDue} S={S} lang={lang}
+        onClear={clearPick}
+        onStatement={onGenerateStatement ? () => onGenerateStatement([...picked]) : undefined} />
+    )}
   </div>;
 }
+
 
 function ObligationForm({ lang, t, S, initial, onSave, onClose }) {
   const [type, setType] = useState(initial?.type || "bill");
@@ -8613,16 +8802,244 @@ function DailyRoundSheet({ lang, t, S, customers, ledger, onSave, onClose, milkL
   </Sheet>;
 }
 
+
+function StatementEditorSheet({
+  lang, t, S, me, scope = "customer", partyId, selectedIds = null,
+  from: initFrom = "", to: initTo = "",
+  customers, ledger, suppliers, supplierLedger, onClose, onPrint,
+}) {
+  const today = dayKey(Date.now());
+  const party = scope === "supplier"
+    ? (suppliers || []).find((x) => x.id === partyId)
+    : (customers || []).find((x) => x.id === partyId);
+  const defaultName = scope === "supplier"
+    ? ((party && party.name) || "—")
+    : customerLabel(party, t);
+  const defaultRef = scope === "supplier"
+    ? supplierNo(suppliers || [], partyId)
+    : accNo(customers || [], partyId);
+
+  const rawLines = useMemo(() => {
+    if (scope === "supplier") {
+      return supplierStatementRawLines({
+        supplierLedger, supplierId: partyId,
+        labelBill: (x) => x.opening ? t("supplierOpening") : `${x.no || ""} · ${catLabel(x.category, lang, S.categories)}`,
+        labelPay: (p) => `${t("paidToSupplier")} · ${payMethodLabel(p.method, t)}`,
+      });
+    }
+    return customerStatementRawLines({
+      ledger, customerId: partyId,
+      labelSale: (x) => {
+        const pr = PRODUCTS.find((p) => p[0] === x.product) || PROD_OTHER;
+        return `${x.no} · ${lang === "ar" ? pr[2] : pr[3]} · ${n1(x.qty)}`;
+      },
+      labelPay: (p) => `${t("receipt")} · ${payMethodLabel(p.method, t)}`,
+      labelReimb: (r) => `${t("reimbursement")} · ${(r && (r.name || r.note)) || "—"}`,
+      labelDiscount: (x) => `${t("discount")}${x.discountNote ? ` · ${x.discountNote}` : ""}`,
+    });
+  }, [scope, partyId, ledger, supplierLedger, lang, t, S.categories]);
+
+  const [preset, setPreset] = useState(selectedIds && selectedIds.length ? "custom" : "month");
+  const bounds0 = selectedIds && selectedIds.length
+    ? (() => {
+        const days = rawLines.filter((r) => selectedIds.includes(r.sourceId) || selectedIds.includes(r.id)).map((r) => r.day).filter(Boolean).sort();
+        return { from: days[0] || "", to: days[days.length - 1] || today };
+      })()
+    : stmtPresetBounds("month", today);
+  const [from, setFrom] = useState(initFrom || bounds0.from);
+  const [to, setTo] = useState(initTo || bounds0.to);
+  const [partyName, setPartyName] = useState(defaultName);
+  const [refNo, setRefNo] = useState(defaultRef);
+  const [footerNote, setFooterNote] = useState((docTplOf(S).footerNote || "").trim());
+  const [openingOverride, setOpeningOverride] = useState(null);
+  const [rows, setRows] = useState([]);
+
+  const rebuild = (f, tt, sel) => {
+    const draft = stmtBuildDraft(rawLines, { from: f, to: tt, selectedIds: sel });
+    setOpeningOverride(null);
+    setRows(draft.rows.map((r) => ({ ...r })));
+    return draft;
+  };
+
+  useEffect(() => {
+    rebuild(from, to, selectedIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawLines]);
+
+  const applyPreset = (key) => {
+    setPreset(key);
+    if (key === "custom") return;
+    const b = stmtPresetBounds(key === "allTime" ? "all" : key, today);
+    setFrom(b.from);
+    setTo(b.to);
+    rebuild(b.from, b.to, selectedIds);
+  };
+
+  const applyCustomRange = (nf, nt) => {
+    setPreset("custom");
+    setFrom(nf);
+    setTo(nt);
+    rebuild(nf, nt, selectedIds);
+  };
+
+  const openingC = openingOverride != null ? openingOverride
+    : stmtPartitionSafe(rawLines, from, to, selectedIds);
+  const liveRows = stmtWithRunning(rows, openingC);
+  const totals = stmtTotals(liveRows, openingC);
+
+  const setOpeningUsd = (usd) => setOpeningOverride(toCents(usd));
+  const patchRow = (id, patch) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+  const hideRow = (id) => setRows((prev) => prev.filter((r) => r.id !== id));
+  const addLine = () => {
+    const id = `custom-${uid()}`;
+    setRows((prev) => [...prev, {
+      id, sourceId: id, kind: "custom", at: dayStamp(to || today), day: to || today,
+      ref: "", desc: "", chargeC: 0, creditC: 0,
+    }]);
+  };
+  const resetAll = () => {
+    setPartyName(defaultName);
+    setRefNo(defaultRef);
+    setFooterNote((docTplOf(S).footerNote || "").trim());
+    rebuild(from, to, selectedIds);
+  };
+
+  const printDoc = {
+    kind: "statementEdit",
+    scope,
+    id: partyId,
+    docLang: lang,
+    draft: {
+      partyName, refNo, footerNote, from, to,
+      openingC, rows: liveRows, totals,
+    },
+  };
+
+  const money = (c) => fmtC(fromCents(c), S.rate, lang);
+
+  return (
+    <Sheet title={`📑 ${t("stmtEditor")}`} sub={partyName} onClose={onClose}
+      footer={
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" style={{ ...secondaryBtn, flex: 1 }} onClick={resetAll}>{t("stmtReset")}</button>
+          <button type="button" style={{ ...primaryBtn, flex: 1.3 }} onClick={() => onPrint(printDoc)}>
+            🖨️ {t("stmtPrintClean")}</button>
+        </div>
+      }>
+      <div className="stmt-editor">
+        <div className="stmt-meta-grid">
+          <label className="stmt-field"><span>{t("stmtPartyName")}</span>
+            <input value={partyName} onChange={(e) => setPartyName(e.target.value)} style={inp} /></label>
+          <label className="stmt-field"><span>{t("stmtRefNo")}</span>
+            <input value={refNo} onChange={(e) => setRefNo(e.target.value)} style={inp} /></label>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 800, color: C.inkSoft, margin: "12px 0 8px" }}>{t("stmtPeriod")}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {[["month", t("stmtThisMonth")], ["last30", t("stmtLast30")], ["allTime", t("stmtAllTime")], ["custom", t("stmtCustomRange")]].map(([k, lb]) => (
+            <Chip key={k} active={preset === k} onClick={() => applyPreset(k)}>{lb}</Chip>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginBottom: 4 }}>{t("fromDate")}</div>
+            <DatePick value={from || ""} onChange={(v) => applyCustomRange(v, to)} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.inkSoft, marginBottom: 4 }}>{t("toDate")}</div>
+            <DatePick value={to || ""} onChange={(v) => applyCustomRange(from, v)} />
+          </div>
+        </div>
+
+        <div className="stmt-summary-cards">
+          <div className="stmt-sum-card">
+            <span>{t("stmtOpening")}</span>
+            <input type="number" step="0.01" className="stmt-sum-input"
+              value={fromCents(openingC)}
+              onChange={(e) => setOpeningUsd(+(e.target.value || 0))} />
+          </div>
+          <div className="stmt-sum-card"><span>{t("stmtCharges")}</span><b>{money(totals.chargesC)}</b></div>
+          <div className="stmt-sum-card"><span>{t("stmtCredits")}</span><b>{money(totals.creditsC)}</b></div>
+          <div className="stmt-sum-card due"><span>{t("stmtClosingDue")}</span><b>{money(totals.closingC)}</b></div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "8px 0 6px" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.inkSoft }}>
+            {(from ? dmy(from) : "…")} → {(to ? dmy(to) : "…")}
+          </div>
+          <button type="button" className="dk-pill" onClick={addLine}>＋ {t("stmtAddLine")}</button>
+        </div>
+
+        <div className="overflow-x-auto stmt-table-wrap">
+          <table className="stmt-edit-table">
+            <thead>
+              <tr>
+                <th>{t("colDate")}</th>
+                <th>{t("stmtDocRef")}</th>
+                <th>{t("stmtDesc")}</th>
+                <th className="num">{t("stmtCharges")}</th>
+                <th className="num">{t("stmtCredits")}</th>
+                <th className="num">{t("stmtRunning")}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {liveRows.length === 0
+                ? <tr><td colSpan={7} style={{ textAlign: "center", padding: 18, color: C.inkSoft }}>{t("noTx")}</td></tr>
+                : liveRows.map((r) => (
+                  <tr key={r.id} className="stmt-row">
+                    <td><input type="date" value={r.day || ""} onChange={(e) => patchRow(r.id, { day: e.target.value, at: dayStamp(e.target.value || today) })} /></td>
+                    <td><input value={r.ref || ""} onChange={(e) => patchRow(r.id, { ref: e.target.value })} /></td>
+                    <td><input value={r.desc || ""} onChange={(e) => patchRow(r.id, { desc: e.target.value })} /></td>
+                    <td className="num"><input type="number" step="0.01" value={fromCents(r.chargeC || 0)}
+                      onChange={(e) => patchRow(r.id, { chargeC: toCents(+(e.target.value || 0)) })} /></td>
+                    <td className="num"><input type="number" step="0.01" value={fromCents(r.creditC || 0)}
+                      onChange={(e) => patchRow(r.id, { creditC: toCents(+(e.target.value || 0)) })} /></td>
+                    <td className="num bal">{money(r.balanceC)}</td>
+                    <td><button type="button" className="stmt-hide" title={t("stmtHideRow")} onClick={() => hideRow(r.id)}>×</button></td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="stmt-field" style={{ marginTop: 14 }}>
+          <span>{t("stmtFooterNotes")}</span>
+          <textarea value={footerNote} onChange={(e) => setFooterNote(e.target.value)} rows={3}
+            style={{ ...inp, minHeight: 72, resize: "vertical" }} />
+        </label>
+      </div>
+    </Sheet>
+  );
+}
+
+function stmtPartitionSafe(rawLines, from, to, selectedIds) {
+  const draft = stmtBuildDraft(rawLines, { from, to, selectedIds });
+  return draft.openingC;
+}
+
+
 function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledger,
-  suppliers, supplierLedger, scope = "customer", docId, cid, sid }) {
+  suppliers, supplierLedger, scope = "customer", docId, cid, sid, selectedIds = null,
+  from: initFrom = "", to: initTo = "" }) {
   const [kind, setKind] = useState(kinds[0]);
   const [dl, setDl] = useState(lang);
-  const [stage, setStage] = useState("opts");
+  const [stage, setStage] = useState(kinds.length === 1 && kinds[0] === "statement" ? "stmt" : "opts");
   const label = { invoice: `🧾 ${t("invoice")}`, receipt: `💵 ${t("receipt")}`,
     purchase: `🧾 ${t("purchaseInvoice")}`, statement: `📑 ${t("statement")}` };
   const tpl = docTplOf(S);
-  const doc = { scope, kind, id: kind === "statement" ? (scope === "supplier" ? sid : cid) : docId,
+  const partyId = scope === "supplier" ? sid : cid;
+  const doc = { scope, kind, id: kind === "statement" ? partyId : docId,
     cid: scope === "customer" ? cid : undefined, sid: scope === "supplier" ? sid : undefined, docLang: dl };
+
+  if (kind === "statement" && (stage === "stmt" || stage === "preview")) {
+    return <StatementEditorSheet lang={lang} t={t} S={S} me={me} scope={scope} partyId={partyId}
+      selectedIds={selectedIds} from={initFrom} to={initTo}
+      customers={customers} ledger={ledger} suppliers={suppliers} supplierLedger={supplierLedger}
+      onClose={onClose} onPrint={onPrint} />;
+  }
 
   if (stage === "preview") {
     return <Sheet title={`🖨️ ${t("previewDoc")}`} sub={label[kind]} onClose={onClose}
@@ -8671,7 +9088,8 @@ function DocGenSheet({ lang, t, kinds, onPrint, onClose, S, me, customers, ledge
           <span style={{ flex: 1, fontWeight: 700, fontSize: 15.5 }}>{lb}</span>
           <span style={{ fontSize: 17, color: dl === k ? C.field : C.line }}>{dl === k ? "●" : "○"}</span></button>))}
     </div>
-    <button type="button" style={primaryBtn} onClick={() => setStage("preview")}>👁 {t("previewDoc")} ›</button>
+    <button type="button" style={primaryBtn} onClick={() => setStage(kind === "statement" ? "stmt" : "preview")}>
+      {kind === "statement" ? `📑 ${t("stmtEditor")} ›` : `👁 ${t("previewDoc")} ›`}</button>
   </Sheet>;
 }
 
@@ -8813,11 +9231,10 @@ function AccountHead({ customer, no, b, lang, t, S }) {
 }
 
 function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, filters, setFilters,
-  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onVoidSales, onEditPay, onStatement, no, wide }) {
+  onNewSale, onPayment, onEdit, onDoc, onExport, onManage, onCtx, onDeleteTx, onVoidSales, onEditPay, onStatement, onGenerateStatement, no, wide }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [deductOpen, setDeductOpen] = useState(false);
   const [payLogOpen, setPayLogOpen] = useState(false);
-  const [picked, setPicked] = useState(() => new Set());
   const b = ledger.byCustomer[customer.id] || { sold: 0, paid: 0, due: 0, count: 0, credit: 0, oldest: 0 };
   const all = ledger.list.filter((x) => x.customerId === customer.id);
   /* sort here rather than trusting the order the caller happens to pass in */
@@ -8832,29 +9249,16 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
     .filter((x) => !f.q || `${x.no} ${x.note || ""} ${n1(x.qty)}`.toLowerCase().includes(f.q.toLowerCase()))
     .sort((a, c) => cmpBySort(a, c, f.sort, (x) => x.netAmount, (x) => x.no));
   const rowIds = rows.map((x) => x.id);
-  const rowIdKey = rowIds.join("|");
-  useEffect(() => {
-    setPicked((prev) => {
-      const live = new Set(rowIds);
-      const next = new Set([...prev].filter((id) => live.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [rowIdKey]);
-  useEffect(() => { setPicked(new Set()); }, [customer.id]);
-  const allOn = rows.length > 0 && rows.every((x) => picked.has(x.id));
-  const someOn = rows.some((x) => picked.has(x.id));
-  const togglePick = (id, on) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id); else next.delete(id);
-      return next;
-    });
-  };
-  const toggleAll = (on) => setPicked(on ? new Set(rowIds) : new Set());
+  const {
+    picked, allOn, someOn, clear: clearPick, toggleAll, togglePick,
+    onRowMouseDown, onRowMouseEnter,
+  } = useRowSelection(rowIds, customer.id);
   const rGross = fromCents(rows.reduce((sum, x) => sum + toCents(x.grossAmount), 0));
   const rDeduct = fromCents(rows.reduce((sum, x) => sum + toCents(x.reimbAmount) + toCents(x.discountAmount), 0));
   const rPaid = fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
   const rDue = fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
+  const pickTotal = fromCents(rows.reduce((sum, x) => picked.has(x.id) ? sum + toCents(x.grossAmount) : sum, 0));
+  const pickDue = fromCents(rows.reduce((sum, x) => picked.has(x.id) ? sum + toCents(x.due) : sum, 0));
   const statusText = (st) => (st === "paid" ? t("paidS") : st === "partial" ? t("partial") : st === "overdue" ? t("overdue") : t("unpaid"));
   const chipTone = (k) => (k === "all" ? C.field : k === "paid" ? C.green : k === "partial" ? C.amber : C.red);
   const deductItems = [
@@ -8945,10 +9349,13 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
           const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
           const kind = payStatusKind(iv);
           const flag = kind === "paid" ? null : kind;
+          const on = picked.has(iv.id);
           return (
-            <div key={iv.id} className="sale-pick-card">
-              <CheckCell checked={picked.has(iv.id)} title={t("selectAll")}
-                onChange={(on) => togglePick(iv.id, on)} />
+            <div key={iv.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+              onMouseDown={(e) => onRowMouseDown(iv.id, e, { plainSelect: true })}
+              onMouseEnter={(e) => onRowMouseEnter(iv.id, e)}>
+              <CheckCell checked={on} title={t("selectAll")}
+                onChange={(v) => togglePick(iv.id, v)} />
               <DataCard kind={flag || "neutral"}
                 status={flag ? <StatusPill status={kind}>{statusText(kind)}</StatusPill> : null}
                 title={`${iv.no} · ${fmtC(iv.grossAmount, S.rate, lang)}`}
@@ -8989,15 +9396,19 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
               {rows.map((iv) => { const pr = PRODUCTS.find((x) => x[0] === iv.product) || PROD_OTHER;
                 const kind = payStatusKind(iv);
                 const flag = kind === "paid" ? null : kind;
-                return <tr key={iv.id} className={flag ? statusRowClass(kind) : undefined}
+                const on = picked.has(iv.id);
+                return <tr key={iv.id}
+                  className={`${flag ? statusRowClass(kind) : ""}${on ? " row-selected" : ""}`.trim() || undefined}
+                  onMouseDown={(e) => onRowMouseDown(iv.id, e, { plainSelect: true })}
+                  onMouseEnter={(e) => onRowMouseEnter(iv.id, e)}
                   onContextMenu={(e) => onCtx && onCtx(e, [
                     { key: "edit", icon: "✏️", label: t("ctxEdit"), run: () => onEdit(iv) },
                     { key: "print", icon: "🖨️", label: t("ctxPrint"), more: true, run: () => onDoc(iv) },
                     onDeleteTx && { key: "del", icon: "🗑️", label: t("ctxDelete"), more: true, danger: true, run: () => onDeleteTx(iv) },
                   ].filter(Boolean))}>
                   <Td align="center">
-                    <CheckCell checked={picked.has(iv.id)} title={iv.no || t("selectAll")}
-                      onChange={(on) => togglePick(iv.id, on)} />
+                    <CheckCell checked={on} title={iv.no || t("selectAll")}
+                      onChange={(v) => togglePick(iv.id, v)} />
                   </Td>
                   <Td mono>{dmy(iv.at)}</Td>
                   <Td>
@@ -9022,8 +9433,10 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
       </div>
       }
     />
-      <SelectionBar t={t} n={picked.size} onClear={() => setPicked(new Set())}
-        onDelete={() => onVoidSales && onVoidSales([...picked])} />
+      <SelectionBar t={t} n={picked.size} total={pickTotal} due={pickDue} S={S} lang={lang}
+        onClear={clearPick}
+        onStatement={onGenerateStatement ? () => onGenerateStatement([...picked]) : undefined}
+        onDelete={onVoidSales ? () => onVoidSales([...picked]) : undefined} />
 
       {deductItems.length > 0 && <FoldPanel open={deductOpen} onToggle={() => setDeductOpen((v) => !v)}
         label={t("deductions")} hint={String(deductItems.length)}>
@@ -9081,26 +9494,17 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
 }
 
 function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, onDeleteTx, onCtx }) {
-  const [picked, setPicked] = useState(() => new Set());
   const rowIds = posSales.map((x) => x.id);
-  const rowIdKey = rowIds.join("|");
-  useEffect(() => {
-    setPicked((prev) => {
-      const live = new Set(rowIds);
-      const next = new Set([...prev].filter((id) => live.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [rowIdKey]);
-  const allOn = posSales.length > 0 && posSales.every((x) => picked.has(x.id));
-  const someOn = posSales.some((x) => picked.has(x.id));
-  const togglePick = (id, on) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id); else next.delete(id);
-      return next;
-    });
-  };
-  const toggleAll = (on) => setPicked(on ? new Set(rowIds) : new Set());
+  const {
+    picked, allOn, someOn, clear: clearPick, toggleAll, togglePick,
+    onRowMouseDown, onRowMouseEnter,
+  } = useRowSelection(rowIds, "pos-recent");
+  const pickTotal = fromCents(posSales.reduce((sum, e) => picked.has(e.id) ? sum + toCents(e.amount) : sum, 0));
+  const pickDue = fromCents(posSales.reduce((sum, e) => {
+    if (!picked.has(e.id)) return sum;
+    const iv = (ledger.list || []).find((x) => x.id === e.id);
+    return sum + toCents(iv ? iv.due : 0);
+  }, 0));
   if (!posSales.length) {
     return <div style={{ padding: 24 }}><Empty icon="⚡" title={t("posEmpty")} /></div>;
   }
@@ -9117,8 +9521,11 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
         const iv = (ledger.list || []).find((x) => x.id === e.id);
         const due = iv ? iv.due : 0;
         const owing = due > 0.009;
-        return <div key={e.id} className="sale-pick-card">
-          <CheckCell checked={picked.has(e.id)} title={t("selectAll")} onChange={(on) => togglePick(e.id, on)} />
+        const on = picked.has(e.id);
+        return <div key={e.id} className={`sale-pick-card${on ? " is-selected" : ""}`}
+          onMouseDown={(ev) => onRowMouseDown(e.id, ev, { plainSelect: true })}
+          onMouseEnter={(ev) => onRowMouseEnter(e.id, ev)}>
+          <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(e.id, v)} />
           <DataCard kind={owing ? "owing" : "neutral"}
             status={owing ? <StatusPill status="owing">{t("outstanding")}</StatusPill> : null}
             title={`${pr[1]} ${fmtC(e.amount, S.rate, lang)}`}
@@ -9149,12 +9556,16 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
                 const iv = (ledger.list || []).find((x) => x.id === e.id);
                 const due = iv ? iv.due : 0;
                 const owing = due > 0.009;
-                return <tr key={e.id} className={owing ? statusRowClass("owing") : undefined}
+                const on = picked.has(e.id);
+                return <tr key={e.id}
+                  className={`${owing ? statusRowClass("owing") : ""}${on ? " row-selected" : ""}`.trim() || undefined}
+                  onMouseDown={(ev) => onRowMouseDown(e.id, ev, { plainSelect: true })}
+                  onMouseEnter={(ev) => onRowMouseEnter(e.id, ev)}
                   onContextMenu={onCtx && onDeleteTx ? (ev) => onCtx(ev, [
                     { key: "del", icon: "🗑️", label: t("ctxDelete"), run: () => onDeleteTx(e), danger: true },
                   ]) : undefined}>
                   <Td align="center">
-                    <CheckCell checked={picked.has(e.id)} title={t("selectAll")} onChange={(on) => togglePick(e.id, on)} />
+                    <CheckCell checked={on} title={t("selectAll")} onChange={(v) => togglePick(e.id, v)} />
                   </Td>
                   <Td mono tone={C.slate}>{dmy(e.at)} · {hhmm(e.loggedAt || e.at)}</Td>
                   <Td>
@@ -9177,10 +9588,12 @@ function PosRecentList({ posSales, ledger, customers, lang, t, S, onVoidSales, o
         </div>
       }
     />
-    <SelectionBar t={t} n={picked.size} onClear={() => setPicked(new Set())}
-      onDelete={() => onVoidSales && onVoidSales([...picked])} />
+    <SelectionBar t={t} n={picked.size} total={pickTotal} due={pickDue} S={S} lang={lang}
+      onClear={clearPick}
+      onDelete={onVoidSales ? () => onVoidSales([...picked]) : undefined} />
   </>;
 }
+
 
 function SetPassSheet({ lang, t, onSave, onClose }) {
   const [pin, setPin] = useState(""); const [pin2, setPin2] = useState("");
@@ -10312,6 +10725,58 @@ function PrintOwnerFund({ lang, t, S, me, fund }) {
 }
 
 function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = [], supplierLedger }) {
+  if (doc.kind === "statementEdit" && doc.draft) {
+    const dlang = doc.docLang || lang;
+    DATE_LANG.lang = dlang === "ar" ? "ar" : "en";
+    const t = (k) => T[dlang][k] || tApp(k);
+    const draft = doc.draft;
+    const money = (c) => fmtC(fromCents(c || 0), S.rate, dlang);
+    const farm = { logo: S.logo, farmName: S.farmName, farmPhone: S.farmPhone, farmAddress: S.farmAddress, showParty: true };
+    return <div dir={T[dlang].dir} style={docWrap} className="stmt-print">
+      <DocHead lang={dlang} both={false} {...farm} title={t("statement")} docNo={draft.refNo || ""}
+        party={{ name: draft.partyName || "—", phone: "", acc: draft.refNo || "" }}
+        meta={[
+          [t("stmtPeriod"), `${draft.from ? dmy(draft.from, dlang) : "…"} → ${draft.to ? dmy(draft.to, dlang) : "…"}`],
+          [t("preparedBy"), me?.name || ""],
+        ]} />
+      <div className="stmt-print-cards">
+        {[[t("stmtOpening"), draft.openingC], [t("stmtCharges"), draft.totals?.chargesC],
+          [t("stmtCredits"), draft.totals?.creditsC], [t("stmtClosingDue"), draft.totals?.closingC]].map(([lb, c], i) => (
+          <div key={lb} className={`stmt-print-card${i === 3 ? " due" : ""}`}>
+            <span>{lb}</span><b>{money(c)}</b>
+          </div>
+        ))}
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+        <thead>
+          <tr>
+            <td style={docTh}>{t("colDate")}</td>
+            <td style={docTh}>{t("stmtDocRef")}</td>
+            <td style={docTh}>{t("stmtDesc")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("stmtCharges")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("stmtCredits")}</td>
+            <td style={{ ...docTh, textAlign: "end" }}>{t("stmtRunning")}</td>
+          </tr>
+        </thead>
+        <tbody>
+          {(draft.rows || []).map((r, i) => (
+            <tr key={r.id || i} style={{ background: i % 2 ? "#FAFAF8" : "#fff" }}>
+              <td style={docTd}>{dmy(r.day || r.at, dlang)}</td>
+              <td style={docTd}>{r.ref || ""}</td>
+              <td style={docTd}>{r.desc || ""}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.chargeC ? money(r.chargeC) : ""}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{r.creditC ? money(r.creditC) : ""}</td>
+              <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{money(r.balanceC)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {draft.footerNote ? <div style={{ marginTop: 16, fontSize: 12, color: "#444", whiteSpace: "pre-wrap" }}>{draft.footerNote}</div> : null}
+      <DocFoot thanks={(docTplOf(S).thanks || "").trim() || t("thanks")} note="" footer={`${(S.farmName || "").trim()} · ${t("poweredBy")}`}
+        showSigns={docTplOf(S).showSigns !== false}
+        signLeft={t("signOwner")} signRight={doc.scope === "supplier" ? t("signSupplier") : t("signCustomer")} />
+    </div>;
+  }
   if (doc.kind === "ownerFund") {
     return <PrintOwnerFund lang={lang} t={tApp} S={S} me={me} fund={doc.fund || {}} />;
   }
@@ -11741,10 +12206,6 @@ function FarmApp() {
       .sort((a, b) => b.amount - a.amount).slice(0, 8);
     return { cats, people, reserve: cashBox.closing, ownerReserve: ownerFund.balance };
   }, [cashBox, ownerFund]);
-  const cashTrailIssues = useMemo(
-    () => checkCashTrail(cashView.rows || cashBox.rows || []),
-    [cashView.rows, cashBox.rows],
-  );
   const cashFlow = useMemo(() => {
     const groups = {};
     cashBox.rows.forEach((r) => {
@@ -13241,7 +13702,6 @@ function FarmApp() {
         </div>
       </DeskCard>
 
-      {cashTrailIssues?.length ? <InlineAlert issues={cashTrailIssues} t={t} fmtMoney={(v) => fmtC(v, S.rate, lang)} lang={lang} /> : null}
       <DeskCard pad={0} title={`💵 ${t("cashRegister")} · ${cashPeriodLabel}`}
         right={null}>
         {cashView.filtered && <div className="cash-filter-note">
@@ -14101,6 +14561,7 @@ function FarmApp() {
               onNewSale={() => setSheet({ k: "newSale", cid: selCustomer.id })}
               onPayment={() => setSheet({ k: "payment", cid: selCustomer.id })}
               onStatement={() => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"] })}
+              onGenerateStatement={(ids) => setSheet({ k: "docgen", id: selCustomer.id, cid: selCustomer.id, kinds: ["statement"], selectedIds: ids })}
               onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: selCustomer.id })}
               onDeleteTx={(iv) => setSheet({ k: "voidSales", ids: [iv.id] })}
               onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
@@ -14317,6 +14778,8 @@ function FarmApp() {
               onPay={(billId) => setSheet({ k: "paySupplier", sid: selSupplier.id, billId: billId || null })}
               onDoc={(bill) => setSheet({ k: "docgen", scope: "supplier", sid: selSupplier.id,
                 id: bill.id, kinds: ["purchase", "statement"] })}
+              onGenerateStatement={(ids) => setSheet({ k: "docgen", scope: "supplier", sid: selSupplier.id,
+                id: selSupplier.id, kinds: ["statement"], selectedIds: ids })}
               onEditBill={(id) => {
                 if (isOpeningBillId(id)) setSheet({ k: "editSupplier", sid: selSupplier.id });
                 else setSheet({ k: "supplierBill", sid: selSupplier.id, id });
@@ -15291,6 +15754,7 @@ function FarmApp() {
         {sheet?.k === "docgen" && <DocGenSheet lang={lang} t={t} S={S} kinds={sheet.kinds || ["invoice"]}
           me={me} customers={customers} ledger={ledger} suppliers={suppliers} supplierLedger={supplierLedger}
           scope={sheet.scope || "customer"} docId={sheet.id} cid={sheet.cid} sid={sheet.sid}
+          selectedIds={sheet.selectedIds || null} from={sheet.from || ""} to={sheet.to || ""}
           onClose={() => sheet.scope === "supplier" ? returnToSupplier(sheet.sid) : returnToAccount(sheet.cid)}
           onPrint={(doc) => {
             if (sheet.scope === "supplier") returnToSupplier(sheet.sid);
@@ -15626,6 +16090,7 @@ function FarmApp() {
                 onNewSale={() => setSheet({ k: "newSale", cid: cust.id })}
                 onPayment={() => setSheet({ k: "payment", cid: cust.id })}
                 onStatement={() => setSheet({ k: "docgen", id: cust.id, cid: cust.id, kinds: ["statement"] })}
+                onGenerateStatement={(ids) => setSheet({ k: "docgen", id: cust.id, cid: cust.id, kinds: ["statement"], selectedIds: ids })}
                 onEdit={(iv) => setSheet({ k: "editSale", id: iv.id, cid: cust.id })}
                 onDeleteTx={(iv) => setSheet({ k: "voidSales", ids: [iv.id] })}
                 onVoidSales={(ids) => setSheet({ k: "voidSales", ids })}
@@ -15658,6 +16123,8 @@ function FarmApp() {
                 onPay={(billId) => setSheet({ k: "paySupplier", sid: sup.id, billId: billId || null })}
                 onDoc={(bill) => setSheet({ k: "docgen", scope: "supplier", sid: sup.id,
                   id: bill.id, kinds: ["purchase", "statement"] })}
+                onGenerateStatement={(ids) => setSheet({ k: "docgen", scope: "supplier", sid: sup.id,
+                  id: sup.id, kinds: ["statement"], selectedIds: ids })}
                 onEditBill={(id) => {
                   if (isOpeningBillId(id)) setSheet({ k: "editSupplier", sid: sup.id });
                   else setSheet({ k: "supplierBill", sid: sup.id, id });
@@ -15991,12 +16458,45 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
   flex-wrap:wrap;background:${C.fieldDeep};color:#fff;box-shadow:0 -8px 24px rgba(0,0,0,.2);
   padding:10px 16px calc(10px + env(safe-area-inset-bottom));font-family:var(--body)}
 .sel-bar > span{font-weight:800;flex:1;min-width:8em}
-.sel-bar-ghost,.sel-bar-del{border:none;border-radius:10px;min-height:44px;padding:10px 14px;cursor:pointer;
+.sel-bar-ghost,.sel-bar-del,.sel-bar-stmt{border:none;border-radius:10px;min-height:44px;padding:10px 14px;cursor:pointer;
   font-family:var(--body);font-weight:700;font-size:14px}
 .sel-bar-ghost{background:rgba(255,255,255,.12);color:#fff}
 .sel-bar-del{background:${C.red};color:#fff}
+.sel-bar-stmt{background:#fff;color:${C.fieldDeep}}
+.sel-bar-metric{font-weight:700;font-size:13.5px;opacity:.95;white-space:nowrap}
+.sel-bar-metric em{font-style:normal;opacity:.75;margin-inline-end:4px;font-weight:600}
+.sale-pick-card.is-selected{background:#f3ece1;border-radius:8px;outline:1px solid #ebe5df}
+tr.row-selected,tr.row-selected td{background:#f3ece1!important}
 body.sale-picking .dk-body{padding-bottom:76px}
 @media print{.sel-bar,.sale-check,.sale-pick-all{display:none!important}}
+.stmt-editor{display:grid;gap:4px}
+.stmt-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.stmt-meta-grid{grid-template-columns:1fr}}
+.stmt-field{display:grid;gap:4px;font-size:12px;font-weight:700;color:${C.inkSoft}}
+.stmt-summary-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+@media(max-width:720px){.stmt-summary-cards{grid-template-columns:1fr 1fr}}
+.stmt-sum-card{background:${C.paper};border:1px solid #ebe5df;border-radius:8px;padding:10px 12px;display:grid;gap:4px}
+.stmt-sum-card span{font-size:11.5px;font-weight:700;color:${C.inkSoft}}
+.stmt-sum-card b{font-family:var(--mono);font-size:15px;font-weight:800;color:${C.ink}}
+.stmt-sum-card.due{border-color:${C.field};background:${C.card}}
+.stmt-sum-input{width:100%;border:1px solid ${C.line};border-radius:6px;padding:6px 8px;
+  font-family:var(--mono);font-weight:800;font-size:15px;background:#fff;color:${C.ink}}
+.stmt-table-wrap{background:${C.card};border:1px solid #ebe5df;border-radius:8px}
+.stmt-edit-table{width:100%;border-collapse:collapse;min-width:640px}
+.stmt-edit-table th,.stmt-edit-table td{border-bottom:1px solid #ebe5df;padding:6px 8px;font-size:13px;text-align:start}
+.stmt-edit-table th{font-size:11.5px;font-weight:800;color:${C.inkSoft};background:${C.paper}}
+.stmt-edit-table th.num,.stmt-edit-table td.num{text-align:end}
+.stmt-edit-table input{width:100%;border:1px solid transparent;border-radius:4px;padding:4px 6px;
+  background:transparent;font:inherit;font-family:var(--mono);min-width:0}
+.stmt-edit-table input:focus{border-color:${C.field};background:#fff;outline:none}
+.stmt-edit-table .bal{font-weight:800;white-space:nowrap}
+.stmt-hide{border:none;background:transparent;color:${C.inkSoft};cursor:pointer;font-size:18px;line-height:1;padding:2px 6px}
+.stmt-hide:hover{color:${C.red}}
+.stmt-print-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.stmt-print-card{border:1px solid #ddd;border-radius:6px;padding:8px 10px}
+.stmt-print-card span{display:block;font-size:11px;color:#666;font-weight:700}
+.stmt-print-card b{font-family:var(--mono);font-size:14px}
+.stmt-print-card.due{border-color:#0C3A31;background:#F7F3EE}
 .sheet-icon-btn{width:40px;height:40px;border-radius:10px;border:1px solid ${C.line};background:${C.paper};
   font-size:18px;cursor:pointer;flex-shrink:0;color:${C.ink};line-height:1;display:inline-grid;place-items:center;padding:0}
 .sheet-icon-btn:hover{border-color:${C.field};background:${C.card}}
