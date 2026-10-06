@@ -253,8 +253,49 @@ export async function companyPushFarm(farmJson) {
   ensureInit();
   const cid = companyCloud.companyId;
   if (!cid) throw new Error("no-company");
+  let farmRev = 0;
+  let lastEntryId = null;
+  try {
+    const parsed = typeof farmJson === "string" ? JSON.parse(farmJson) : farmJson;
+    farmRev = Number(parsed?.farmRev) || 0;
+    const ents = parsed?.entries;
+    if (Array.isArray(ents) && ents[0]?.id) lastEntryId = String(ents[0].id);
+  } catch (e) { /* keep farmRev 0 */ }
+  const metaSnap = await get(ref(db, `companies/${cid}/meta`));
+  const remoteRev = Number(metaSnap.exists() && metaSnap.val()?.farmRev) || 0;
+  /* If remote is ahead, still write (caller should have merged) but never lower meta rev. */
+  const writeRev = Math.max(farmRev, remoteRev);
   await set(ref(db, `companies/${cid}/farmJson`), farmJson);
-  await update(ref(db, `companies/${cid}/meta`), { updatedAt: Date.now(), updatedBy: auth.currentUser?.uid || null });
+  await update(ref(db, `companies/${cid}/meta`), {
+    updatedAt: Date.now(),
+    updatedBy: auth.currentUser?.uid || null,
+    farmRev: writeRev,
+  });
+  if (lastEntryId && farmRev > 0) {
+    try {
+      await set(ref(db, `companies/${cid}/entryPatches/${lastEntryId}`), {
+        id: lastEntryId,
+        farmRev: writeRev,
+        at: Date.now(),
+        by: auth.currentUser?.uid || null,
+      });
+    } catch (e) { /* optional path — farmJson remains source of truth */ }
+  }
+  return true;
+}
+
+/** Push a single entry change marker (additive; farmJson remains the full snapshot). */
+export async function companyPushEntryPatch(entry, farmRev) {
+  ensureInit();
+  const cid = companyCloud.companyId;
+  if (!cid || !entry?.id) throw new Error("no-company");
+  await set(ref(db, `companies/${cid}/entryPatches/${entry.id}`), {
+    id: entry.id,
+    entry,
+    farmRev: farmRev || 0,
+    at: Date.now(),
+    by: auth.currentUser?.uid || null,
+  });
   return true;
 }
 

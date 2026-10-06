@@ -58,6 +58,12 @@ import {
   sanitizeDeskLayoutPrefs, deskLayoutFromWindows,
   detectSnapZone, snapPreviewGeom, dragFloatGeom, WM_DOCK_H,
 } from "./windowManager.mjs";
+import { retainEntries, buildFarmBackup, parseFarmBackup } from "./farmHistory.mjs";
+import { applyFarmCommand, undoSnapshot, restoreRemoved } from "./farmCommands.mjs";
+import { emptyCoach } from "./emptyCoach.mjs";
+import { normalizeTax, taxBreakdown, taxDocLines, DEFAULT_TAX } from "./accountantTax.mjs";
+import { withFarmRev, mergeFarmsByRev } from "./farmSync.mjs";
+import { ensureLinkedIdentity, unifyManagersFunders } from "./identityLink.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -66,9 +72,19 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.54", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.55", ar: "الموسم الأول", en: "First Season", date: "2026-10" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.55": {
+    ar: [
+      "فواتير وضريبة للمحاسب، تراجع عن الحذف/الإلغاء، لوحة مبالغ أسرع، شاشات فارغة موجّهة، مزامنة بأمان، هوية مربوطة، وأرشفة بدل إسقاط السجل",
+      "نسخ احتياطي واستعادة أوضح، ومدير/ممول فكرة واحدة، ومسار موحّد لحركات المال",
+    ],
+    en: [
+      "Accountant tax/invoice fields, undo for delete/void, faster money keypad, guided empty screens, safer sync, linked identity, and history archive instead of silent drop",
+      "Clearer backup/restore, manager/funder as one idea, and one shared path for money actions",
+    ],
+  },
   "2.9.54": {
     ar: [
       "اختيار الفواتير المفتوحة في الدفع يصبح قائمة بحث أنيقة بدل شرائح مزدحمة",
@@ -1321,7 +1337,7 @@ const T = {
     cashDeposit: "إيداع نقد", cashTake: "سحب من الصندوق", cashTakeHint: "يسجّل من أخذ النقد ولأي غرض (مثل مازوت) ويظهر صرفاً في الصندوق.",
     cashTakenBy: "سحب بواسطة", cashDepositedBy: "إيداع من", cashPersonBal: "صافي الشخص",
     cashPersonTaken: "مسحوب", cashPersonDeposited: "مودَع", cashOpenPerson: "فتح الحساب",
-    managers: "متتبع المديرين", managersSub: "حساب شخصي مرتبط بالصندوق والمصاريف والموردين والمبيعات",
+    managers: "متتبع المديرين / الممولين", managersSub: "حساب شخصي واحد (مدير = ممول) مرتبط بالصندوق والمصاريف والموردين والمبيعات",
     mgrNetBal: "الرصيد", mgrOwesThem: "المزرعة مدينة له/لها", mgrTheyOwe: "مدين/ة للمزرعة",
     mgrInject: "نقد إلى الصندوق", mgrWithdraw: "نقد من الصندوق",
     mgrOop: "دفع من الجيب", mgrSupplierPay: "دفع لمورد",
@@ -1595,6 +1611,14 @@ const T = {
     paymentAmount: "قيمة الدفعة", method: "طريقة الدفع", cash: "نقدًا", card: "بطاقة", transfer: "تحويل",
     paymentRef: "مرجع / ملاحظة", paymentRecorded: "تم التسجيل",
     keypadHint: "اكتب من لوحة المفاتيح أو المس الأزرار", keypadClear: "مسح",
+    keypadQuick: "سريع", undoAction: "تراجع", undoOk: "تم التراجع.",
+    taxSettings: "الضريبة والفواتير", taxEnabled: "تفعيل الضريبة على الفواتير",
+    taxRate: "نسبة الضريبة %", taxLabel: "اسم الضريبة", taxNumber: "الرقم الضريبي",
+    taxCompanyReg: "رقم السجل / الرخصة", taxInclude: "الأسعار تشمل الضريبة",
+    taxShowOnDocs: "إظهار الضريبة على المستندات", invoicePrefix: "بادئة رقم الفاتورة",
+    linkedIdentity: "هوية مربوطة", linkedAs: "مرتبط بحساب السحابة",
+    managersFunderOne: "المدير والممول فكرة واحدة — نفس القائمة",
+    emptyNext: "ماذا بعد؟", archiveKept: "أُرشف سجل قديم بدل حذفه",
     invoice: "فاتورة", receipt: "إيصال", statement: "كشف حساب", purchaseInvoice: "فاتورة شراء", invoiceNo: "رقم الفاتورة",
     priceAsTotal: "إدخال الإجمالي", pricePerUnit: "سعر الوحدة", priceFull: "السعر الكامل",
     calculatedTotal: "الإجمالي المحسوب", calculatedUnit: "سعر الوحدة المحسوب",
@@ -1947,7 +1971,7 @@ const T = {
     cashDeposit: "Cash in", cashTake: "Take from cash box", cashTakeHint: "Records who took the cash and what for (e.g. diesel) as a cash-box outflow.",
     cashTakenBy: "Taken by", cashDepositedBy: "Deposited by", cashPersonBal: "Person net",
     cashPersonTaken: "Taken", cashPersonDeposited: "Deposited", cashOpenPerson: "Open account",
-    managers: "Manager Tracker", managersSub: "Per-person balance linked to cashbox, expenses, suppliers, sales",
+    managers: "Manager / Funder Tracker", managersSub: "One per-person balance (manager = funder) linked to cashbox, expenses, suppliers, sales",
     mgrNetBal: "Balance", mgrOwesThem: "Business owes them", mgrTheyOwe: "They owe the business",
     mgrInject: "Cash into drawer", mgrWithdraw: "Cash out of drawer",
     mgrOop: "Paid from pocket", mgrSupplierPay: "Paid a supplier",
@@ -2221,6 +2245,14 @@ const T = {
     paymentAmount: "Payment amount", method: "Method", cash: "Cash", card: "Card", transfer: "Transfer",
     paymentRef: "Reference / note", paymentRecorded: "Payment recorded",
     keypadHint: "Type on the keyboard or tap the pad", keypadClear: "Clear",
+    keypadQuick: "Quick", undoAction: "Undo", undoOk: "Undone.",
+    taxSettings: "Tax & invoices", taxEnabled: "Add tax on invoices",
+    taxRate: "Tax rate %", taxLabel: "Tax label", taxNumber: "Tax number",
+    taxCompanyReg: "Company / registry no.", taxInclude: "Prices include tax",
+    taxShowOnDocs: "Show tax on documents", invoicePrefix: "Invoice number prefix",
+    linkedIdentity: "Linked identity", linkedAs: "Linked to cloud account",
+    managersFunderOne: "Manager and funder are one list",
+    emptyNext: "What next?", archiveKept: "Older history was archived, not dropped",
     invoice: "Invoice", receipt: "Receipt", statement: "Statement", purchaseInvoice: "Purchase invoice", invoiceNo: "Invoice no.",
     priceAsTotal: "Enter total", pricePerUnit: "Price per unit", priceFull: "Full price",
     calculatedTotal: "Calculated total", calculatedUnit: "Calculated unit price",
@@ -2967,14 +2999,24 @@ function applyAppUpdate(onMsg) {
 }
 
 const emptyFarm = () => ({
-  version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
-  profiles: [], animals: [], workers: [], customers: [], suppliers: [], managers: [], funders: [], obligations: [], entries: [],
+  version: 3, settings: { rate: 0, milkPrice: 0, eggPrice: 0, wage: 0, logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", tax: { ...DEFAULT_TAX }, docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" } },
+  profiles: [], animals: [], workers: [], customers: [], suppliers: [], managers: [], funders: [], obligations: [], entries: [], archive: [], farmRev: 0,
 });
 const PROTECTED_ENTRIES = new Set(["sale", "saleReimburse", "payment", "supplierPay", "ownerFund", "ownerFundWithdraw", "customerAdd", "customerDelete", "customerArchive", "supplierAdd", "supplierDelete", "supplierArchive", "animalAdd", "animalEdit", "workerAdd", "profile", "profileSecurity", "purchase", "status", "due", "setting", "birth", "loss", "obligationAdd", "obligationEdit", "milkUse", "saleVoid"]);
-function trimEntries(list) {
-  const keep = [], vol = [];
-  list.forEach((e) => (PROTECTED_ENTRIES.has(e.type) ? keep : vol).push(e));
-  return [...keep, ...vol.slice(0, 2000)].sort((a, b) => cmpTx(a, b, "newest"));
+/** Live list only (compat). Prefer packHistory when archive must be kept. */
+function trimEntries(list, priorArchive) {
+  const packed = packHistory(list, priorArchive);
+  return packed.entries;
+}
+function packHistory(list, priorArchive) {
+  const { entries, archive } = retainEntries(list || [], PROTECTED_ENTRIES, {
+    maxLive: 2000,
+    archive: priorArchive,
+  });
+  return {
+    entries: entries.sort((a, b) => cmpTx(a, b, "newest")),
+    archive,
+  };
 }
 function migrate(farm) {
   if (!farm) return emptyFarm();
@@ -2985,19 +3027,27 @@ function migrate(farm) {
   f.animals = (f.animals || []).map((a) => ({ ...a, species: a.species || "cow" }));
   f.entries = (f.entries || []).map((e) => (e.cowId && !e.animalId ? { ...e, animalId: e.cowId } : e));
   if (f.settings && f.settings.eggPrice === undefined) f.settings = { ...f.settings, eggPrice: 0 };
-  f.settings = { logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" }, ...f.settings };
+  f.settings = { logo: "", farmName: "", farmPhone: "", farmAddress: "", farmEmail: "", loc: null, milkMode: "total", milkUnit: "L", categories: [], saleReimburseTypes: [], milkUseReasons: [], setupV: "", tax: { ...DEFAULT_TAX }, docTpl: { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow" }, ...f.settings };
   if (!Array.isArray(f.settings.saleReimburseTypes)) f.settings.saleReimburseTypes = [];
   if (!Array.isArray(f.settings.milkUseReasons)) f.settings.milkUseReasons = [];
   f.settings.docTpl = { thanks: "", footerNote: "", showSigns: true, showParty: true, showRate: true, printMoney: "follow", ...(f.settings.docTpl || {}) };
+  f.settings.tax = normalizeTax(f.settings);
   if (!Array.isArray(f.obligations)) f.obligations = [];
   if (!Array.isArray(f.suppliers)) f.suppliers = [];
   if (!Array.isArray(f.managers)) f.managers = [];
   if (!Array.isArray(f.funders)) f.funders = [];
+  if (!Array.isArray(f.archive)) f.archive = [];
+  if (!(Number(f.farmRev) > 0)) f.farmRev = Number(f.farmRev) || 0;
   {
     const migrated = migrateManagersFarm(f, () => uid());
     f.managers = migrated.managers;
     f.funders = migrated.funders;
     f.entries = migrated.entries;
+  }
+  {
+    const unified = unifyManagersFunders(f);
+    f.managers = unified.managers;
+    f.funders = unified.funders;
   }
   /* Older records used separate types for feed and livestock purchases.
      Normalize new expense fields without changing their historic paid meaning. */
@@ -5689,7 +5739,7 @@ function moneyKeypadApply(buf, key, decimals) {
   }
   return next;
 }
-function MoneyKeypad({ value, onChange, decimals = 2, suffix, t }) {
+function MoneyKeypad({ value, onChange, decimals = 2, suffix, t, big }) {
   const [buf, setBuf] = useState(null);
   const [armed, setArmed] = useState(true); /* first digit replaces preset amount */
   const [hot, setHot] = useState(true);
@@ -5738,14 +5788,26 @@ function MoneyKeypad({ value, onChange, decimals = 2, suffix, t }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [hot]);
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", ".", "00", "⌫"];
+  const quick = decimals > 0 ? [1, 5, 10, 20, 50] : [1000, 5000, 10000, 50000];
+  const addQuick = (n) => {
+    const cur = buf !== null ? moneyKeypadParse(buf, decimals) : (Number(value) || 0);
+    const next = +(cur + n).toFixed(decimals > 0 ? decimals : 0);
+    const raw = moneyKeypadFormat(next, decimals);
+    push(raw, false);
+  };
   return (
-    <div className="money-keypad" dir="ltr" lang="en"
+    <div className={`money-keypad${big ? " money-keypad-big" : ""}`} dir="ltr" lang="en"
       onMouseDown={() => setHot(true)} role="group" aria-label={t ? t("paymentAmount") : "Amount"}>
       <div className="money-keypad-display">
         <span className="money-keypad-value">{shown || "0"}</span>
         {suffix && <span className="money-keypad-suffix">{suffix}</span>}
       </div>
       {t && <div className="money-keypad-hint">{t("keypadHint")}</div>}
+      <div className="money-keypad-quick" aria-label={t ? t("keypadQuick") : "Quick"}>
+        {quick.map((n) => (
+          <button type="button" key={n} className="money-keypad-chip" onClick={() => addQuick(n)}>+{n}</button>
+        ))}
+      </div>
       <div className="money-keypad-grid">
         {keys.map((k) => (
           <button type="button" key={k}
@@ -5771,7 +5833,7 @@ function MoneyStepper({ usd, onChange, rate, lang, t, step = 5, big, currency, s
       <Chip active={cur === "usd"} onClick={() => setCur("usd")}>$ {t("usd")}</Chip>
       <Chip active={cur === "lbp"} onClick={() => setCur("lbp")}>ل.ل {t("lbp")}</Chip>
     </div>}
-    <MoneyKeypad value={live} onChange={commit} decimals={decimals} t={t}
+    <MoneyKeypad value={live} onChange={commit} decimals={decimals} t={t} big={big}
       suffix={cur === "usd" ? "$ USD" : (lang === "ar" ? "ل.ل" : "LBP")} />
     {rate > 0 && <div style={{ textAlign: "center", marginTop: 8, fontFamily: "var(--mono)",
       fontSize: 13.5, fontWeight: 600, color: C.inkSoft }}>
@@ -5797,13 +5859,17 @@ function Sheet({ title, children, onClose, onBack, backLabel, sub, keepPrint, fo
     {footer ? <footer className="sheet-foot">{footer}</footer> : null}
   </div></div>;
 }
-function Empty({ icon, title, sub, cta, onCta }) {
+function Empty({ icon, title, sub, cta, onCta, kind, lang }) {
+  const coach = kind ? emptyCoach(kind, lang || "en") : null;
+  const ttl = title || (coach && coach.title) || "";
+  const body = sub != null ? sub : (coach && coach.body) || "";
+  const action = cta != null ? cta : (coach && coach.cta && onCta ? coach.cta : null);
   return <div style={{ background: C.card, borderRadius: 6, padding: "32px 20px", textAlign: "center", boxShadow: sh1 }}>
     <div style={{ fontSize: 44 }}>{icon}</div>
-    <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19, marginTop: 8 }}>{title}</div>
-    {sub ? <div style={{ fontSize: 14.5, color: C.inkSoft, fontWeight: 500, margin: "6px 0 16px" }}>{sub}</div>
+    <div style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 19, marginTop: 8 }}>{ttl}</div>
+    {body ? <div style={{ fontSize: 14.5, color: C.inkSoft, fontWeight: 500, margin: "6px 0 16px" }}>{body}</div>
       : <div style={{ height: 16 }} />}
-    {cta && <button style={primaryBtn} onClick={onCta}>{cta}</button>}
+    {action && onCta ? <button style={primaryBtn} onClick={onCta}>{action}</button> : null}
   </div>;
 }
 function Keypad({ value, onChange, max = 6, onSubmit }) {
@@ -8522,7 +8588,7 @@ function SaleForm({ lang, t, S, customers, animals, preId, onSave, onClose, onAd
       currency: cur, rateUsed: S.rate, at: dayStamp(date), note: note.trim() });
   };
   if (customers.length === 0) return <Sheet title={`🧾 ${t("newSale")}`} onClose={onClose}>
-    <Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
+    <Empty icon="🤝" kind="customers" lang={lang} title={t("noCustomers")} sub={t("noCustomersSub")} cta={`➕ ${t("addCustomer")}`} onCta={onAddCustomer} />
   </Sheet>;
   return <Sheet title={till ? `💵 ${t("cashier")}` : `🧾 ${t("newSale")}`}
     sub={c ? customerLabel(c, t) : undefined}
@@ -11108,7 +11174,8 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
   const farm = { logo: S.logo, farmName: S.farmName, farmPhone: S.farmPhone, farmAddress: S.farmAddress, showParty: tpl.showParty !== false };
   const foot = `${(S.farmName || "").trim() ? `${S.farmName.trim()} · ` : ""}${T[both ? "ar" : dlang].poweredBy} · v${VERSION.code}`;
   const thanksTxt = (tpl.thanks || "").trim() || t("thanks");
-  const footNote = (tpl.footerNote || "").trim();
+  const taxLines = taxDocLines(S && S.tax, both ? "ar" : dlang);
+  const footNote = [(tpl.footerNote || "").trim(), ...taxLines].filter(Boolean).join(" · ");
   const mkFoot = (left, right) => <DocFoot thanks={thanksTxt} note={footNote} footer={foot} showSigns={tpl.showSigns !== false}
     signLeft={left} signRight={right} />;
   const payBadge = (st) => {
@@ -11350,6 +11417,24 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
         {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nm(iv.discountAmount)}</td>}
         {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", color: C.green }}>−{nf(iv.discountAmount * (iv.rateUsed || S.rate))}</td>}
       </tr>}
+      {(() => {
+        const tax = normalizeTax(S);
+        if (!tax.enabled || !tax.showTaxOnDocs || isReceipt) return null;
+        const br = taxBreakdown(iv.netAmount, tax);
+        const label = both ? `${tax.labelAr || tax.label} / ${tax.label}` : (dlang === "ar" ? (tax.labelAr || tax.label) : tax.label);
+        return <>
+          <tr>
+            <td style={{ ...docTd, textAlign: "end" }} colSpan={3}>{label} {tax.ratePct}%</td>
+            {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(br.tax)}</td>}
+            {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)" }}>{nf(br.tax * (iv.rateUsed || S.rate))}</td>}
+          </tr>
+          <tr>
+            <td style={{ ...docTd, textAlign: "end", fontWeight: 700 }} colSpan={3}>{L2("الإجمالي مع الضريبة", "Total with tax")}</td>
+            {showUsd && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{nm(br.gross)}</td>}
+            {showLbp && <td style={{ ...docTd, textAlign: "end", fontFamily: "var(--mono)", fontWeight: 700 }}>{nf(br.gross * (iv.rateUsed || S.rate))}</td>}
+          </tr>
+        </>;
+      })()}
       <tr>
         <td style={{ ...docThSum, textAlign: "end" }} colSpan={3}>{t("netInvoiceTotal")}</td>
         {showUsd && <td style={{ ...docThSum, textAlign: "end", fontFamily: "var(--mono)" }}>{nm(iv.netAmount)}</td>}
@@ -11496,7 +11581,7 @@ function FarmApp() {
   const [preId, setPreId] = useState(null);
   const [data, setData] = useState(null);
   const [sheet, setSheet] = useState(null);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState(null); /* { msg, undo? } */
   const [failed, setFailed] = useState(null);
   const [busy, setBusy] = useState(false);
   const [range, setRange] = useState("today");
@@ -11784,11 +11869,12 @@ function FarmApp() {
   const applyRemoteFarm = useCallback((raw) => {
     if (walkthroughHoldActive()) return;
     try {
-      const d = migrate(JSON.parse(raw));
+      const remote = migrate(JSON.parse(raw));
       setData((prev) => {
+        const merged = mergeFarmsByRev(prev, remote, { mergeById });
         const editing = draftS && prev && JSON.stringify(draftS) !== JSON.stringify(prev.settings);
-        if (!editing) setDraftS(d.settings);
-        return d;
+        if (!editing) setDraftS(merged.settings);
+        return merged;
       });
       setFailed(null);
       try { store.mem[SHARED_KEY] = raw; if (store.kind === "device") window.localStorage.setItem(SHARED_KEY, raw); } catch (e) { /* */ }
@@ -11800,6 +11886,17 @@ function FarmApp() {
     const unsub = subscribeCompanyCloud(setCo);
     return () => { stop(); unsub(); };
   }, [applyRemoteFarm]);
+
+  /* Link local profile ↔ cloud uid when signed in (additive; does not change role). */
+  useEffect(() => {
+    if (!me || !co?.user?.uid || !dataRef.current) return;
+    if (me.cloudUid === co.user.uid && me.cloudEmail === (co.user.email || me.cloudEmail)) return;
+    const live = dataRef.current;
+    const { farm, me: linked, changed } = ensureLinkedIdentity(live, me, co.user);
+    if (!changed) return;
+    setMe(linked);
+    commit([{ type: "profile", name: linked.name, action: "cloudLink" }], { profiles: farm.profiles }, linked);
+  }, [co?.user?.uid, me?.id, me?.cloudUid]);
 
   const pull = useCallback(async () => {
     try {
@@ -11821,10 +11918,11 @@ function FarmApp() {
   useEffect(() => { loadWeather(); const i = setInterval(loadWeather, 1800000); return () => clearInterval(i); }, [loadWeather]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
-  const ping = (m) => {
-    setToast(m);
+  const ping = (m, opts) => {
+    const undo = opts && typeof opts.undo === "function" ? opts.undo : null;
+    setToast({ msg: m, undo });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(""), 1700);
+    toastTimer.current = setTimeout(() => setToast(null), undo ? 5500 : 1700);
   };
   const openAccount = (id, tab) => {
     setOpenAcc((list) => wmOpenTab(list, id));
@@ -11931,8 +12029,16 @@ function FarmApp() {
     try {
       const live = dataRef.current || emptyFarm();
       const base = await readSharedFarm(live);
-      const nextEntries = mutator(base.entries || []);
-      const merged = { ...base, entries: nextEntries };
+      const { farm: next } = applyFarmCommand(base, {
+        op: "rewriteEntries",
+        map: (rows) => mutator(rows || []),
+      }, {
+        trim: (list) => list,
+        mergeById,
+        emptyFarm,
+      });
+      const packed = packHistory(next.entries, base.archive);
+      const merged = withFarmRev({ ...next, entries: packed.entries, archive: packed.archive });
       setData(merged);
       await store.set(SHARED_KEY, JSON.stringify(merged), true);
       setData(merged); setFailed(null);
@@ -12039,31 +12145,30 @@ function FarmApp() {
   const commit = async (newEntries = [], patch = null, profile = null) => {
     const author = profile || me;
     const now = iso(Date.now());
-    const stamped = newEntries.map((e, i) => ({
-      id: e.id || `${Date.now().toString(36)}-${i}-${author?.id || "x"}`,
-      at: now, ...e,
-      loggedAt: e.loggedAt || now,
-      byId: author?.id || null,
-      byName: author ? author.name : "—",
-    }));
-    const { replace, ...patchRest } = patch || {};
     setBusy(true);
     setData((prev) => {
       const base = prev || emptyFarm();
-      return { ...base, ...patchRest, entries: [...stamped, ...(base.entries || [])] };
+      const { farm: optimistic } = applyFarmCommand(base, {
+        op: "commit", entries: newEntries, patch, profile: author, now,
+      }, { trim: (list) => list, mergeById, emptyFarm });
+      return optimistic;
     });
     try {
       const base = await readSharedFarm(dataRef.current || emptyFarm());
-      const merged = { ...base, ...patchRest,
-        profiles: replace?.profiles ? (patchRest.profiles || []) : (patchRest.profiles ? mergeById(base.profiles, patchRest.profiles) : base.profiles),
-        animals: replace?.animals ? (patchRest.animals || []) : (patchRest.animals ? mergeById(base.animals, patchRest.animals) : base.animals),
-        workers: replace?.workers ? (patchRest.workers || []) : (patchRest.workers ? mergeById(base.workers, patchRest.workers) : base.workers),
-        customers: replace?.customers ? (patchRest.customers || []) : (patchRest.customers ? mergeById(base.customers, patchRest.customers) : base.customers),
-        suppliers: replace?.suppliers ? (patchRest.suppliers || []) : (patchRest.suppliers ? mergeById(base.suppliers, patchRest.suppliers) : base.suppliers),
-        managers: replace?.managers ? (patchRest.managers || []) : (patchRest.managers ? mergeById(base.managers, patchRest.managers) : base.managers),
-        funders: replace?.funders ? (patchRest.funders || []) : (patchRest.funders ? mergeById(base.funders, patchRest.funders) : (patchRest.managers ? patchRest.managers : base.funders)),
-        obligations: replace?.obligations ? (patchRest.obligations || []) : (patchRest.obligations ? mergeById(base.obligations, patchRest.obligations) : base.obligations),
-        entries: trimEntries([...stamped, ...(base.entries || [])]) };
+      const { farm: next } = applyFarmCommand(base, {
+        op: "commit", entries: newEntries, patch, profile: author, now,
+      }, {
+        trim: (list) => list,
+        mergeById,
+        emptyFarm,
+      });
+      const packed = packHistory(next.entries, base.archive);
+      const merged = withFarmRev({
+        ...next,
+        entries: packed.entries,
+        archive: packed.archive,
+        funders: next.managers || next.funders,
+      });
       const payload = JSON.stringify(merged);
       if (payload.length > 4600000) { setFailed({ entries: newEntries, patch, profile: author, reason: "size" }); return false; }
       await store.set(SHARED_KEY, payload, true);
@@ -12075,7 +12180,19 @@ function FarmApp() {
   const retry = async () => { const f = failed; if (!f) return; setFailed(null); await commit(f.entries, f.patch, f.profile); };
 
   const deleteEntry = async (id) => {
-    await rewriteEntries((rows) => purgeRelatedEntries(rows, id), t("deleted"));
+    const live = dataRef.current || emptyFarm();
+    const before = live.entries || [];
+    const after = purgeRelatedEntries(before, id);
+    const removedIds = before.filter((e) => e && !after.some((x) => x && x.id === e.id)).map((e) => e.id);
+    const snap = undoSnapshot(before, removedIds);
+    const ok = await rewriteEntries(() => after, null);
+    if (ok) {
+      ping(t("deleted"), {
+        undo: async () => {
+          await rewriteEntries((rows) => restoreRemoved(rows, snap), t("undoOk"));
+        },
+      });
+    }
   };
 
   const openVoidSales = (ids, back) => {
@@ -12089,8 +12206,9 @@ function FarmApp() {
     try {
       const live = dataRef.current || emptyFarm();
       const base = await readSharedFarm(live);
+      const before = base.entries || [];
       const result = voidSales({
-        entries: base.entries || [],
+        entries: before,
         animals: base.animals || [],
         saleIds,
         mode,
@@ -12105,11 +12223,34 @@ function FarmApp() {
       const animalsNext = Object.keys(upd).length
         ? (base.animals || []).map((a) => upd[a.id] || a)
         : base.animals;
-      const merged = { ...base, entries: result.entries, animals: animalsNext };
+      const packed = packHistory(result.entries, base.archive);
+      const merged = withFarmRev({ ...base, entries: packed.entries, archive: packed.archive, animals: animalsNext });
+      const snap = undoSnapshot(before, saleIds);
       setData(merged);
       await store.set(SHARED_KEY, JSON.stringify(merged), true);
       setData(merged); setFailed(null);
-      ping(t("deleted"));
+      ping(t("deleted"), {
+        undo: async () => {
+          setBusy(true);
+          try {
+            const cur = await readSharedFarm(dataRef.current || emptyFarm());
+            const restoredEntries = restoreRemoved(
+              (cur.entries || []).filter((e) => !(e && e.type === "saleVoid" && saleIds.includes(e.saleId))),
+              snap,
+            );
+            /* Prefer full prior snapshot of removed sales over void tombstones. */
+            const byId = new Map((restoredEntries || []).map((e) => [String(e.id), e]));
+            (snap.removed || []).forEach((e) => { if (e) byId.set(String(e.id), e); });
+            const packedU = packHistory([...byId.values()], cur.archive);
+            const next = withFarmRev({ ...cur, entries: packedU.entries, archive: packedU.archive, animals: base.animals });
+            setData(next);
+            await store.set(SHARED_KEY, JSON.stringify(next), true);
+            setData(next);
+            ping(t("undoOk"));
+          } catch (err) { setFailed({ entries: [], patch: null, profile: me }); }
+          finally { setBusy(false); }
+        },
+      });
       return null;
     } catch (e) {
       setFailed({ entries: [], patch: null, profile: me });
@@ -12687,7 +12828,12 @@ function FarmApp() {
   const doBackup = (kind) => {
     const n = `Mazraati-${dayKey(Date.now())}`;
     try {
-      if (kind === "json") { downloadBlob(JSON.stringify(data, null, 2), `${n}-backup.json`, "application/json"); ping(t("saved")); return; }
+      if (kind === "json") {
+        downloadBlob(buildFarmBackup(data, { version: VERSION.code, farmName: (S && S.farmName) || "" }),
+          `${n}-backup.json`, "application/json");
+        ping(t("saved"));
+        return;
+      }
       if (kind === "csv") { downloadBlob(backupCSV(data, t, lang), `${n}.csv`, "text/csv;charset=utf-8"); ping(t("saved")); return; }
       if (kind === "pdf") { setReport("summary"); setRoute("reports"); setSheet({ k: "reportPreview" }); return; }
       const all = computeSums(entries, S, workers, Math.max(1, days));
@@ -12698,9 +12844,11 @@ function FarmApp() {
     const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
     if (!f) return;
     const r = new FileReader();
-    r.onload = () => { try { const parsed = JSON.parse(String(r.result));
-      if (!parsed || !Array.isArray(parsed.entries)) throw new Error("shape");
-      setSheet({ k: "restore", payload: migrate(parsed) }); } catch (e) { ping(t("restoreBad")); } };
+    r.onload = () => { try {
+      const farm = parseFarmBackup(String(r.result));
+      if (!farm || !Array.isArray(farm.entries)) throw new Error("shape");
+      setSheet({ k: "restore", payload: migrate(farm) });
+    } catch (e) { ping(t("restoreBad")); } };
     r.onerror = () => ping(t("restoreBad"));
     r.readAsText(f);
   };
@@ -12936,8 +13084,13 @@ function FarmApp() {
       };
       const obligationsNext = (base.obligations || []).map((x) => (x.id === live.id
         ? { ...x, nextDue: nd, active: live.frequency === "once" ? false : x.active } : x));
-      const merged = { ...base, obligations: obligationsNext,
-        entries: trimEntries([expense, audit, ...(base.entries || [])]) };
+      const packed = packHistory([expense, audit, ...(base.entries || [])], base.archive);
+      const merged = withFarmRev({
+        ...base,
+        obligations: obligationsNext,
+        entries: packed.entries,
+        archive: packed.archive,
+      });
       await store.set(SHARED_KEY, JSON.stringify(merged), true);
       setData(merged);
       setFailed(null);
@@ -13347,7 +13500,9 @@ function FarmApp() {
             <span style={{ width: 28, height: 28, borderRadius: 4, background: p.color, display: "grid", placeItems: "center", fontSize: 14 }}>{p.emoji}</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block", fontWeight: 700, fontSize: 13.5 }}>{p.name}{p.id === me.id ? " •" : ""}</span>
-              <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft }}>{roleLabel(p.role, lang)}</span>
+              <span style={{ display: "block", fontSize: 11.5, color: C.inkSoft }}>{roleLabel(p.role, lang)}
+                {p.cloudUid ? ` · ${t("linkedIdentity")}` : ""}</span>
+              {p.cloudEmail ? <span style={{ display: "block", fontSize: 11, color: C.inkSoft, direction: "ltr" }}>{t("linkedAs")}: {p.cloudEmail}</span> : null}
             </span>
             {p.pin && <span style={{ fontSize: 12 }}>🔒</span>}
           </div>)}
@@ -13516,10 +13671,12 @@ function FarmApp() {
       </SetSection>
 
       <SetSection open={setOpen.docs} onToggle={() => toggleSet("docs")} icon="🧾" title={t("setCatDocs")} tip={t("setTipDocs")}
-        summary={(docTplOf(D).thanks || "").trim() ? "✦" : t("invoice")}>
+        summary={(docTplOf(D).thanks || "").trim() || (normalizeTax(D).enabled ? `${normalizeTax(D).ratePct}%` : t("invoice"))}>
         {(() => {
           const tpl = docTplOf(D);
+          const tax = normalizeTax(D);
           const setTpl = (patch) => setDraftS({ ...D, docTpl: { ...tpl, ...patch } });
+          const setTax = (patch) => setDraftS({ ...D, tax: { ...tax, ...patch } });
           return <>
             <SetLabel tip={t("docThanksHint")}>{t("docThanks")}</SetLabel>
             <input value={tpl.thanks || ""} onChange={(e) => setTpl({ thanks: e.target.value })}
@@ -13540,6 +13697,47 @@ function FarmApp() {
                   <span style={{ color: tpl[k] !== false ? C.field : C.line, fontSize: 14 }}>{tpl[k] !== false ? "☑" : "☐"}</span>
                   <span style={{ fontWeight: 600, fontSize: 13.5 }}>{lb}</span>
                 </button>))}
+            </div>
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+              <SetLabel>{t("taxSettings")}</SetLabel>
+              <button type="button" onClick={() => setTax({ enabled: !tax.enabled })}
+                style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.line}`,
+                  borderRadius: 4, padding: "8px 10px", cursor: "pointer", textAlign: "start", fontFamily: "var(--body)",
+                  width: "100%", marginBottom: 8 }}>
+                <span style={{ color: tax.enabled ? C.field : C.line, fontSize: 14 }}>{tax.enabled ? "☑" : "☐"}</span>
+                <span style={{ fontWeight: 600, fontSize: 13.5 }}>{t("taxEnabled")}</span>
+              </button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("taxRate")}</div>
+                  <input type="number" min="0" max="100" step="0.1" value={tax.ratePct || 0}
+                    onChange={(e) => setTax({ ratePct: +e.target.value || 0 })}
+                    style={{ ...inp, padding: "8px 10px", fontSize: 13.5, direction: "ltr" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("taxLabel")}</div>
+                  <input value={tax.label || ""} onChange={(e) => setTax({ label: e.target.value })}
+                    style={{ ...inp, padding: "8px 10px", fontSize: 13.5 }} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("taxNumber")}</div>
+              <input value={tax.taxNumber || ""} onChange={(e) => setTax({ taxNumber: e.target.value })}
+                style={{ ...inp, padding: "8px 10px", fontSize: 13.5, marginBottom: 8, direction: "ltr" }} />
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("taxCompanyReg")}</div>
+              <input value={tax.companyReg || ""} onChange={(e) => setTax({ companyReg: e.target.value })}
+                style={{ ...inp, padding: "8px 10px", fontSize: 13.5, marginBottom: 8, direction: "ltr" }} />
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: C.inkSoft, marginBottom: 4 }}>{t("invoicePrefix")}</div>
+              <input value={tax.invoicePrefix || ""} onChange={(e) => setTax({ invoicePrefix: e.target.value })}
+                style={{ ...inp, padding: "8px 10px", fontSize: 13.5, marginBottom: 8, direction: "ltr" }} />
+              <div style={{ display: "grid", gap: 6 }}>
+                {[["pricesIncludeTax", t("taxInclude")], ["showTaxOnDocs", t("taxShowOnDocs")]].map(([k, lb]) => (
+                  <button key={k} type="button" onClick={() => setTax({ [k]: !tax[k] })}
+                    style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.line}`,
+                      borderRadius: 4, padding: "8px 10px", cursor: "pointer", textAlign: "start", fontFamily: "var(--body)" }}>
+                    <span style={{ color: tax[k] ? C.field : C.line, fontSize: 14 }}>{tax[k] ? "☑" : "☐"}</span>
+                    <span style={{ fontWeight: 600, fontSize: 13.5 }}>{lb}</span>
+                  </button>))}
+              </div>
             </div>
           </>;
         })()}
@@ -14253,9 +14451,12 @@ function FarmApp() {
       {!mgrSel ? (
         <DeskCard pad={0} title={`📒 ${t("managers")}`}
           right={<button type="button" className="dk-pill" onClick={() => setSheet({ k: "funder" })}>＋ {t("mgrAdd")}</button>}>
-          <div className="mgr-list-hint">{t("managersSub")}</div>
+          <div className="mgr-list-hint">{t("managersSub")} · {t("managersFunderOne")}</div>
           {managerAccounts.list.length === 0 ? (
-            <div className="mgr-empty">{t("mgrEmpty")}</div>
+            <div style={{ padding: 24 }}>
+              <Empty icon="📒" kind="managers" lang={lang} title={t("mgrEmpty")}
+                cta={`＋ ${t("mgrAdd")}`} onCta={() => setSheet({ k: "funder" })} />
+            </div>
           ) : (
             <div className="mgr-people">
               {managerAccounts.list.map((a, ix) => {
@@ -14887,7 +15088,7 @@ function FarmApp() {
             right={<button style={{ ...secondaryBtn, width: "auto", padding: "8px 12px", fontSize: 13.5 }}
               onClick={() => setSheet({ k: "addCustomer" })}>＋ {t("addCustomer")}</button>}>
             {activeCustomers.length === 0
-              ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noCustomers")} sub={t("noCustomersSub")}
+              ? <div style={{ padding: 24 }}><Empty icon="🤝" kind="customers" lang={lang} title={t("noCustomers")} sub={t("noCustomersSub")}
                   cta={`＋ ${t("addCustomer")}`} onCta={() => setSheet({ k: "addCustomer" })} /></div>
               : <>
                 <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
@@ -15071,7 +15272,7 @@ function FarmApp() {
             right={<button type="button" style={{ ...primaryBtn, width: "auto", padding: "8px 13px", fontSize: 13.5 }}
               onClick={() => setSheet({ k: "addSupplier" })}>＋ {t("addSupplier")}</button>}>
             {activeSuppliers.length === 0
-              ? <div style={{ padding: 24 }}><Empty icon="🤝" title={t("noSuppliers")} sub={t("noSuppliersSub")}
+              ? <div style={{ padding: 24 }}><Empty icon="🤝" kind="suppliers" lang={lang} title={t("noSuppliers")} sub={t("noSuppliersSub")}
                   cta={`＋ ${t("addSupplier")}`} onCta={() => setSheet({ k: "addSupplier" })} /></div>
               : <>
                 <div className="adapt-grid" style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, background: C.paper }}>
@@ -15758,7 +15959,7 @@ function FarmApp() {
           const att = {}; entries.filter((e) => e.type === "attend" && dayKey(e.at) === k).forEach((e) => { if (!(e.workerId in att)) att[e.workerId] = e; });
           return <Sheet title={`👷 ${t("workers")}`} onClose={() => setSheet(null)}>
             {workers.length === 0
-              ? <Empty icon="👷" title={t("noWorkers")} sub={t("noWorkersSub")} cta={`➕ ${t("addWorker")}`} onCta={() => setSheet({ k: "addWorker", back: { k: "workers" } })} />
+              ? <Empty icon="👷" kind="workers" lang={lang} title={t("noWorkers")} sub={t("noWorkersSub")} cta={`➕ ${t("addWorker")}`} onCta={() => setSheet({ k: "addWorker", back: { k: "workers" } })} />
               : <>
                 <div style={{ display: "grid", gap: 10 }}>
                   {workers.filter((w) => w.type === "daily").map((w) => { const rec = att[w.id], on = rec && rec.present;
@@ -16472,7 +16673,12 @@ function FarmApp() {
       />
       {sheets}
       <CtxMenu menu={ctx} onClose={() => setCtx(null)} />
-      {toast && <div className="toast">✓ {toast}</div>}
+      {toast && toast.msg && <div className={`toast${toast.undo ? " toast-undo" : ""}`}>
+        <span>✓ {toast.msg}</span>
+        {toast.undo ? <button type="button" className="toast-undo-btn" onClick={() => {
+          const fn = toast.undo; setToast(null); if (fn) fn();
+        }}>{t("undoAction")}</button> : null}
+      </div>}
 
       <div className={printing ? "print-sheet show" : "print-sheet"}>
         {doc ? <PrintDoc {...{ doc, lang, t, S, me, customers, ledger, suppliers, supplierLedger }} />
@@ -16629,6 +16835,11 @@ input:focus,textarea:focus{border-color:${C.field}!important;box-shadow:0 0 0 3p
 .pass-keypad-key.mute{background:${C.paper};font-size:20px}
 .pass-keypad-key:active{transform:scale(.97)}
 .money-keypad{direction:ltr!important;unicode-bidi:isolate;max-width:320px;width:100%;margin:0 auto}
+.money-keypad-big{max-width:360px}
+.money-keypad-quick{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 10px}
+.money-keypad-chip{border:1px solid ${C.line};background:${C.paper};color:${C.ink};border-radius:8px;padding:6px 10px;
+  font-family:var(--mono);font-weight:700;font-size:13px;cursor:pointer;min-width:48px}
+.money-keypad-chip:hover{border-color:${C.field};background:${C.card}}
 .money-keypad-display{background:${C.field};color:#fff;border-radius:12px;padding:14px 16px;text-align:center;
   margin-bottom:8px;box-shadow:0 4px 14px ${C.field}33}
 .money-keypad-value{display:block;font-family:var(--mono);font-weight:800;font-size:34px;line-height:1.15;
@@ -16795,7 +17006,11 @@ body.sale-picking .dk-body{padding-bottom:76px}
 .grabber{display:none}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:${C.fieldDeep};color:#fff;
   border-radius:999px;padding:12px 22px;font-weight:600;z-index:110;animation:rise .18s var(--ease);
-  box-shadow:0 10px 30px rgba(12,58,49,.35)}
+  box-shadow:0 10px 30px rgba(12,58,49,.35);display:flex;align-items:center;gap:12px;max-width:min(92vw,420px)}
+.toast-undo{border-radius:14px;padding:12px 14px 12px 18px}
+.toast-undo-btn{border:0;background:rgba(255,255,255,.18);color:#fff;font-weight:800;font-size:13px;
+  border-radius:999px;padding:7px 12px;cursor:pointer;font-family:var(--body);white-space:nowrap}
+.toast-undo-btn:hover{background:rgba(255,255,255,.28)}
 
 /* ---- window manager: tabs + floating subwindows ---- */
 .win-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;

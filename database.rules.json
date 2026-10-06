@@ -27,6 +27,12 @@
         "farmJson": {
           ".read": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()",
           ".write": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()"
+        },
+        "entryPatches": {
+          ".read": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()",
+          "$eid": {
+            ".write": "auth != null && root.child('companies').child($cid).child('members').child(auth.uid).exists()"
+          }
         }
       }
     }
