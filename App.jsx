@@ -66,9 +66,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.53", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.54", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.54": {
+    ar: [
+      "اختيار الفواتير المفتوحة في الدفع يصبح قائمة بحث أنيقة بدل شرائح مزدحمة",
+    ],
+    en: [
+      "Open-bill and invoice pickers are clean searchable dropdowns instead of crowded chips",
+    ],
+  },
   "2.9.53": {
     ar: [
       "إصلاح قائمة الدفعات: نقرات أوضح، حفظ آمن عند فشل الشبكة، وتقريب المبالغ بالسنت دون اهتزاز في التمرير",
@@ -1611,7 +1619,9 @@ const T = {
     sortBy: "ترتيب", sortNameAsc: "الاسم (أ–ي)", sortNameDesc: "الاسم (ي–أ)", sortAccount: "رقم الحساب",
     sortProduct: "المنتج", sortNewest: "الأحدث", sortOldest: "الأقدم",
     searchTx: "ابحث في الحركات…", searchCustomers: "ابحث عن زبون…", searchParty: "ابحث بالاسم أو الهاتف…",
-    noPartyMatch: "لا توجد نتائج", pickNone: "بدون اختيار", filters: "تصفية", clearFilters: "إزالة التصفية",
+    noPartyMatch: "لا توجد نتائج", pickNone: "بدون اختيار",
+    searchBills: "ابحث عن فاتورة…", searchInvoices: "ابحث عن فاتورة…",
+    filters: "تصفية", clearFilters: "إزالة التصفية",
     showFilters: "إظهار التصفية", hideFilters: "إخفاء التصفية", filtersOn: "تصفية مفعّلة",
     applyFilters: "تم", resetFilters: "إعادة التصفية", filterAndSort: "تصفية وترتيب",
     sortDate: "التاريخ", sortAmount: "المبلغ", sortAlpha: "أبجدي",
@@ -2235,7 +2245,9 @@ const T = {
     sortBy: "Sort", sortNameAsc: "Name (A–Z)", sortNameDesc: "Name (Z–A)", sortAccount: "Account no.",
     sortProduct: "Product", sortNewest: "Newest", sortOldest: "Oldest",
     searchTx: "Search transactions…", searchCustomers: "Search customers…", searchParty: "Search name or phone…",
-    noPartyMatch: "No matches", pickNone: "None", filters: "Filters", clearFilters: "Clear filters",
+    noPartyMatch: "No matches", pickNone: "None",
+    searchBills: "Search bills…", searchInvoices: "Search invoices…",
+    filters: "Filters", clearFilters: "Clear filters",
     showFilters: "Show filters", hideFilters: "Hide filters", filtersOn: "Filters on",
     applyFilters: "Done", resetFilters: "Reset filters", filterAndSort: "Filter & sort",
     sortDate: "Date", sortAmount: "Amount", sortAlpha: "A–Z",
@@ -4329,8 +4341,8 @@ function partyNeedle(item, q) {
   if (!n) return true;
   return `${item.label || ""} ${item.hint || ""} ${item.search || ""}`.toLowerCase().includes(n);
 }
-/** Searchable list for customers/suppliers. Pinned extras (walk-in, none) stay visible. */
-function SearchPick({ value, onChange, items = [], extras = [], placeholder, emptyLabel, onAdd, addLabel, t }) {
+/** Searchable list for customers/suppliers/bills. Pinned extras (auto, walk-in) stay visible. */
+function SearchPick({ value, onChange, items = [], extras = [], placeholder, emptyLabel, onAdd, addLabel, t, disabled }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const wrapRef = useRef(null);
@@ -4343,6 +4355,7 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
   const shown = [...shownExtras, ...shownItems];
   useEffect(() => {
     if (!open) return;
+    if (disabled) { setOpen(false); return; }
     const onDoc = (e) => {
       if (wrapRef.current?.contains(e.target) || listRef.current?.contains(e.target)) return;
       setOpen(false);
@@ -4356,9 +4369,9 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
       document.removeEventListener("pointerdown", onDoc);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
-  const pick = (id) => { onChange(id); setQ(""); setOpen(false); };
-  const openList = () => { setOpen(true); setQ(""); };
+  }, [open, disabled]);
+  const pick = (id) => { if (disabled) return; onChange(id); setQ(""); setOpen(false); };
+  const openList = () => { if (disabled) return; setOpen(true); setQ(""); };
   const [pos, setPos] = useState({ top: 8, left: 8, width: 280 });
   const place = useCallback(() => {
     if (wrapRef.current) setPos(placeMenu(wrapRef.current, { minW: 220, estH: 320 }));
@@ -4381,7 +4394,7 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
         : shown.map((x) => {
           const on = String(x.id) === String(value ?? "");
           return <button type="button" key={String(x.id)} role="option" aria-selected={on}
-            className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(x.id)}>
+            className={`spick-opt${on ? " on" : ""}${x.tone ? ` tone-${x.tone}` : ""}`} onClick={() => pick(x.id)}>
             {x.icon ? <span className="spick-em">{x.icon}</span> : null}
             <span className="spick-opt-copy">
               <span className="spick-opt-lb">{x.label}</span>
@@ -4391,9 +4404,10 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
         })}
     </div>, document.body) : null;
   return (
-    <div className="spick-row">
+    <div className={`spick-row${disabled ? " is-disabled" : ""}`}>
       <div className="spick" ref={wrapRef}>
-        <div className={`spick-field${open ? " open" : ""}`}
+        <div className={`spick-field${open ? " open" : ""}${disabled ? " is-disabled" : ""}`}
+          aria-disabled={disabled || undefined}
           onClick={() => { if (!open) openList(); }}>
           <span className="spick-ico" aria-hidden="true"><IcoSearch /></span>
           {open
@@ -4417,7 +4431,7 @@ function SearchPick({ value, onChange, items = [], extras = [], placeholder, emp
     </div>
   );
 }
-function NiceSelect({ value, onChange, options = [], placeholder, emptyLabel, ariaLabel, className, searchable }) {
+function NiceSelect({ value, onChange, options = [], placeholder, emptyLabel, ariaLabel, className, searchable, disabled }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const wrapRef = useRef(null);
@@ -4428,7 +4442,7 @@ function NiceSelect({ value, onChange, options = [], placeholder, emptyLabel, ar
   const useSearch = searchable === true || (searchable !== false && options.length >= 8);
   const shown = options.filter((o) => {
     if (!q.trim()) return true;
-    return `${o.label || ""} ${o.search || o.value || ""}`.toLowerCase().includes(q.trim().toLowerCase());
+    return `${o.label || ""} ${o.hint || ""} ${o.search || o.value || ""}`.toLowerCase().includes(q.trim().toLowerCase());
   });
   const place = useCallback(() => {
     if (wrapRef.current) setPos(placeMenu(wrapRef.current, { minW: 200, estH: 300 }));
@@ -4454,29 +4468,39 @@ function NiceSelect({ value, onChange, options = [], placeholder, emptyLabel, ar
       window.removeEventListener("scroll", place, true);
     };
   }, [open, place]);
-  const pick = (v) => { onChange(v); setQ(""); setOpen(false); };
+  const pick = (v) => { if (disabled) return; onChange(v); setQ(""); setOpen(false); };
   return (
     <div className={`ui-select ${className || ""}`.trim()} ref={wrapRef}>
-      <button type="button" className={`ui-select-btn${open ? " open" : ""}`}
-        aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}
-        onClick={() => setOpen((o) => !o)}>
+      <button type="button" className={`ui-select-btn${open ? " open" : ""}${disabled ? " is-disabled" : ""}`}
+        aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel} disabled={!!disabled}
+        onClick={() => { if (!disabled) setOpen((o) => !o); }}>
         <span className={`ui-select-val${selected ? "" : " ph"}`}>
-          {selected ? selected.label : (placeholder || ariaLabel || "—")}
+          {selected
+            ? <>{selected.label}{selected.hint ? <span className="spick-hint"> · {selected.hint}</span> : null}</>
+            : (placeholder || ariaLabel || "—")}
         </span>
         <span className="spick-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
       </button>
-      {open && createPortal(
+      {open && !disabled && createPortal(
         <div ref={popRef} className="spick-list spick-list-port" role="listbox"
           style={{ top: pos.top, left: pos.left, width: pos.width }}>
           {useSearch ? <input ref={inputRef} className="ui-select-search" value={q}
-            onChange={(e) => setQ(e.target.value)} placeholder={placeholder || "…"} /> : null}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={placeholder || "…"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && shown[0]) { e.preventDefault(); pick(shown[0].value); }
+            }} /> : null}
           {shown.length === 0
             ? <div className="spick-empty">{emptyLabel || "—"}</div>
             : shown.map((o) => {
               const on = String(o.value) === String(value ?? "");
               return <button type="button" key={String(o.value)} role="option" aria-selected={on}
-                className={`spick-opt${on ? " on" : ""}`} onClick={() => pick(o.value)}>
-                <span className="spick-opt-lb">{o.label}</span>
+                className={`spick-opt${on ? " on" : ""}${o.tone ? ` tone-${o.tone}` : ""}`} onClick={() => pick(o.value)}>
+                {o.icon ? <span className="spick-em">{o.icon}</span> : null}
+                <span className="spick-opt-copy">
+                  <span className="spick-opt-lb">{o.label}</span>
+                  {o.hint ? <span className="spick-opt-hint">{o.hint}</span> : null}
+                </span>
               </button>;
             })}
         </div>, document.body)}
@@ -8129,16 +8153,31 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
     </div>
     {open.length > 0 && <>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{t("supplierOpenBills")}</div>
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-        <Chip active={!billId} onClick={() => { setBillId(null); setAmount(b.due); }}>{t("allocAuto")}</Chip>
-        {open.map((bill) => (
-          <Chip key={bill.id} active={billId === bill.id}
-            onClick={() => { setBillId(bill.id); setAmount(bill.due); }}
-            color={bill.overdue ? C.red : C.amber}>
-            {bill.opening ? t("supplierOpeningBill") : bill.no} · {fmtC(bill.due, S.rate, lang)}
-            {bill.overdue ? ` · ${t("overdue")}` : ""}
-          </Chip>))}
-      </div>
+      <SearchPick
+        t={t}
+        disabled={locked}
+        value={billId || "__auto__"}
+        placeholder={t("searchBills")}
+        emptyLabel={t("noPartyMatch")}
+        onChange={(id) => {
+          if (!id || id === "__auto__") { setBillId(null); setAmount(b.due); return; }
+          const hit = open.find((x) => x.id === id);
+          setBillId(id);
+          if (hit) setAmount(hit.due);
+        }}
+        extras={[{
+          id: "__auto__", icon: "⚡", label: t("allocAuto"),
+          hint: fmtC(b.due, S.rate, lang), search: t("allocAuto"),
+        }]}
+        items={open.map((bill) => ({
+          id: bill.id,
+          icon: bill.overdue ? "⚠️" : (bill.opening ? "📌" : "🧾"),
+          label: bill.opening ? t("supplierOpeningBill") : bill.no,
+          hint: `${fmtC(bill.due, S.rate, lang)}${bill.overdue ? ` · ${t("overdue")}` : ""}${bill.note ? ` · ${bill.note}` : ""}`,
+          search: `${bill.no || ""} ${bill.note || ""} ${bill.category || ""} ${bill.vendor || ""}`,
+          tone: bill.overdue ? "overdue" : "owing",
+        }))}
+      />
     </>}
     <Step n="1" label={t("amount")} />
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 12, marginBottom: 10 }}>
@@ -8876,13 +8915,37 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
       <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
       {open.length > 0 && <>
         <div style={{ fontSize: 13, fontWeight: 600, margin: "10px 0 6px" }}>{t("invoice")}</div>
-        <Scroller>
-          <Chip active={!saleId} onClick={() => { setSaleId(""); setSuggestFromC(dueC); setCashTouched(false); }}>⚡ {t("allTypes")}</Chip>
-          {open.map((iv) => <Chip key={iv.id} active={saleId === iv.id} onClick={() => {
-            setSaleId(iv.id); setSuggestFromC(toCents(iv.due)); setCashTouched(false); setAmount(iv.due);
-          }}>
-            {iv.no} · {fmtC(iv.due, S.rate, lang)}</Chip>)}
-        </Scroller>
+        <SearchPick
+          t={t}
+          disabled={locked}
+          value={saleId || "__all__"}
+          placeholder={t("searchInvoices")}
+          emptyLabel={t("noPartyMatch")}
+          onChange={(id) => {
+            if (!id || id === "__all__") {
+              setSaleId(""); setSuggestFromC(dueC); setCashTouched(false); return;
+            }
+            const iv = open.find((x) => x.id === id);
+            setSaleId(id);
+            if (iv) {
+              setSuggestFromC(toCents(iv.due));
+              setCashTouched(false);
+              setAmount(iv.due);
+            }
+          }}
+          extras={[{
+            id: "__all__", icon: "⚡", label: t("allTypes"),
+            hint: fmtC(fromCents(dueC), S.rate, lang), search: t("allTypes"),
+          }]}
+          items={open.map((iv) => ({
+            id: iv.id,
+            icon: "🧾",
+            label: iv.no,
+            hint: fmtC(iv.due, S.rate, lang),
+            search: `${iv.no || ""} ${iv.product || ""} ${iv.note || ""}`,
+            tone: "owing",
+          }))}
+        />
       </>}
     </FoldPanel>
     <div className="pay-remain" style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -17179,6 +17242,9 @@ button.cash-overview-stat:hover{background:${C.paper}}
 .spick-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:start;border:none;background:transparent;
   border-radius:8px;padding:10px;cursor:pointer;font-family:var(--body);color:${C.ink};min-height:44px}
 .spick-opt.on,.spick-opt:hover{background:${C.paper}}
+.spick-opt.tone-overdue .spick-opt-hint{color:${C.red};font-weight:700}
+.spick-opt.tone-owing .spick-opt-hint{color:${C.amber};font-weight:700}
+.spick-row.is-disabled,.spick-field.is-disabled,.ui-select-btn.is-disabled{opacity:.55;pointer-events:none;cursor:default}
 .spick-opt-copy{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .spick-opt-lb{font-weight:700;font-size:14px}
 .spick-em{flex-shrink:0}
