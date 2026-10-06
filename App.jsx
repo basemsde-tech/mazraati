@@ -66,9 +66,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.51", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.52", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.52": {
+    ar: [
+      "قائمة دفعات الموردين: سجل زمني مسطّح مع رصيد متبقٍ لاصق وتمرير ثابت وسجل أقدم قابل للطي",
+    ],
+    en: [
+      "Supplier payments: flat chronological feed with sticky remaining balance, fixed scroll, and collapsible older entries",
+    ],
+  },
   "2.9.51": {
     ar: [
       "جداول البيانات الثقيلة: تمرير بارتفاع ثابت وعناوين لاصقة ومجموعات شهرية قابلة للطي وعرض الصفوف المرئية فقط",
@@ -1628,6 +1636,14 @@ const T = {
     stmtDocRef: "المستند / المرجع", stmtDesc: "الوصف", stmtRunning: "الرصيد الجاري",
     stmtHideRow: "إخفاء من الكشف", stmtPrintClean: "طباعة / PDF",
     periodRecords: "سجل",
+    payFeedGrand: "الإجمالي",
+    payFeedPaid: "مجموع الدفعات",
+    payFeedRemaining: "الرصيد المتبقي",
+    payFeedOlder: "دفعات أقدم",
+    payFeedRecent: "الأحدث",
+    payFeedEmpty: "لا دفعات بعد",
+    payFeedCount: "دفعة",
+
     deleteSelected: "حذف المحدّد", voidSalesTitle: "حذف المبيعات",
     voidPickMode: "كيف نتعامل مع المخزون؟",
     voidRestore: "إرجاع المخزون",
@@ -2244,6 +2260,14 @@ const T = {
     stmtDocRef: "Doc # / Ref", stmtDesc: "Description", stmtRunning: "Running balance",
     stmtHideRow: "Hide from statement", stmtPrintClean: "Print / PDF",
     periodRecords: "records",
+    payFeedGrand: "Grand total",
+    payFeedPaid: "Payments total",
+    payFeedRemaining: "Remaining balance",
+    payFeedOlder: "Older payments",
+    payFeedRecent: "Recent",
+    payFeedEmpty: "No payments yet",
+    payFeedCount: "payments",
+
     deleteSelected: "Delete selected", voidSalesTitle: "Delete sales",
     voidPickMode: "What should happen to stock?",
     voidRestore: "Restore stock",
@@ -5031,6 +5055,116 @@ function FoldPanel({ open, onToggle, label, hint, children }) {
     </button>
     {open && <div className="fold-body">{children}</div>}
   </div>;
+}
+
+/** Flat chronological payments feed — sticky remaining balance + older-entries drawer. */
+const PAY_FEED_RECENT = 14;
+function PaymentsFeed({
+  payments, grandTotal = 0, lang, t, S, onEdit, billOf, emptyMsg, recentCount = PAY_FEED_RECENT, sign = "out",
+}) {
+  const [olderOpen, setOlderOpen] = useState(false);
+  const rows = useMemo(() => {
+    const list = (payments || []).slice();
+    list.sort((a, b) => cmpTx(a, b, "newest"));
+    return list;
+  }, [payments]);
+  const paidC = rows.reduce((sum, p) => sum + toCents(p.amount), 0);
+  const grandC = toCents(grandTotal);
+  const remainC = grandC - paidC;
+  const remaining = fromCents(remainC);
+  const paidTotal = fromCents(paidC);
+  const recent = rows.slice(0, recentCount);
+  const older = rows.slice(recentCount);
+  const moneyTone = remainC > 0 ? C.red : remainC < 0 ? C.green : C.inkSoft;
+  const remainLabel = remainC < 0 ? t("supplierCredit") : t("payFeedRemaining");
+  const remainAbs = fromCents(Math.abs(remainC));
+  const amountPrefix = sign === "in" ? "+" : "−";
+  const amountColor = sign === "in" ? C.green : C.red;
+
+  const renderRow = (p2) => {
+    const bill = p2.expenseId && billOf ? billOf[p2.expenseId] : null;
+    const billHint = bill
+      ? (bill.opening ? t("supplierOpeningBill") : (bill.no || ""))
+      : "";
+    return (
+      <button
+        type="button"
+        key={p2.id}
+        className="pay-feed-row"
+        disabled={!onEdit}
+        onClick={() => onEdit && onEdit(p2)}
+      >
+        <span className="pay-feed-row-main">
+          <b className="pay-feed-date">{dmy(p2.at)}</b>
+          <span className="pay-feed-meta">
+            {payMethodLabel(p2.method, t)}
+            {billHint ? ` · ${billHint}` : ""}
+            {p2.note ? ` · ${p2.note}` : ""}
+          </span>
+          <WhoHint e={p2} lang={lang} />
+        </span>
+        <span className="pay-feed-amt" style={{ color: amountColor }}>
+          {amountPrefix}{fmtC(p2.amount, S.rate, lang)}
+        </span>
+      </button>
+    );
+  };
+
+  if (rows.length === 0) {
+    return (
+      <div className="pay-feed">
+        <div className="pay-feed-summary">
+          <div className="pay-feed-kpi">
+            <span>{t("payFeedGrand")}</span>
+            <b>{fmtC(grandTotal, S.rate, lang)}</b>
+          </div>
+          <div className="pay-feed-kpi">
+            <span>{t("payFeedPaid")}</span>
+            <b style={{ color: amountColor }}>{fmtC(0, S.rate, lang)}</b>
+          </div>
+          <div className="pay-feed-kpi pay-feed-remain">
+            <span>{t("payFeedRemaining")}</span>
+            <b style={{ color: moneyTone }}>{fmtC(grandTotal, S.rate, lang)}</b>
+          </div>
+        </div>
+        <div className="pay-feed-empty">{emptyMsg || t("payFeedEmpty")}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pay-feed">
+      <div className="pay-feed-summary">
+        <div className="pay-feed-kpi">
+          <span>{t("payFeedGrand")}</span>
+          <b>{fmtC(grandTotal, S.rate, lang)}</b>
+        </div>
+        <div className="pay-feed-kpi">
+          <span>{t("payFeedPaid")} · {rows.length}</span>
+          <b style={{ color: amountColor }}>{fmtC(paidTotal, S.rate, lang)}</b>
+        </div>
+        <div className="pay-feed-kpi pay-feed-remain">
+          <span>{remainLabel}</span>
+          <b style={{ color: moneyTone }}>{fmtC(remainAbs, S.rate, lang)}</b>
+        </div>
+      </div>
+      <div className="pay-feed-scroll" style={{ overflowY: "auto" }}>
+        <div className="pay-feed-list">
+          {recent.map(renderRow)}
+        </div>
+        {older.length > 0 && (
+          <div className="pay-feed-older">
+            <button type="button" className={`pay-feed-older-tog${olderOpen ? " on" : ""}`}
+              onClick={() => setOlderOpen((v) => !v)}>
+              <span>{olderOpen ? "▾" : "▸"} {t("payFeedOlder")}</span>
+              <span className="pay-feed-older-hint">{older.length} {t("payFeedCount")}</span>
+            </button>
+            {olderOpen ? <div className="pay-feed-list">{older.map(renderRow)}</div> : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 function FieldLabel({ children, hint }) {
   return <div className="sale-label">{children}{hint ? <span className="sale-label-hint">{hint}</span> : null}</div>;
@@ -8115,24 +8249,17 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
       />
     </div>
   );
+  const billOf = ledger.byBill || Object.fromEntries(allBills.map((x) => [x.id, x]));
   const Pays = (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 4, padding: 13 }}>
-      {pays.length === 0
-        ? <div style={{ padding: 12, textAlign: "center", color: C.inkSoft, fontSize: 14 }}>{t("noTx")}</div>
-        : <div style={{ display: "grid", gap: 7 }}>
-          {pays.map((p2) => (
-            <div key={p2.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              borderBottom: `1px dotted ${C.line}`, paddingBottom: 6, cursor: onEditPay ? "pointer" : "default" }}
-              onClick={() => onEditPay && onEditPay(p2)}>
-              <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <b style={{ fontFamily: "var(--mono)" }}>{dmy(p2.at)}</b> · {payMethodLabel(p2.method, t)}
-                {p2.expenseId ? ` · ${t("invoice")}` : ""}
-                {p2.note ? ` · ${p2.note}` : ""}
-                <WhoHint e={p2} lang={lang} /></span>
-              <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: C.red }}>−{fmtC(p2.amount, S.rate, lang)}</span>
-            </div>))}
-        </div>}
-    </div>
+    <PaymentsFeed
+      payments={pays}
+      grandTotal={b.bought}
+      lang={lang} t={t} S={S}
+      onEdit={onEditPay}
+      billOf={billOf}
+      emptyMsg={t("noTx")}
+      sign="out"
+    />
   );
   const Activity = (
     <div style={{ display: "grid", gap: 12 }}>
@@ -12292,9 +12419,8 @@ function FarmApp() {
       if (r.dir === "in") {
         key = isOwnerInjection(e) ? t("ownerFund") : t("cashCustomerReceipts");
       } else if (e.type === "supplierPay") {
-        const linked = e.expenseId && entries.find((x) => x.id === e.expenseId && x.type === "expense");
-        key = linked ? catLabel(linked.category, lang, S.categories)
-          : (isOpeningBillId(e.expenseId) ? t("supplierOpening") : t("supplierPays"));
+        /* Flat cashbox feed — do not bucket supplier pays under invoice categories. */
+        key = isOpeningBillId(e.expenseId) ? t("supplierOpening") : t("supplierPays");
       } else if (e.type === "med") key = t("medicine");
       else if (isOwnerFundedExpense(e)) key = `${catLabel(e.category || "other", lang, S.categories)} · ${t("ownerFund")}`;
       else key = catLabel(e.category || "other", lang, S.categories) || t("cashOtherOut");
@@ -13851,6 +13977,7 @@ function FarmApp() {
         <DataList
           items={cashView.rows}
           getAt={(r) => r.at || r.day}
+          ungrouped
           lang={lang} months={MONTHS} t={t}
           colCount={cashVisibleKeys.length}
           tableClassName={`cash-table cash-density-${cashTable.density}`}
@@ -17243,6 +17370,32 @@ button.cash-overview-stat:hover{background:${C.paper}}
 .heavy-card-slot{min-height:1px}
 .virt-pad td{line-height:0;font-size:0}
 .cards-scroll{padding:2px;border-radius:8px}
+.pay-feed{background:${C.card};border:1px solid ${C.line};border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.pay-feed-summary{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
+  padding:12px 14px;background:${C.paper};border-bottom:1px solid ${C.line};box-shadow:0 1px 0 ${C.line}}
+.pay-feed-kpi{display:grid;gap:3px;min-width:0}
+.pay-feed-kpi span{font-size:11px;font-weight:700;color:${C.inkSoft};line-height:1.2}
+.pay-feed-kpi b{font-family:var(--mono);font-size:15px;font-weight:800;color:${C.ink};line-height:1.2}
+.pay-feed-remain b{font-size:16px}
+.pay-feed-scroll{max-height:min(48vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pay-feed-list{display:grid}
+.pay-feed-row{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;
+  border:none;border-bottom:1px dotted ${C.line};background:transparent;color:${C.ink};
+  padding:10px 14px;text-align:start;font-family:var(--body);cursor:pointer;min-height:44px}
+.pay-feed-row:disabled{cursor:default}
+.pay-feed-row:not(:disabled):hover{background:${C.paper}}
+.pay-feed-row-main{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;min-width:0}
+.pay-feed-date{font-family:var(--mono)}
+.pay-feed-meta{color:${C.inkSoft};font-weight:600}
+.pay-feed-amt{font-family:var(--mono);font-weight:800;font-size:13.5px;flex-shrink:0}
+.pay-feed-older{border-top:1px solid ${C.line}}
+.pay-feed-older-tog{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border:none;background:${C.paper};color:${C.ink};font-family:var(--body);font-weight:800;font-size:13px;
+  padding:10px 14px;cursor:pointer;text-align:start}
+.pay-feed-older-tog:hover{filter:brightness(.98)}
+.pay-feed-older-hint{color:${C.inkSoft};font-size:12px;font-weight:700}
+.pay-feed-empty{padding:22px 14px;text-align:center;color:${C.inkSoft};font-size:14px}
+@media (max-width:520px){.pay-feed-summary{grid-template-columns:1fr;gap:10px}}
 .border-l-4{border-inline-start-width:4px;border-inline-start-style:solid}
 .grid{display:grid}
 .grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
