@@ -66,9 +66,17 @@ import {
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.52", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
+const VERSION = { code: "2.9.53", ar: "الموسم الأول", en: "First Season", date: "2026-09" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.53": {
+    ar: [
+      "إصلاح قائمة الدفعات: نقرات أوضح، حفظ آمن عند فشل الشبكة، وتقريب المبالغ بالسنت دون اهتزاز في التمرير",
+    ],
+    en: [
+      "Payments feed QA: clearer click targets, save-failure handling, cent-safe money math, and steadier scroll layout",
+    ],
+  },
   "2.9.52": {
     ar: [
       "قائمة دفعات الموردين: سجل زمني مسطّح مع رصيد متبقٍ لاصق وتمرير ثابت وسجل أقدم قابل للطي",
@@ -4594,14 +4602,28 @@ function PriceModeToggle({ t, mode, onChange }) {
     <Chip active={mode === "total"} onClick={() => onChange("total")}>{t("priceFull")}</Chip>
   </div>;
 }
-function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
+function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose, busy }) {
   const isMed = entry.type === "med";
   const [amount, setAmount] = useState(isMed ? (entry.cost || 0) : (entry.amount || 0));
   const [date, setDate] = useState(dayKey(entry.at));
   const [note, setNote] = useState(entry.note || "");
   const [method, setMethod] = useState(entry.method || "cash");
-  const title = entry.type === "payment" ? t("editPayment")
+  const [saving, setSaving] = useState(false);
+  const title = (entry.type === "payment" || entry.type === "supplierPay") ? t("editPayment")
     : entry.type === "med" ? t("medicine") : t("editCashMove");
+  const locked = !!(busy || saving);
+  const canSave = toCents(amount) > 0 && !locked;
+  const save = async () => {
+    if (!canSave) return;
+    const amt = fromCents(toCents(amount));
+    setSaving(true);
+    try {
+      const ok = await Promise.resolve(onSave({
+        amount: amt, cost: amt, method, note: note.trim(), at: dayStamp(date),
+      }));
+      if (ok === false) setSaving(false);
+    } catch (_) { setSaving(false); }
+  };
   return <Sheet title={`✏️ ${title}`} onClose={onClose}>
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 6, padding: 14, marginBottom: 12 }}>
       <MoneyStepper big usd={amount} onChange={setAmount} rate={S.rate} lang={lang} t={t} step={5} />
@@ -4610,10 +4632,10 @@ function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 12 }}>
         {[["cash", "💵", t("cash")], ["card", "💳", t("card")], ["transfer", "📲", t("transfer")]].map(([k, ic, lb]) => {
           const on = method === k;
-          return <button type="button" key={k} onClick={() => setMethod(k)} style={{
+          return <button type="button" key={k} disabled={locked} onClick={() => setMethod(k)} style={{
             background: on ? C.field : C.card, color: on ? "#fff" : C.ink,
             border: `1.5px solid ${on ? C.field : C.line}`, borderRadius: 6, padding: "12px 6px",
-            cursor: "pointer", fontFamily: "var(--body)" }}>
+            cursor: locked ? "default" : "pointer", fontFamily: "var(--body)", opacity: locked ? .7 : 1 }}>
             <div style={{ fontSize: 21 }}>{ic}</div>
             <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>{lb}</div>
           </button>;
@@ -4622,12 +4644,10 @@ function EditMoneySheet({ entry, lang, t, S, onSave, onDelete, onClose }) {
     </>}
     <DatePick value={date} max={dayKey(Date.now())} onChange={setDate} />
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")}
-      style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" style={{ ...primaryBtn, opacity: amount > 0 ? 1 : .45 }}
-      onClick={() => amount > 0 && onSave({
-        amount, cost: amount, method, note: note.trim(), at: dayStamp(date),
-      })}>✓ {t("save")}</button>
-    {onDelete && <DeleteConfirmBlock t={t} warn={deleteWarnFor(entry, t, entry.id)} onDelete={onDelete} />}
+      disabled={locked} style={{ ...inp, marginBottom: 14 }} />
+    <button type="button" disabled={!canSave} style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
+      onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
+    {onDelete && !locked && <DeleteConfirmBlock t={t} warn={deleteWarnFor(entry, t, entry.id)} onDelete={onDelete} />}
   </Sheet>;
 }
 function DeleteConfirmBlock({ t, warn, onDelete }) {
@@ -5059,40 +5079,67 @@ function FoldPanel({ open, onToggle, label, hint, children }) {
 
 /** Flat chronological payments feed — sticky remaining balance + older-entries drawer. */
 const PAY_FEED_RECENT = 14;
+function payFeedMoney(payments, grandTotal) {
+  const paidC = (payments || []).reduce((sum, p) => sum + Math.max(0, toCents(p && p.amount)), 0);
+  const grandC = Math.max(0, toCents(grandTotal));
+  return { paidC, grandC, remainC: grandC - paidC, paidTotal: fromCents(paidC), remaining: fromCents(grandC - paidC) };
+}
 function PaymentsFeed({
   payments, grandTotal = 0, lang, t, S, onEdit, billOf, emptyMsg, recentCount = PAY_FEED_RECENT, sign = "out",
+  feedKey = "",
 }) {
   const [olderOpen, setOlderOpen] = useState(false);
   const rows = useMemo(() => {
-    const list = (payments || []).slice();
+    const list = (payments || []).filter((p) => p && toCents(p.amount) > 0).slice();
     list.sort((a, b) => cmpTx(a, b, "newest"));
     return list;
   }, [payments]);
-  const paidC = rows.reduce((sum, p) => sum + toCents(p.amount), 0);
-  const grandC = toCents(grandTotal);
-  const remainC = grandC - paidC;
-  const remaining = fromCents(remainC);
-  const paidTotal = fromCents(paidC);
-  const recent = rows.slice(0, recentCount);
-  const older = rows.slice(recentCount);
+  const rowsSig = `${feedKey}|${rows.length}|${rows.map((p) => p.id).join(",")}`;
+  useEffect(() => { setOlderOpen(false); }, [rowsSig]);
+  const { paidC, grandC, remainC, paidTotal } = payFeedMoney(rows, grandTotal);
+  const cap = Math.max(1, Math.round(recentCount) || PAY_FEED_RECENT);
+  const recent = rows.slice(0, cap);
+  const older = rows.slice(cap);
   const moneyTone = remainC > 0 ? C.red : remainC < 0 ? C.green : C.inkSoft;
   const remainLabel = remainC < 0 ? t("supplierCredit") : t("payFeedRemaining");
   const remainAbs = fromCents(Math.abs(remainC));
   const amountPrefix = sign === "in" ? "+" : "−";
   const amountColor = sign === "in" ? C.green : C.red;
+  const editable = typeof onEdit === "function";
+
+  const Summary = (
+    <div className="pay-feed-summary" role="group" aria-label={t("payFeedRemaining")}>
+      <div className="pay-feed-kpi">
+        <span>{t("payFeedGrand")}</span>
+        <b>{fmtC(fromCents(grandC), S.rate, lang)}</b>
+      </div>
+      <div className="pay-feed-kpi">
+        <span>{rows.length ? `${t("payFeedPaid")} · ${rows.length}` : t("payFeedPaid")}</span>
+        <b style={{ color: amountColor }}>{fmtC(paidTotal, S.rate, lang)}</b>
+      </div>
+      <div className="pay-feed-kpi pay-feed-remain">
+        <span>{rows.length ? remainLabel : t("payFeedRemaining")}</span>
+        <b style={{ color: moneyTone }}>{fmtC(rows.length ? remainAbs : fromCents(grandC), S.rate, lang)}</b>
+      </div>
+    </div>
+  );
 
   const renderRow = (p2) => {
     const bill = p2.expenseId && billOf ? billOf[p2.expenseId] : null;
     const billHint = bill
       ? (bill.opening ? t("supplierOpeningBill") : (bill.no || ""))
       : "";
+    const open = () => { if (editable) onEdit(p2); };
     return (
-      <button
-        type="button"
-        key={p2.id}
-        className="pay-feed-row"
-        disabled={!onEdit}
-        onClick={() => onEdit && onEdit(p2)}
+      <div
+        key={p2.id || `${p2.at}-${p2.amount}`}
+        className={`pay-feed-row${editable ? " is-editable" : ""}`}
+        role={editable ? "button" : "listitem"}
+        tabIndex={editable ? 0 : undefined}
+        onClick={open}
+        onKeyDown={editable ? (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); }
+        } : undefined}
       >
         <span className="pay-feed-row-main">
           <b className="pay-feed-date">{dmy(p2.at)}</b>
@@ -5104,29 +5151,16 @@ function PaymentsFeed({
           <WhoHint e={p2} lang={lang} />
         </span>
         <span className="pay-feed-amt" style={{ color: amountColor }}>
-          {amountPrefix}{fmtC(p2.amount, S.rate, lang)}
+          {amountPrefix}{fmtC(fromCents(toCents(p2.amount)), S.rate, lang)}
         </span>
-      </button>
+      </div>
     );
   };
 
   if (rows.length === 0) {
     return (
       <div className="pay-feed">
-        <div className="pay-feed-summary">
-          <div className="pay-feed-kpi">
-            <span>{t("payFeedGrand")}</span>
-            <b>{fmtC(grandTotal, S.rate, lang)}</b>
-          </div>
-          <div className="pay-feed-kpi">
-            <span>{t("payFeedPaid")}</span>
-            <b style={{ color: amountColor }}>{fmtC(0, S.rate, lang)}</b>
-          </div>
-          <div className="pay-feed-kpi pay-feed-remain">
-            <span>{t("payFeedRemaining")}</span>
-            <b style={{ color: moneyTone }}>{fmtC(grandTotal, S.rate, lang)}</b>
-          </div>
-        </div>
+        {Summary}
         <div className="pay-feed-empty">{emptyMsg || t("payFeedEmpty")}</div>
       </div>
     );
@@ -5134,32 +5168,20 @@ function PaymentsFeed({
 
   return (
     <div className="pay-feed">
-      <div className="pay-feed-summary">
-        <div className="pay-feed-kpi">
-          <span>{t("payFeedGrand")}</span>
-          <b>{fmtC(grandTotal, S.rate, lang)}</b>
-        </div>
-        <div className="pay-feed-kpi">
-          <span>{t("payFeedPaid")} · {rows.length}</span>
-          <b style={{ color: amountColor }}>{fmtC(paidTotal, S.rate, lang)}</b>
-        </div>
-        <div className="pay-feed-kpi pay-feed-remain">
-          <span>{remainLabel}</span>
-          <b style={{ color: moneyTone }}>{fmtC(remainAbs, S.rate, lang)}</b>
-        </div>
-      </div>
-      <div className="pay-feed-scroll" style={{ overflowY: "auto" }}>
-        <div className="pay-feed-list">
+      {Summary}
+      <div className="pay-feed-scroll">
+        <div className="pay-feed-list" role="list">
           {recent.map(renderRow)}
         </div>
         {older.length > 0 && (
           <div className="pay-feed-older">
             <button type="button" className={`pay-feed-older-tog${olderOpen ? " on" : ""}`}
+              aria-expanded={olderOpen}
               onClick={() => setOlderOpen((v) => !v)}>
               <span>{olderOpen ? "▾" : "▸"} {t("payFeedOlder")}</span>
               <span className="pay-feed-older-hint">{older.length} {t("payFeedCount")}</span>
             </button>
-            {olderOpen ? <div className="pay-feed-list">{older.map(renderRow)}</div> : null}
+            {olderOpen ? <div className="pay-feed-list" role="list">{older.map(renderRow)}</div> : null}
           </div>
         )}
       </div>
@@ -8069,7 +8091,7 @@ function PrintManagerStatement({ lang, t, S, me, statement }) {
 
 function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBillId, busy }) {
   const b = ledger.bySupplier[supplier.id] || { due: 0, credit: 0, paid: 0 };
-  const open = ledger.list.filter((x) => x.supplierId === supplier.id && x.due > 0)
+  const open = ledger.list.filter((x) => x.supplierId === supplier.id && toCents(x.due) > 0)
     .slice().sort((a, c) => cmpTx(a, c, "oldest"));
   const startBill = preBillId && open.some((x) => x.id === preBillId) ? preBillId : null;
   const pickDue = (id) => {
@@ -8086,15 +8108,19 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
   const overCap = selected
     ? fromCents(Math.max(0, toCents(amount) - toCents(selected.due)))
     : fromCents(Math.max(0, toCents(amount) - toCents(b.due)));
-  const locked = busy || saving;
-  const save = () => {
+  const locked = !!(busy || saving);
+  const canSave = toCents(amount) > 0 && !locked;
+  const save = async () => {
     const amt = fromCents(toCents(amount));
-    if (locked || !(amt > 0)) return;
+    if (locked || !(toCents(amt) > 0)) return;
     setSaving(true);
-    onSave({
-      supplierId: supplier.id, amount: amt, method, note: note.trim(),
-      expenseId: billId || null, vendor: supplier.name, at: dayStamp(dayKey(Date.now())),
-    });
+    try {
+      const ok = await Promise.resolve(onSave({
+        supplierId: supplier.id, amount: amt, method, note: note.trim(),
+        expenseId: billId || null, vendor: supplier.name, at: dayStamp(dayKey(Date.now())),
+      }));
+      if (ok === false) setSaving(false);
+    } catch (_) { setSaving(false); }
   };
   return <Sheet title={`💵 ${t("paySupplier")}`} sub={supplier.name} onClose={onClose}>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 14 }}>
@@ -8125,8 +8151,8 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
       <Chip active={method === "transfer"} onClick={() => setMethod("transfer")}>{t("transfer")}</Chip>
     </div>
     <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("notes2")} style={{ ...inp, marginBottom: 14 }} />
-    <button type="button" disabled={locked || !(amount > 0)}
-      style={{ ...primaryBtn, opacity: locked || !(amount > 0) ? .45 : 1 }}
+    <button type="button" disabled={!canSave}
+      style={{ ...primaryBtn, opacity: canSave ? 1 : .45 }}
       onClick={save}>{locked ? t("saving") : `✓ ${t("save")}`}</button>
   </Sheet>;
 }
@@ -8252,6 +8278,8 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
   const billOf = ledger.byBill || Object.fromEntries(allBills.map((x) => [x.id, x]));
   const Pays = (
     <PaymentsFeed
+      key={supplier.id}
+      feedKey={supplier.id}
       payments={pays}
       grandTotal={b.bought}
       lang={lang} t={t} S={S}
@@ -15403,12 +15431,12 @@ function FarmApp() {
           return <PaySupplierSheet supplier={s} ledger={supplierLedger} lang={lang} t={t} S={S}
             preBillId={sheet.billId || null} busy={busy}
             onClose={() => returnToSupplier(s.id)}
-            onSave={(v) => {
-              if (busy) return;
+            onSave={async (v) => {
+              if (busy) return false;
               const openBills = supplierLedger.list
-                .filter((x) => x.supplierId === s.id && x.due > 0.009)
+                .filter((x) => x.supplierId === s.id && toCents(x.due) > 0)
                 .slice().sort((a, c) => cmpTx(a, c, "oldest"));
-              rewriteEntries((rows) => {
+              const ok = await rewriteEntries((rows) => {
                 const now = iso(Date.now());
                 let remainC = toCents(v.amount);
                 if (!(remainC > 0)) return rows || [];
@@ -15453,7 +15481,9 @@ function FarmApp() {
                 }
                 return next;
               }, t("saved"));
-              returnToSupplier(s.id);
+              if (ok) returnToSupplier(s.id);
+              else ping(t("saveFail"));
+              return ok;
             }} />;
         })()}
 
@@ -15868,14 +15898,16 @@ function FarmApp() {
           }
           const e = entries.find((x) => x.id === sheet.id);
           if (!e) return null;
-          return <EditMoneySheet entry={e} lang={lang} t={t} S={S}
+          return <EditMoneySheet entry={e} lang={lang} t={t} S={S} busy={busy}
             onClose={() => setSheet(null)}
             onDelete={() => { deleteEntry(e.id); setSheet(null); }}
-            onSave={(v) => {
+            onSave={async (v) => {
+              const amt = fromCents(toCents(v.amount));
+              if (!(toCents(amt) > 0)) return false;
               if (e.type === "supplierPay") {
-                rewriteEntries((rows) => {
+                const ok = await rewriteEntries((rows) => {
                   let next = (rows || []).map((x) => (x.id === e.id
-                    ? { ...x, amount: v.amount, method: v.method, note: v.note, at: v.at } : x));
+                    ? { ...x, amount: amt, method: v.method, note: v.note, at: v.at } : x));
                   if (e.expenseId) {
                     const bill = next.find((x) => x.id === e.expenseId && x.type === "expense");
                     if (bill) {
@@ -15891,12 +15923,17 @@ function FarmApp() {
                   }
                   return next;
                 }, t("saved"));
-              } else if (e.type === "med") {
-                updateEntry(e.id, { cost: v.cost, note: v.note, at: v.at });
+                if (ok) setSheet(null);
+                else ping(t("saveFail"));
+                return ok;
+              }
+              if (e.type === "med") {
+                updateEntry(e.id, { cost: amt, note: v.note, at: v.at });
               } else {
-                updateEntry(e.id, { amount: v.amount, method: v.method, note: v.note, at: v.at });
+                updateEntry(e.id, { amount: amt, method: v.method, note: v.note, at: v.at });
               }
               setSheet(null);
+              return true;
             }} />;
         })()}
 
@@ -17370,20 +17407,22 @@ button.cash-overview-stat:hover{background:${C.paper}}
 .heavy-card-slot{min-height:1px}
 .virt-pad td{line-height:0;font-size:0}
 .cards-scroll{padding:2px;border-radius:8px}
-.pay-feed{background:${C.card};border:1px solid ${C.line};border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
-.pay-feed-summary{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
-  padding:12px 14px;background:${C.paper};border-bottom:1px solid ${C.line};box-shadow:0 1px 0 ${C.line}}
+.pay-feed{background:${C.card};border:1px solid ${C.line};border-radius:8px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.pay-feed-summary{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
+  padding:12px 14px;background:${C.paper};border-bottom:1px solid ${C.line};flex-shrink:0}
 .pay-feed-kpi{display:grid;gap:3px;min-width:0}
 .pay-feed-kpi span{font-size:11px;font-weight:700;color:${C.inkSoft};line-height:1.2}
 .pay-feed-kpi b{font-family:var(--mono);font-size:15px;font-weight:800;color:${C.ink};line-height:1.2}
 .pay-feed-remain b{font-size:16px}
-.pay-feed-scroll{max-height:min(48vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pay-feed-scroll{max-height:min(48vh,420px);min-height:120px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .pay-feed-list{display:grid}
 .pay-feed-row{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;
   border:none;border-bottom:1px dotted ${C.line};background:transparent;color:${C.ink};
-  padding:10px 14px;text-align:start;font-family:var(--body);cursor:pointer;min-height:44px}
-.pay-feed-row:disabled{cursor:default}
-.pay-feed-row:not(:disabled):hover{background:${C.paper}}
+  padding:10px 14px;text-align:start;font-family:var(--body);min-height:44px;box-sizing:border-box}
+.pay-feed-row.is-editable{cursor:pointer}
+.pay-feed-row.is-editable:hover{background:${C.paper}}
+.pay-feed-row.is-editable:active{background:${C.line}}
+.pay-feed-row.is-editable:focus-visible{outline:2px solid ${C.field};outline-offset:-2px}
 .pay-feed-row-main{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;min-width:0}
 .pay-feed-date{font-family:var(--mono)}
 .pay-feed-meta{color:${C.inkSoft};font-weight:600}
