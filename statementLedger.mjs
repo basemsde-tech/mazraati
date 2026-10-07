@@ -99,6 +99,9 @@ export function customerStatementRawLines({ ledger, customerId, labelSale, label
       creditC: 0,
     });
     (x.reimbRows || []).forEach((r, i) => {
+      /* accountAlloc rows are synthetic invoice displays of payment offsets —
+         paymentDeductions already credits those once. Skip to avoid double-count. */
+      if (r && r.accountAlloc) return;
       const c = Math.round((+(r.amount) || 0) * 100);
       if (!(c > 0)) return;
       out.push({

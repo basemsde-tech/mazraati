@@ -64,7 +64,7 @@ import { emptyCoach } from "./emptyCoach.mjs";
 import { normalizeTax, taxBreakdown, taxDocLines, DEFAULT_TAX } from "./accountantTax.mjs";
 import { withFarmRev, mergeFarmsByRev } from "./farmSync.mjs";
 import { ensureLinkedIdentity, unifyManagersFunders } from "./identityLink.mjs";
-import { applyAccountPayPool } from "./accountPay.mjs";
+import { applyAccountPayPool, reconcileAccountKpis, paymentRoomCents } from "./accountPay.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -73,9 +73,17 @@ import { applyAccountPayPool } from "./accountPay.mjs";
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.56", ar: "الموسم الأول", en: "First Season", date: "2026-10" };
+const VERSION = { code: "2.9.57", ar: "الموسم الأول", en: "First Season", date: "2026-10" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.57": {
+    ar: [
+      "مراجعة دقة الأرصدة: معاينات الحساب والكشوف والتصدير تطابق رصيد الحساب بعد الدفعات غير الموزَّعة",
+    ],
+    en: [
+      "Balance accuracy: account previews, statements, and exports match the account total after unallocated payments",
+    ],
+  },
   "2.9.56": {
     ar: [
       "الدفعات تُسجَّل كمبلغ واحد على رصيد الحساب دون توزيع تلقائي على فواتير البنود",
@@ -1204,17 +1212,31 @@ const supplierCashOut = (e) => {
   if (st === "partial") return fromCents(Math.min(toCents(e.amount), toCents(e.paidAmount)));
   return fromCents(toCents(e.amount));
 };
-/* Older paid supplier bills may lack a supplierPay row — imply one for ledgers/cash. */
+/* Older paid supplier bills may lack a supplierPay row — imply one for ledgers/cash.
+   Account-level (unlinked) supplier pays already cover cash-out — consume them first
+   so we do not double-count against the cashbox. */
 function withImpliedSupplierPays(entries) {
   const list = entries || [];
   const linked = new Set(list.filter((e) => e.type === "supplierPay" && e.expenseId).map((e) => e.expenseId));
+  const unlinkedC = {};
+  list.forEach((e) => {
+    if (e.type !== "supplierPay" || e.expenseId || e.implied || !e.supplierId) return;
+    unlinkedC[e.supplierId] = (unlinkedC[e.supplierId] || 0) + Math.max(0, toCents(e.amount));
+  });
   const implied = [];
   list.forEach((e) => {
     if (e.type !== "expense" || !e.supplierId || linked.has(e.id)) return;
-    const amount = supplierCashOut(e);
-    if (!(amount > 0.0001)) return;
+    let amountC = toCents(supplierCashOut(e));
+    if (!(amountC > 0)) return;
+    const pool = unlinkedC[e.supplierId] || 0;
+    if (pool > 0) {
+      const take = Math.min(amountC, pool);
+      unlinkedC[e.supplierId] = pool - take;
+      amountC -= take;
+    }
+    if (!(amountC > 0)) return;
     implied.push({
-      type: "supplierPay", id: `implied-${e.id}`, supplierId: e.supplierId, amount,
+      type: "supplierPay", id: `implied-${e.id}`, supplierId: e.supplierId, amount: fromCents(amountC),
       expenseId: e.id, at: e.at, vendor: e.vendor || "", method: "cash",
       note: e.note || "", implied: true,
     });
@@ -3838,6 +3860,13 @@ function buildSupplierLedger(entries, suppliers, t) {
     bySupplier[sid].paid = next.paid;
     bySupplier[sid].credit = next.credit;
   });
+  Object.keys(bySupplier).forEach((sid) => {
+    const kpis = reconcileAccountKpis(bySupplier[sid]);
+    bySupplier[sid].overdueDue = kpis.overdueDue;
+    bySupplier[sid].openCount = kpis.openCount;
+    bySupplier[sid].oldest = kpis.oldest;
+    bySupplier[sid].openingDue = kpis.openingDue;
+  });
   pays.forEach((p) => {
     const row = bySupplier[p.supplierId];
     if (!row) return;
@@ -4159,11 +4188,17 @@ function exportExcel(opts) {
 }
 /* One customer's ledger as its own workbook — the sheet a farmer actually
    sends to the person who owes them money. */
-function exportAccount({ customer, no, rows, pays, lang, t, S }) {
+function exportAccount({ customer, no, rows, pays, lang, t, S, bal }) {
   const money = (v) => fmt(v, S.rate, lang);
   const gross = fromCents(rows.reduce((sum, x) => sum + toCents(x.grossAmount), 0));
   const reimbursed = fromCents(rows.reduce((sum, x) => sum + toCents(x.reimbAmount), 0));
-  const net = fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
+  const net = bal && bal.net != null ? bal.net : fromCents(rows.reduce((sum, x) => sum + toCents(x.netAmount), 0));
+  const collected = bal && bal.paid != null
+    ? bal.paid
+    : fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0));
+  const due = bal && bal.due != null
+    ? bal.due
+    : fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0));
   const sheets = [
     { name: t("account"), cols: [18, 26], rows: [
       [t("customerName"), customerLabel(customer, t)],
@@ -4177,8 +4212,9 @@ function exportAccount({ customer, no, rows, pays, lang, t, S }) {
       [t("reimbursementTotal"), money(reimbursed)],
       [t("discount"), money(fromCents(rows.reduce((sum, x) => sum + toCents(x.discountAmount), 0)))],
       [t("netInvoiceTotal"), money(net)],
-      [t("collected"), money(fromCents(rows.reduce((sum, x) => sum + toCents(x.paidAmount), 0)))],
-      [t("due"), money(fromCents(rows.reduce((sum, x) => sum + toCents(x.due), 0)))],
+      [t("collected"), money(collected)],
+      [t("due"), money(due)],
+      ...(bal && toCents(bal.credit) > 0 ? [[t("credit"), money(bal.credit)]] : []),
     ] },
     { name: t("transactions"), cols: [12, 12, 14, 10, 10, 12, 12, 12, 12, 12, 12, 24], rows: [
       [t("colDate"), t("invoiceNo"), t("product"), t("colQty"), t("colUnit"),
@@ -5174,7 +5210,7 @@ function payFeedMoney(payments, grandTotal) {
 }
 function PaymentsFeed({
   payments, grandTotal = 0, lang, t, S, onEdit, billOf, emptyMsg, recentCount = PAY_FEED_RECENT, sign = "out",
-  feedKey = "",
+  feedKey = "", accountDue = null, accountCredit = 0,
 }) {
   const [olderOpen, setOlderOpen] = useState(false);
   const rows = useMemo(() => {
@@ -5185,12 +5221,17 @@ function PaymentsFeed({
   const rowsSig = `${feedKey}|${rows.length}|${rows.map((p) => p.id).join(",")}`;
   useEffect(() => { setOlderOpen(false); }, [rowsSig]);
   const { paidC, grandC, remainC, paidTotal } = payFeedMoney(rows, grandTotal);
+  /* Prefer true account balance when provided (handles implied pays + account-level pool). */
+  const useAcct = accountDue != null;
+  const acctRemainC = useAcct
+    ? (toCents(accountCredit) > 0 ? -toCents(accountCredit) : toCents(accountDue))
+    : remainC;
   const cap = Math.max(1, Math.round(recentCount) || PAY_FEED_RECENT);
   const recent = rows.slice(0, cap);
   const older = rows.slice(cap);
-  const moneyTone = remainC > 0 ? C.red : remainC < 0 ? C.green : C.inkSoft;
-  const remainLabel = remainC < 0 ? t("supplierCredit") : t("payFeedRemaining");
-  const remainAbs = fromCents(Math.abs(remainC));
+  const moneyTone = acctRemainC > 0 ? C.red : acctRemainC < 0 ? C.green : C.inkSoft;
+  const remainLabel = acctRemainC < 0 ? t("supplierCredit") : t("payFeedRemaining");
+  const remainAbs = fromCents(Math.abs(acctRemainC));
   const amountPrefix = sign === "in" ? "+" : "−";
   const amountColor = sign === "in" ? C.green : C.red;
   const editable = typeof onEdit === "function";
@@ -5206,8 +5247,8 @@ function PaymentsFeed({
         <b style={{ color: amountColor }}>{fmtC(paidTotal, S.rate, lang)}</b>
       </div>
       <div className="pay-feed-kpi pay-feed-remain">
-        <span>{rows.length ? remainLabel : t("payFeedRemaining")}</span>
-        <b style={{ color: moneyTone }}>{fmtC(rows.length ? remainAbs : fromCents(grandC), S.rate, lang)}</b>
+        <span>{(rows.length || useAcct) ? remainLabel : t("payFeedRemaining")}</span>
+        <b style={{ color: moneyTone }}>{fmtC((rows.length || useAcct) ? remainAbs : fromCents(grandC), S.rate, lang)}</b>
       </div>
     </div>
   );
@@ -8201,7 +8242,8 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
   const pickDue = (id) => {
     if (!id) return b.due;
     const hit = open.find((x) => x.id === id);
-    return hit ? hit.due : b.due;
+    if (!hit) return b.due;
+    return fromCents(paymentRoomCents(toCents(b.due), toCents(hit.due)));
   };
   const [billId, setBillId] = useState(startBill);
   const [amount, setAmount] = useState(pickDue(startBill));
@@ -8209,9 +8251,8 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const selected = billId ? open.find((x) => x.id === billId) : null;
-  const overCap = selected
-    ? fromCents(Math.max(0, toCents(amount) - toCents(selected.due)))
-    : fromCents(Math.max(0, toCents(amount) - toCents(b.due)));
+  const roomC = paymentRoomCents(toCents(b.due), selected ? toCents(selected.due) : null);
+  const overCap = fromCents(Math.max(0, toCents(amount) - roomC));
   const locked = !!(busy || saving);
   const canSave = toCents(amount) > 0 && !locked;
   const save = async () => {
@@ -8243,7 +8284,7 @@ function PaySupplierSheet({ supplier, ledger, lang, t, S, onSave, onClose, preBi
           if (!id || id === "__auto__") { setBillId(null); setAmount(b.due); return; }
           const hit = open.find((x) => x.id === id);
           setBillId(id);
-          if (hit) setAmount(hit.due);
+          if (hit) setAmount(fromCents(paymentRoomCents(toCents(b.due), toCents(hit.due))));
         }}
         extras={[{
           id: "__auto__", icon: "⚡", label: t("allocAuto"),
@@ -8401,6 +8442,8 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
       feedKey={supplier.id}
       payments={pays}
       grandTotal={b.bought}
+      accountDue={b.due}
+      accountCredit={b.credit || 0}
       lang={lang} t={t} S={S}
       onEdit={onEditPay}
       billOf={billOf}
@@ -8466,9 +8509,9 @@ function SupplierAccount({ supplier, ledger, entries, lang, t, S, tab, setTab, o
       {(b.opening || 0) > 0.009 && <Kpi label={t("supplierOpening")}
         value={fmtC(b.openingDue > 0.009 ? b.openingDue : b.opening, S.rate, lang)}
         tone={moneyColor("due", b.openingDue || 0)} />}
-      <Kpi label={t("supplierOpenBills")} value={nf(b.openCount || openBills.length)} tone={C.amber} />
-      <Kpi label={t("supplierOverdueKpi")} value={fmtC(b.overdueDue || 0, S.rate, lang)}
-        tone={moneyColor("due", b.overdueDue || 0)} />
+      <Kpi label={t("supplierOpenBills")} value={nf(b.due > 0.009 ? (b.openCount || openBills.length) : 0)} tone={C.amber} />
+      <Kpi label={t("supplierOverdueKpi")} value={fmtC(b.due > 0.009 ? (b.overdueDue || 0) : 0, S.rate, lang)}
+        tone={moneyColor("due", b.due > 0.009 ? (b.overdueDue || 0) : 0)} />
     </div>
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {[
@@ -9008,9 +9051,10 @@ function PaymentForm({ lang, t, S, customer, ledger, entries, onSave, onClose, b
             const iv = open.find((x) => x.id === id);
             setSaleId(id);
             if (iv) {
-              setSuggestFromC(toCents(iv.due));
+              const suggestC = paymentRoomCents(dueC, toCents(iv.due));
+              setSuggestFromC(suggestC);
               setCashTouched(false);
-              setAmount(iv.due);
+              setAmount(fromCents(suggestC));
             }
           }}
           extras={[{
@@ -9647,7 +9691,12 @@ function CustomerAccount({ customer, ledger, entries, lang, t, S, tab, setTab, f
         </FilterGroup>
       </SearchFilterBar>
 
-      <Settlement gross={rGross} deduct={rDeduct} paid={rPaid} due={rDue} />
+      <Settlement
+        gross={b.gross || b.net || rGross}
+        deduct={b.deductions != null ? b.deductions : rDeduct}
+        paid={b.paid != null ? b.paid : rPaid}
+        due={b.due != null ? b.due : rDue}
+      />
 
       {rows.length > 0 && <label className="sale-pick-all">
         <CheckCell checked={allOn} indeterminate={someOn && !allOn} title={t("selectAll")} onChange={toggleAll} />
@@ -11313,8 +11362,8 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
       const xu = (x.product || "milk") === "milk" ? milkUnitLb(x.unit, t)
         : both ? `${pr[4]} / ${pr[5]}` : (dlang === "ar" ? pr[4] : pr[5]);
       return [{ at: x.at, k: "s", label: `${x.no} · ${pn} · ${n1(x.qty)} ${xu} × ${money(x.price)}`,
-        d: x.grossAmount, m: 0, c: 0 }, ...(x.reimbRows || []).map((r) => ({ at: r.at || x.at, k: "r",
-        label: `${x.no} · ${t("reimbursement")} · ${r.accountAlloc ? t("accountReimburse") : r.name}`,
+        d: x.grossAmount, m: 0, c: 0 }, ...(x.reimbRows || []).filter((r) => !(r && r.accountAlloc)).map((r) => ({ at: r.at || x.at, k: "r",
+        label: `${x.no} · ${t("reimbursement")} · ${r.name}`,
         d: 0, m: r.amount, c: 0 })),
         ...((x.discountAmount || 0) > 0.009 ? [{ at: x.at, k: "d",
           label: `${x.no} · ${t("discount")}${x.discountPct > 0 ? ` ${x.discountPct}%` : ""}${x.discountNote ? ` · ${x.discountNote}` : ""}`,
@@ -11331,7 +11380,10 @@ function PrintDoc({ doc, lang, t: tApp, S, me, customers, ledger, suppliers = []
     const totalDebit = fromCents(rows.reduce((sum, r) => sum + toCents(r.d), 0));
     const totalDeduct = fromCents(rows.reduce((sum, r) => sum + toCents(r.m), 0));
     const totalCredit = fromCents(rows.reduce((sum, r) => sum + toCents(r.c), 0));
-    const finalBalance = fromCents(toCents(totalDebit) - toCents(totalDeduct) - toCents(totalCredit));
+    /* Prefer live account balance so statement footer matches the account preview. */
+    const finalBalance = toCents(b.credit) > 0
+      ? fromCents(-toCents(b.credit))
+      : (b.due != null ? b.due : fromCents(toCents(totalDebit) - toCents(totalDeduct) - toCents(totalCredit)));
     let runC = 0;
     return <div dir={T[dlang].dir} style={docWrap}>
       <DocHead lang={dlang} both={both} {...farm} title={t("statement")}
@@ -12804,7 +12856,8 @@ function FarmApp() {
   const doAccountExcel = (c) => {
     const rows = ledger.list.filter((x) => x.customerId === c.id);
     const pays = entries.filter((e) => e.type === "payment" && e.customerId === c.id);
-    try { ping(`${t("saved")} \u00b7 .${exportAccount({ customer: c, no: accNo(customers, c.id), rows, pays, lang, t, S })}`); }
+    const bal = ledger.byCustomer[c.id] || {};
+    try { ping(`${t("saved")} \u00b7 .${exportAccount({ customer: c, no: accNo(customers, c.id), rows, pays, lang, t, S, bal })}`); }
     catch (e) { ping(L(lang, "\u062a\u0639\u0630\u0651\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0644\u0641.", "Could not build the file.")); }
   };
   const exportCustomerBackup = (c) => {
@@ -15210,7 +15263,9 @@ function FarmApp() {
 
   const filteredSuppliers = activeSuppliers.filter((s) => {
     const bal = supplierLedger.bySupplier[s.id] || { due: 0, overdueDue: 0 };
-    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+    const st = bal.due > 0.009
+      ? ((bal.overdueDue || 0) > 0.009 ? "overdue" : "owing")
+      : "clear";
     if (suppSt !== "all" && st !== suppSt) return false;
     if (!suppQ.trim()) return true;
     const q = suppQ.toLowerCase();
@@ -15331,7 +15386,9 @@ function FarmApp() {
                   </tr>}
                   renderCard={(s) => {
                     const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
-                    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+                    const st = bal.due > 0.009
+                      ? ((bal.overdueDue || 0) > 0.009 ? "overdue" : "owing")
+                      : "clear";
                     const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
                     return (
                       <DataCard kind={st}
@@ -15353,7 +15410,9 @@ function FarmApp() {
                   }}
                   renderRow={(s) => {
                     const bal = supplierLedger.bySupplier[s.id] || { bought: 0, paid: 0, due: 0, overdueDue: 0, lastAt: null };
-                    const st = (bal.overdueDue || 0) > 0.009 ? "overdue" : bal.due > 0.009 ? "owing" : "clear";
+                    const st = bal.due > 0.009
+                      ? ((bal.overdueDue || 0) > 0.009 ? "overdue" : "owing")
+                      : "clear";
                     const stLb = st === "overdue" ? t("statusOverdue") : st === "owing" ? t("statusOwing") : t("statusClear");
                     return <tr key={s.id} onClick={() => openSupplier(s.id)} className={statusRowClass(st)} style={{ cursor: "pointer" }}
                       onContextMenu={(e) => openCtx(e, [

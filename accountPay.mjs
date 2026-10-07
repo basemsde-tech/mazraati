@@ -31,3 +31,37 @@ export function isAccountLevelPay(pay, { billKey = "expenseId" } = {}) {
   const link = pay.saleId || pay[billKey];
   return !link;
 }
+
+/**
+ * After applying an account payment pool, line-derived KPIs (overdue, open
+ * count) must not exceed the true account due.
+ */
+export function reconcileAccountKpis(account) {
+  const row = {
+    due: account?.due || 0,
+    paid: account?.paid || 0,
+    credit: account?.credit || 0,
+    overdueDue: account?.overdueDue || 0,
+    openCount: account?.openCount || 0,
+    oldest: account?.oldest || 0,
+    openingDue: account?.openingDue || 0,
+  };
+  const dueC = toCents(row.due);
+  if (!(dueC > 0)) {
+    row.overdueDue = 0;
+    row.openCount = 0;
+    row.oldest = 0;
+    row.openingDue = 0;
+    return row;
+  }
+  row.overdueDue = fromCents(Math.min(toCents(row.overdueDue), dueC));
+  if (toCents(row.openingDue) > dueC) row.openingDue = fromCents(dueC);
+  return row;
+}
+
+/** Room left on the account (and optional bill) before a payment creates credit. */
+export function paymentRoomCents(accountDue, billDue = null) {
+  const acct = Math.max(0, Math.round(accountDue || 0));
+  if (billDue == null) return acct;
+  return Math.min(acct, Math.max(0, Math.round(billDue || 0)));
+}

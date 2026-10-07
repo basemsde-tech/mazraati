@@ -82,6 +82,22 @@ describe("statement ledger math", () => {
     assert.equal(credits, 500 + 200 + 2000);
   });
 
+  it("does not double-count accountAlloc reimbursements already in paymentDeductions", () => {
+    const ledger = {
+      list: [{
+        id: "s1", customerId: "c1", at: "2026-03-01T10:00:00", no: "INV-1",
+        grossAmount: 100, qty: 1, product: "milk", price: 100,
+        reimbRows: [{ id: "synth", amount: 15, name: "", accountAlloc: true }],
+        discountAmount: 0,
+      }],
+      pays: [],
+      paymentDeductions: [{ id: "pd1", customerId: "c1", at: "2026-03-02", amount: 15, note: "Fuel" }],
+    };
+    const lines = customerStatementRawLines({ ledger, customerId: "c1" });
+    const credits = lines.reduce((s, r) => s + r.creditC, 0);
+    assert.equal(credits, 1500);
+  });
+
   it("builds supplier raw lines bills and payments", () => {
     const supplierLedger = {
       list: [
