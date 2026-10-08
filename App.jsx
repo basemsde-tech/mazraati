@@ -64,7 +64,7 @@ import { emptyCoach } from "./emptyCoach.mjs";
 import { normalizeTax, taxBreakdown, taxDocLines, DEFAULT_TAX } from "./accountantTax.mjs";
 import { withFarmRev, mergeFarmsByRev } from "./farmSync.mjs";
 import { ensureLinkedIdentity, unifyManagersFunders } from "./identityLink.mjs";
-import { applyAccountPayPool, reconcileAccountKpis, paymentRoomCents } from "./accountPay.mjs";
+import { reconcileAccountKpis, paymentRoomCents } from "./accountPay.mjs";
 
 /* =====================================================================
    MAZRAATI · مزرعتي
@@ -73,9 +73,17 @@ import { applyAccountPayPool, reconcileAccountKpis, paymentRoomCents } from "./a
    ===================================================================== */
 
 /* Releases carry a season name as well as a number. */
-const VERSION = { code: "2.9.57", ar: "الموسم الأول", en: "First Season", date: "2026-10" };
+const VERSION = { code: "2.9.58", ar: "الموسم الأول", en: "First Season", date: "2026-10" };
 /* Shown once after each app update (Settings can reopen). Keep short — last session only. */
 const WHATS_NEW = {
+  "2.9.58": {
+    ar: [
+      "فواتير المبيعات المدفوعة على مستوى الحساب تظهر مدفوعة بدل متأخرة — الدفعة تبقى حركة واحدة",
+    ],
+    en: [
+      "Sales paid at account level show as paid (not overdue) — the payment stays a single transaction",
+    ],
+  },
   "2.9.57": {
     ar: [
       "مراجعة دقة الأرصدة: معاينات الحساب والكشوف والتصدير تطابق رصيد الحساب بعد الدفعات غير الموزَّعة",
@@ -3715,8 +3723,9 @@ function buildLedger(entries, customers) {
       reimbPoolC[s.customerId] -= takeC;
     }
   });
-  /* Linked payments reduce that invoice only. Unlinked payments stay on the
-     account pool — never auto-split across line-item bills. */
+  /* Linked payments reduce that invoice only. Unlinked payments stay ONE journal
+     entry, but cover invoice dues oldest-first for status/due display so paid
+     accounts do not keep showing overdue sales. */
   pays.filter((p) => p.saleId && p.saleId in recC).forEach((p) => {
     const paidC = Math.max(0, toCents(p.amount));
     const roomC = Math.max(0, netBySaleC[p.saleId] - recC[p.saleId]);
@@ -3740,6 +3749,9 @@ function buildLedger(entries, customers) {
     const discountC = Math.min(afterOwnC, Math.max(0, toCents(s.discountAmount)));
     const reimbC = appliedOwnC + extraC;
     const netC = Math.max(0, grossC - reimbC - discountC);
+    const remainingC = Math.max(0, netC - (recC[s.id] || 0));
+    const takeC = (!s.customerId || isOneTimeSale(s)) ? 0 : Math.min(remainingC, poolC[s.customerId] || 0);
+    if (takeC > 0) { recC[s.id] = (recC[s.id] || 0) + takeC; poolC[s.customerId] -= takeC; }
     const paidC = Math.min(netC, recC[s.id] || 0);
     const dueC = Math.max(0, netC - paidC);
     const paidAmount = fromCents(paidC);
@@ -3770,14 +3782,11 @@ function buildLedger(entries, customers) {
     b.count += 1;
     if (isOwing(s.due)) b.oldest = Math.max(b.oldest, s.lateDays);
   });
-  /* Account-level payments reduce the previewed total balance exactly — one amount. */
+  /* Leftover unallocated pool (overpay) becomes account credit. */
   Object.keys(poolC).forEach((cid) => {
     if (!cid || cid === "undefined") return;
     if (!byCustomer[cid]) byCustomer[cid] = blank();
-    const next = applyAccountPayPool(byCustomer[cid], poolC[cid] || 0);
-    byCustomer[cid].due = next.due;
-    byCustomer[cid].paid = next.paid;
-    byCustomer[cid].credit = next.credit;
+    if (poolC[cid] > 0) byCustomer[cid].credit = fromCents(toCents(byCustomer[cid].credit) + poolC[cid]);
   });
   Object.keys(reimbPoolC).forEach((cid) => {
     if (!cid || cid === "undefined") return;
@@ -3816,9 +3825,13 @@ function buildSupplierLedger(entries, suppliers, t) {
   let billSeq = 0;
   const list = bills.map((b) => {
     const billC = toCents(b.amount);
-    const paidC = Math.min(billC, recC[b.id] || 0);
-    const paidAmount = fromCents(paidC);
-    const due = fromCents(Math.max(0, billC - paidC));
+    let paidC = Math.min(billC, recC[b.id] || 0);
+    /* Cover open bill dues from unlinked account pays (display only — pay stays one entry). */
+    const need = Math.max(0, billC - paidC);
+    const take = Math.min(need, poolC[b.supplierId] || 0);
+    if (take > 0) { paidC += take; poolC[b.supplierId] -= take; recC[b.id] = paidC; }
+    const paidAmount = fromCents(Math.min(billC, paidC));
+    const due = fromCents(Math.max(0, billC - toCents(paidAmount)));
     const dueDate = b.dueDate || dayKey(b.at);
     /* Compare calendar days in UTC Y-M-D parts so TZ does not shift “due on”. */
     const lateDays = due > 0 ? (() => {
@@ -3852,13 +3865,10 @@ function buildSupplierLedger(entries, suppliers, t) {
     }
     if (!row.lastAt || parseWhen(b.at) > parseWhen(row.lastAt)) row.lastAt = b.at;
   });
-  /* Unlinked pays reduce supplier account balance as one amount (no bill FIFO). */
   Object.keys(poolC).forEach((sid) => {
-    if (!bySupplier[sid]) return;
-    const next = applyAccountPayPool(bySupplier[sid], poolC[sid] || 0);
-    bySupplier[sid].due = next.due;
-    bySupplier[sid].paid = next.paid;
-    bySupplier[sid].credit = next.credit;
+    if (bySupplier[sid] && poolC[sid] > 0) {
+      bySupplier[sid].credit = fromCents(toCents(bySupplier[sid].credit) + poolC[sid]);
+    }
   });
   Object.keys(bySupplier).forEach((sid) => {
     const kpis = reconcileAccountKpis(bySupplier[sid]);
@@ -3866,6 +3876,10 @@ function buildSupplierLedger(entries, suppliers, t) {
     bySupplier[sid].openCount = kpis.openCount;
     bySupplier[sid].oldest = kpis.oldest;
     bySupplier[sid].openingDue = kpis.openingDue;
+    if (!isOwing(bySupplier[sid].due)) {
+      bySupplier[sid].due = 0;
+      bySupplier[sid].oldest = 0;
+    }
   });
   pays.forEach((p) => {
     const row = bySupplier[p.supplierId];
